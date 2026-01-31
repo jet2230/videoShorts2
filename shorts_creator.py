@@ -221,7 +221,7 @@ Video Path: {video_info['video_path']}
 
         return str(txt_path)
 
-    def generate_themes(self, video_info: Dict[str, str]) -> None:
+    def generate_themes(self, video_info: Dict[str, str], ai_generator=None) -> None:
         """Generate themes for YouTube Shorts from subtitles."""
         subtitle_file = Path(video_info['folder']) / f"{Path(video_info['video_path']).stem}_subtitles.txt"
 
@@ -244,6 +244,20 @@ Video Path: {video_info['video_path']}
 
         # Identify potential themes
         themes = self._identify_themes(segments, transcript)
+
+        # Use AI to generate better titles if available
+        if ai_generator and ai_generator.is_available():
+            print(f"  Using AI ({ai_generator.model}) for titles...")
+            for idx, theme in enumerate(themes):
+                ai_title = ai_generator.generate_title(theme['text'], theme['duration'])
+                if ai_title:
+                    theme['title'] = ai_title
+                    print(f"    Theme {idx + 1}: {ai_title[:50]}...")
+
+                    # Also try to generate a better reason
+                    ai_reason = ai_generator.generate_reason(theme['text'], theme['title'])
+                    if ai_reason:
+                        theme['reason'] = ai_reason
 
         # Save themes to markdown file
         themes_path = Path(video_info['folder']) / 'themes.md'
@@ -678,10 +692,30 @@ def main():
         default='videos',
         help='Base directory for downloaded videos (default: videos)'
     )
+    parser.add_argument(
+        '--ai',
+        action='store_true',
+        help='Use local AI (Llama 3 via Ollama) for theme title generation'
+    )
 
     args = parser.parse_args()
 
     creator = YouTubeShortsCreator(base_dir=args.output_dir)
+
+    # Initialize AI generator if requested
+    ai_generator = None
+    if args.ai:
+        try:
+            from ai_theme_generator import AIThemeGenerator
+            ai_generator = AIThemeGenerator()
+            if ai_generator.is_available():
+                print(f"✓ AI enabled: Using {ai_generator.model}")
+            else:
+                print("⚠ AI requested but not available. Using pattern-based titles instead.")
+                ai_generator = None
+        except ImportError:
+            print("⚠ AI module not found. Using pattern-based titles instead.")
+            ai_generator = None
 
     # Auto-detect if input is a URL or local file
     input_lower = args.input.lower()
@@ -712,8 +746,8 @@ def main():
     # Generate subtitles
     creator.generate_subtitles(video_info, model_size=args.model)
 
-    # Generate themes
-    creator.generate_themes(video_info)
+    # Generate themes (with AI if enabled)
+    creator.generate_themes(video_info, ai_generator=ai_generator)
 
     print("=" * 60)
     print(f"Processing complete! Folder: {video_info['folder']}")
