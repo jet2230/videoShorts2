@@ -565,11 +565,6 @@ def main():
     )
     parser.add_argument('input', help='YouTube video URL or path to local video file')
     parser.add_argument(
-        '--local',
-        action='store_true',
-        help='Process a local video file instead of downloading from YouTube'
-    )
-    parser.add_argument(
         '--model',
         choices=['tiny', 'base', 'small', 'medium', 'large'],
         default='base',
@@ -585,12 +580,15 @@ def main():
 
     creator = YouTubeShortsCreator(base_dir=args.output_dir)
 
-    if args.local:
-        # Process local video file
-        video_info = creator.process_local_video(args.input)
-    else:
+    # Auto-detect if input is a URL or local file
+    if args.input.startswith(('http://', 'https://')):
         # Download from YouTube
+        print(f"Detected URL: {args.input}")
         video_info = creator.download_video(args.input)
+    else:
+        # Process local video file
+        print(f"Detected local file: {args.input}")
+        video_info = creator.process_local_video(args.input)
 
     # Create info file
     creator.create_video_info(video_info)

@@ -72,10 +72,10 @@ python shorts_creator.py "URL" --output-dir my_videos
 ### Process local video file
 
 ```bash
-python shorts_creator.py "/path/to/video.mp4" --local
+python shorts_creator.py "/path/to/video.mp4"
 ```
 
-Local videos are copied to the project folder structure and processed the same way as downloaded videos.
+The script automatically detects if the input is a URL or a local file path. Local videos are copied to the project folder structure and processed the same way as downloaded videos.
 
 ## Output Structure
 
