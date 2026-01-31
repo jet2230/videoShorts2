@@ -95,6 +95,9 @@ Return ONLY the title, nothing else."""
                     if title.lower().startswith(prefix.lower()):
                         title = title[len(prefix):].strip()
 
+                # Fix common AI typos
+                title = self._fix_common_typos(title)
+
                 # Capitalize first letter
                 if title:
                     title = title[0].upper() + title[1:]
@@ -106,6 +109,42 @@ Return ONLY the title, nothing else."""
         except Exception as e:
             print(f"  AI generation error: {e}")
             return None
+
+    def _fix_common_typos(self, text: str) -> str:
+        """Fix common typos in AI-generated text."""
+        # Common corrections: (typo -> correct, add possessive s variant)
+        corrections = [
+            ('duaat', 'Dua', True),
+            ('duah', 'Dua', True),
+            ('duaa', 'Dua', True),
+            ('salla', 'Salla', False),
+            ('allah', 'Allah', False),
+            ('quran', 'Quran', False),
+            ('hadith', 'Hadith', False),
+            ('jannah', 'Jannah', False),
+            ('jahannam', 'Jahannam', False),
+            ('sunnah', 'Sunnah', False),
+            ('sujood', 'Sujood', False),
+        ]
+
+        for typo, correct, possessive in corrections:
+            import re
+            # Case-insensitive replacement
+            pattern = re.compile(r'\b' + typo + r's\b', re.IGNORECASE)
+            if possessive:
+                text = pattern.sub(correct + "'s", text)
+            else:
+                text = pattern.sub(correct + "s", text)
+
+            # Fix standalone version
+            pattern = re.compile(r'\b' + typo + r'\b', re.IGNORECASE)
+            text = pattern.sub(correct, text)
+
+        # Capitalize first letter if needed
+        if text and text[0].islower():
+            text = text[0].upper() + text[1:]
+
+        return text
 
     def generate_reason(self, transcript: str, title: str) -> str:
         """
