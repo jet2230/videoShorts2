@@ -247,26 +247,81 @@ Video Path: {video_info['video_path']}
             return
         segments = self._parse_srt_segments(srt_file)
 
-        # Identify potential themes
-        themes = self._identify_themes(segments, transcript)
-
-        # Use AI to generate better titles if available
+        # Identify themes - use AI for boundary detection if available, otherwise pattern-based
         ai_used = False
         ai_model = None
+        themes = []
+
         if ai_generator and ai_generator.is_available():
-            print(f"  Using AI ({ai_generator.model}) for titles...")
+            print(f"  Using AI ({ai_generator.model}) for theme identification...")
             ai_used = True
             ai_model = ai_generator.model
-            for idx, theme in enumerate(themes):
-                ai_title = ai_generator.generate_title(theme['text'], theme['duration'])
-                if ai_title:
-                    theme['title'] = ai_title
-                    print(f"    Theme {idx + 1}: {ai_title[:50]}...")
+
+            # Use AI to identify theme boundaries
+            ai_themes = ai_generator.identify_theme_boundaries(segments)
+
+            if ai_themes:
+                print(f"    AI identified {len(ai_themes)} themes")
+                # Convert AI themes to standard format
+                for ai_theme in ai_themes:
+                    # Find segments within this time range
+                    theme_segments = [
+                        s for s in segments
+                        if s['start'] >= ai_theme['start_time'] and s['end'] <= ai_theme['end_time']
+                    ]
+
+                    if theme_segments:
+                        combined_text = ' '.join(s['text'] for s in theme_segments)
+                        themes.append({
+                            'start': self._format_timestamp(ai_theme['start_time']),
+                            'end': self._format_timestamp(ai_theme['end_time']),
+                            'duration': self._format_duration(ai_theme['duration']),
+                            'text': combined_text[:800],
+                            'type': 'ai'
+                        })
+
+                # Use AI to generate titles for AI-identified themes
+                for idx, theme in enumerate(themes):
+                    ai_title = ai_generator.generate_title(theme['text'], theme['duration'])
+                    if ai_title:
+                        theme['title'] = ai_title
+                        print(f"    Theme {idx + 1}: {ai_title[:50]}...")
+                    else:
+                        theme['title'] = self._generate_theme_title(theme['text'])
+
+                    # Generate reason
+                    ai_reason = ai_generator.generate_reason(theme['text'], theme['title'])
+                    if ai_reason:
+                        theme['reason'] = ai_reason
+                    else:
+                        theme['reason'] = self._get_theme_reason(theme['text'])
+
+        # Fallback to pattern-based if AI didn't return themes
+        if not themes:
+            if ai_used:
+                print("    AI boundary detection failed, using pattern-based approach")
+
+            themes = self._identify_themes(segments, transcript)
+
+            # Use AI to generate better titles if available
+            if ai_generator and ai_generator.is_available():
+                for idx, theme in enumerate(themes):
+                    ai_title = ai_generator.generate_title(theme['text'], theme['duration'])
+                    if ai_title:
+                        theme['title'] = ai_title
+                        print(f"    Theme {idx + 1}: {ai_title[:50]}...")
 
                     # Also try to generate a better reason
                     ai_reason = ai_generator.generate_reason(theme['text'], theme['title'])
                     if ai_reason:
                         theme['reason'] = ai_reason
+                    else:
+                        theme['reason'] = self._get_theme_reason(theme['text'])
+            else:
+                # Add pattern-based titles and reasons
+                for theme in themes:
+                    theme['title'] = self._generate_theme_title(theme['text'])
+                    theme['reason'] = self._get_theme_reason(theme['text'])
 
         # Save themes to markdown file
         themes_path = Path(video_info['folder']) / 'themes.md'
@@ -427,9 +482,17 @@ Video Path: {video_info['video_path']}
             theme_boundaries.sort(key=lambda x: x[0])
 
             # Create themes from consecutive boundary points
+            last_end_idx = 0
             for j in range(len(theme_boundaries) - 1):
                 start_idx = theme_boundaries[j][0]
                 end_idx = theme_boundaries[j + 1][0]
+
+                # Ensure no overlap: start from last_end_idx if available
+                if start_idx < last_end_idx:
+                    start_idx = last_end_idx
+
+                # Find natural end point to avoid cutting off mid-sentence
+                end_idx = self.find_natural_end_point(segments, end_idx)
 
                 # Combine segments from start_idx to end_idx
                 theme_segments = segments[start_idx:end_idx + 1]
@@ -451,6 +514,9 @@ Video Path: {video_info['video_path']}
                         'type': theme_boundaries[j][1]
                     })
 
+                    # Update last_end_idx to prevent overlap
+                    last_end_idx = end_idx + 1
+
             # Try to get up to 15 themes
             themes = themes[:15]
 
@@ -461,7 +527,11 @@ Video Path: {video_info['video_path']}
 
             for i in range(0, len(segments), window_size):
                 end_idx = min(i + window_size, len(segments))
-                theme_segments = segments[i:end_idx]
+
+                # Find natural end point
+                end_idx = self.find_natural_end_point(segments, end_idx)
+
+                theme_segments = segments[i:end_idx + 1]
 
                 if not theme_segments:
                     continue
@@ -768,6 +838,45 @@ Video Path: {video_info['video_path']}
         secs = int(seconds % 60)
         millis = int((seconds % 1) * 1000)
         return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
+
+    def find_natural_end_point(self, segments: List[Dict], end_idx: int, max_lookahead: int = 30) -> int:
+        """Find a natural stopping point (sentence ending) near the end index.
+
+        Looks for segments ending with periods, complete sentences, or natural pauses.
+        """
+        # Look ahead from end_idx for a natural stopping point
+        for i in range(end_idx, min(end_idx + max_lookahead, len(segments))):
+            text = segments[i]['text'].strip()
+
+            # Check for sentence ending patterns
+            if text.endswith('.') or text.endswith('!') or text.endswith('?'):
+                return i
+
+            # Check for Arabic period (U+06D4)
+            if text.endswith('۔') or text.endswith('।'):
+                return i
+
+            # Check for common ending phrases in Islamic content
+            lower_text = text.lower()
+            ending_phrases = [
+                'na\'udhu billah',
+                'subhanallah',
+                'alhamdulillah',
+                'wallahu \'alam',
+                'wasallam',
+                'rahimullah',
+                'this is with regards to',
+                'so again',
+                'and then',
+                'allah subhanahu',
+                'sallallahu alayhi'
+            ]
+            for phrase in ending_phrases:
+                if phrase in lower_text:
+                    return i
+
+        # If no natural ending found, return original end_idx
+        return end_idx
 
     def create_trimmed_srt(self, original_srt: Path, start_seconds: float, end_seconds: float, output_path: Path) -> Path:
         """Create a trimmed SRT file with timestamps adjusted for the clip."""

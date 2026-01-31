@@ -189,6 +189,168 @@ Return the reason only, nothing else."""
         except Exception:
             return None
 
+    def identify_theme_boundaries(self, transcript_segments: List[Dict]) -> List[Dict]:
+        """
+        Use AI to identify natural theme boundaries from transcript segments.
+
+        Args:
+            transcript_segments: List of segments with 'start', 'end', 'text' keys
+
+        Returns:
+            List of theme dicts with 'start_time', 'end_time', and 'description'
+        """
+        # Create transcript with timestamps in SECONDS (already in seconds from SRT)
+        # Provide better context by grouping consecutive segments
+        transcript_parts = []
+        # Process more segments to get full transcript coverage
+        for i in range(0, min(len(transcript_segments), 500), 3):  # More segments, smaller groups
+            group = transcript_segments[i:i+3]
+            if group:
+                start_sec = int(group[0]['start'])
+                # Get more text per group for better context
+                text = " ".join(seg['text'][:100].strip() for seg in group)
+                transcript_parts.append(f"[{start_sec}s] {text}")
+
+        full_transcript = "\n".join(transcript_parts)
+
+        prompt = f"""Identify YouTube Shorts clips from this Islamic lecture. Find 12-15 clips.
+
+TIMESTAMPS are in SECONDS (just use the numbers like [120s]).
+
+CRITICAL RULES:
+- MINIMUM 45 seconds per clip (2700 seconds minimum if I say 45)
+- MAXIMUM 3.5 minutes per clip
+- Start at topic transitions
+- End at complete thoughts
+- No overlaps
+
+Your JSON output:
+[
+  {{"start": 180, "end": 300, "reason": "explains Mizan"}},
+  {{"start": 310, "end": 480, "reason": "discusses Hadith"}}
+]
+
+Make clips LONGER, not shorter. Better to have 2 minute clips than 20 second clips.
+
+Transcript (timestamps in seconds):
+{full_transcript}
+
+Return ONLY valid JSON. Nothing else."""
+
+        try:
+            response = requests.post(
+                f'{self.api_base}/api/generate',
+                json={
+                    'model': self.model,
+                    'prompt': prompt,
+                    'stream': False,
+                    'options': {
+                        'temperature': 0.5,
+                        'num_predict': 1200,
+                    }
+                },
+                timeout=90
+            )
+
+            if response.status_code == 200:
+                result = response.json().get('response', '').strip()
+
+                # Try to extract JSON from within conversational text
+
+                # Try to extract JSON from within conversational text
+                # Look for JSON array pattern - capture everything from [ to matching ]
+                import re
+                themes_data = []
+
+                # Try to parse as JSON first
+                start_idx = result.rfind('[')
+                if start_idx != -1:
+                    # Try to find matching closing bracket
+                    bracket_count = 0
+                    for i in range(start_idx, len(result)):
+                        if result[i] == '[':
+                            bracket_count += 1
+                        elif result[i] == ']':
+                            bracket_count -= 1
+                            if bracket_count == 0:
+                                try:
+                                    json_str = result[start_idx:i+1]
+                                    themes_data = json.loads(json_str)
+                                    break
+                                except:
+                                    pass
+
+                # Try format with backticks: 1. `{"start": 0, "end": 30}`
+                if not themes_data:
+                    tick_pattern = r'(\d+)\.\s*`{"start":\s*(\d+),\s*"end":\s*(\d+)}`'
+                    matches = re.findall(tick_pattern, result)
+                    for match in matches:
+                        start_time = float(match[2])
+                        end_time = float(match[3])
+                        themes_data.append({'start': start_time, 'end': end_time, 'reason': 'AI-identified theme'})
+
+                # If JSON parsing failed, try to extract from numbered list format
+                if not themes_data:
+                    # Try format with titles: 1. "Title" (MM:SS - MM:SS)
+                    list_pattern = r'(\d+)\.\s*"([^"]+)"\s*\((\d+):(\d+)\s*-\s*(\d+):(\d+)\)'
+                    matches = re.findall(list_pattern, result)
+                    for match in matches:
+                        title = match[1]
+                        start_min = int(match[2])
+                        start_sec = int(match[3])
+                        end_min = int(match[4])
+                        end_sec = int(match[5])
+                        start_time = start_min * 60 + start_sec
+                        end_time = end_min * 60 + end_sec
+                        themes_data.append({'start': start_time, 'end': end_time, 'reason': title})
+
+                # Try format without titles: 1. "TIMESTAMPS: MM:SS - MM:SS"
+                if not themes_data:
+                    list_pattern = r'(\d+)\.\s*"TIMESTAMPS:\s*(\d+):(\d+)\s*-\s*(\d+):(\d+)'
+                    matches = re.findall(list_pattern, result)
+                    for match in matches:
+                        start_min = int(match[1])
+                        start_sec = int(match[2])
+                        end_min = int(match[3])
+                        end_sec = int(match[4])
+                        start_time = start_min * 60 + start_sec
+                        end_time = end_min * 60 + end_sec
+                        themes_data.append({'start': start_time, 'end': end_time, 'reason': 'AI-identified theme'})
+
+                if not themes_data:
+                    print(f"    AI boundary detection failed, using pattern-based approach")
+                    return []
+
+                # Validate and convert to theme format
+                themes = []
+                for theme in themes_data:
+                    if 'start' in theme and 'end' in theme:
+                        start_time = float(theme['start'])
+                        end_time = float(theme['end'])
+                        duration = end_time - start_time
+
+                        # Enforce minimum duration of 30 seconds, max 4 minutes
+                        if 30 <= duration <= 240:
+                            themes.append({
+                                'start_time': start_time,
+                                'end_time': end_time,
+                                'duration': duration,
+                                'reason': theme.get('reason', 'Engaging content')
+                            })
+
+                return themes
+            else:
+                print(f"  AI boundary detection failed: {response.status_code}")
+                return []
+
+        except json.JSONDecodeError as e:
+            print(f"  AI JSON parsing error: {e}")
+            print(f"  Response was: {result[:200]}")
+            return []
+        except Exception as e:
+            print(f"  AI boundary detection error: {e}")
+            return []
+
 
 def test_ai_generator():
     """Test the AI theme generator."""

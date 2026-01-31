@@ -1,7 +1,7 @@
 [done] 0. I am going to create a automatic youtube shorts creation app
 [done] 1. create a pyton script that will download a youtube video given the url in its highest quality
 [done] 2. the video will be placed in a specific folder structre like the following videos/001_<video title>/ replace the <video title> with the title of the video and increment 001 to 002 after each new video is downloaded. Folder numbering uses max(existing_number) + 1 logic, only counting folders that contain actual video files (mp4, mkv, webm). Deleted folder numbers are never reused - the next folder always increments from the highest existing numbered folder.
-[done] 3. use whisper to create subtitles for the video, the video will be multi lingual with the majority being in English, wisper will transliterate the forien language words.
+[done] 3. use whisper to create subtitles for the video, the video will be multi lingual with the majority being in English, wisper will transliterate the forien language words. NOTE: Later updated to default to Arabic language for proper Arabic script output instead of transliteration (e.g., بسم الله الرحمن الرحيم instead of "Bismillah").
 [done] 4. create a text file called 'video info.txt' within the downloaded folder, and add information about this video like the title and the download url.
 [done] 5. read the subtitles file and create specifc themes to make youtube short videos, the themes must be within the timelines of 30secs to 4min and must make sense.  Save the list of the themes in a file called themes.md
 [done] 6. list all the themes at the start of themes.md, then can provide the descripions after that
@@ -14,3 +14,6 @@
 [done] 13. reduce the subtitles font size and with height 35 from the bottom.
 [done] 14. the subtitles are not working properly on the short video.
 [done] 15. when creating the short video leave the subtitle file in the same folder as the short video.
+[done] 16. Set Arabic as default Whisper language for proper Arabic script output (generates بسم الله الرحمن الرحيم instead of transliteration like "Bismillah"). Documented in README.
+#17. use your own ai model for theme identification
+18. make ai theme identification the default tool for theme identification and theme names
