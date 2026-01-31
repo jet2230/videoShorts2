@@ -141,17 +141,25 @@ The algorithm identifies segments that:
 - Contain self-contained messages
 - Match topic patterns (prayer, dua, grave, hereafter, etc.)
 
-**Pattern-based mode:**
-- Uses keyword matching and predefined topics
-- Fast but generic titles
-- Good for quick processing
+### Title Generation Methods
+
+**Pattern-based (default):**
+- Uses **keyword matching** against predefined topic patterns
+- Matches content against categories like:
+  - Islamic concepts (salah, dua, grave, barzakh, jannah, etc.)
+  - Emotional indicators (questions, exclamations, stories)
+  - Structured patterns ("number one", "second", "the point is")
+- Falls back to generic titles if no pattern matches
+- **Fast, no external dependencies**
 
 **AI mode (--ai flag):**
-- Uses Llama 3 to analyze transcript context
-- Generates catchy, click-worthy titles
-- Understands nuance and generates question-style titles
-- Auto-corrects common Islamic term typos
+- Uses **Llama 3** (via Ollama) to analyze full transcript context
+- Generates **context-aware, catchy titles**
+- Creates question-style titles that hook viewers
+- Understands nuance and subtext
+- Auto-corrects common Islamic term typos (Duaats → Dua's)
 - Generates better "why this works" reasons
+- **Slower, requires Ollama + Llama 3**
 
 ## Example Output
 
