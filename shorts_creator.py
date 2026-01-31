@@ -88,12 +88,7 @@ class YouTubeShortsCreator:
         if not numbers:
             return 1
 
-        # Find the first gap in the sequence
-        numbers.sort()
-        for i in range(1, max(numbers) + 2):
-            if i not in numbers:
-                return i
-
+        # Always use max + 1 (never reuse deleted numbers)
         return max(numbers) + 1
 
     def download_video(self, url: str) -> Dict[str, str]:
