@@ -1,6 +1,0 @@
-0. I am going to create a automatic youtube shorts creation app
-1. create a pyton script that will download a youtube video given the url in its highest quality
-2. the video will be placed in a specific folder structre like the following videos/001_<video title>/ replace the <video title> with the title of the video and increment 001 to 002 after each new video is downloaded.
-3. use whisper to create subtitles for the video, the video will be multi lingual with the majority being in English, wisper will transliterate the forien language words.
-4. create a text file called 'video info.txt' within the downloaded folder, and add information about this video like the title and the download url.
-5. read the subtitles file and create specifc themes to make youtube short videos, the themes must be within the timelines of 30secs to 4min and must make sense.  Save the list of the themes in a file called themes.md
