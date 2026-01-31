@@ -498,6 +498,11 @@ Video Path: {video_info['video_path']}
             ('World of the Unseen', ['unseen', 'ghaybi', 'alamul', 'cannot understand']),
             ('No Accountability Without Sanity', ['hisab', 'pen of responsibility', 'lifted', 'wajib']),
             ('Practical Sunnah to Practice', ['sunnah', 'practice', 'act upon', 'introduce', 'neglecting']),
+            ('Asking Allah for Paradise', ['jannah', 'naar', 'fire', 'seek refuge', 'allahumma inni']),
+            ('Siraat Bridge Over Hell', ['siraat', 'bridge', 'assirat', 'pass over', 'lightning']),
+            ('What to Say in Sujood', ['sujood', 'allahumma', 'jannah', 'naar', 'remain silent']),
+            ('Do Not Remain Silent in Prayer', ['silent', 'silence', 'taslim', 'remain silent']),
+            ('Making Dua for Parents', ['parents', 'dua', 'making', 'father', 'mother']),
         ]
 
         # Score each topic based on keyword matches
@@ -510,15 +515,34 @@ Video Path: {video_info['video_path']}
                 best_score = score
                 best_topic = topic
 
-        if best_score >= 2:
+        if best_score >= 1:  # Even 1 match is good enough
             return best_topic
 
-        # Try to extract from explanatory sentences
+        # Look for question patterns to create engaging titles
         import re
+        if '?' in text:
+            question_parts = text.split('?')
+            for q in question_parts[:2]:
+                q = q.strip()
+                if len(q.split()) >= 4:
+                    words = q.split()
+                    # Get the key words from the question
+                    meaningful_words = []
+                    skip_words = {'do', 'you', 'what', 'how', 'why', 'is', 'are', 'the', 'a', 'an', 'of', 'in', 'to', 'for'}
+                    for word in words:
+                        w = word.lower().strip('?,.!;:')
+                        if w and w not in skip_words and len(w) > 3:
+                            meaningful_words.append(word)
+                    if meaningful_words:
+                        title = ' '.join(meaningful_words[:4]).capitalize()
+                        return title + '?'
+
+        # Try to extract from explanatory sentences
         explanatory_matches = [
+            (r'don\'t ([^.]+)', 'Don\'t {}'),
+            (r'never ([^.]+)', 'Never {}'),
+            (r'always ([^.]+)', 'Always {}'),
             (r'this shows (?:that )?([^,]+)', 'This Shows: {}'),
-            (r'this means ([^.]+)', 'Meaning: {}'),
-            (r'so (.{10,60})', None),
         ]
 
         for pattern, prefix in explanatory_matches:
@@ -528,13 +552,12 @@ Video Path: {video_info['video_path']}
                 # Clean and shorten
                 words = phrase.split()
                 # Remove starting filler words
-                while words and words[0].lower() in ['that', 'the', 'a', 'an', 'it', 'they', 'there', 'is', 'are']:
+                while words and words[0].lower() in ['that', 'the', 'a', 'an', 'it', 'they', 'there', 'is', 'are', 'to', 'for']:
                     words.pop(0)
                 if words:
-                    short_phrase = ' '.join(words[:6])
+                    short_phrase = ' '.join(words[:5])
                     if prefix:
                         return prefix.format(short_phrase.capitalize())
-                    return short_phrase.capitalize()
 
         # Look for key concept combinations
         if 'allah' in text_lower and 'prophet' in text_lower:
