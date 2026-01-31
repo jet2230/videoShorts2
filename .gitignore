@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.kate-swp
+
+# Project-specific
+videos/
+TODO.txt
+.DS_Store
