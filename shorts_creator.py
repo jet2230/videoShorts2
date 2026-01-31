@@ -217,10 +217,20 @@ Video Path: {video_info['video_path']}
             f.write(f"**Video:** {video_info['title']}\n\n")
             total_duration = self._format_duration(segments[-1]['end']) if segments else 'N/A'
             f.write(f"**Total Duration:** {total_duration}\n\n")
+            f.write(f"**Number of Themes:** {len(themes)}\n\n")
             f.write(f"---\n\n")
-            f.write(f"## Identified Themes\n\n")
 
             if themes:
+                # Summary table at the top
+                f.write(f"## Theme Summary\n\n")
+                f.write(f"| # | Theme | Duration | Time Range |\n")
+                f.write(f"|---|-------|----------|------------|\n")
+                for i, theme in enumerate(themes, 1):
+                    f.write(f"| {i} | {theme['title']} | {theme['duration']} | {theme['start']} - {theme['end']} |\n")
+                f.write(f"\n---\n\n")
+
+                # Detailed descriptions
+                f.write(f"## Detailed Theme Descriptions\n\n")
                 for i, theme in enumerate(themes, 1):
                     f.write(f"### Theme {i}: {theme['title']}\n\n")
                     f.write(f"**Time Range:** {theme['start']} - {theme['end']} ({theme['duration']})\n\n")
