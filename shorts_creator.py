@@ -581,8 +581,21 @@ def main():
     creator = YouTubeShortsCreator(base_dir=args.output_dir)
 
     # Auto-detect if input is a URL or local file
-    if args.input.startswith(('http://', 'https://')):
+    input_lower = args.input.lower()
+    is_url = (
+        args.input.startswith(('http://', 'https://')) or
+        args.input.startswith('www.') or
+        'youtube.com/' in input_lower or
+        'youtu.be/' in input_lower
+    )
+
+    if is_url:
         # Download from YouTube
+        # Add https:// if missing for URLs starting with www or youtube.com
+        if args.input.startswith('www.'):
+            args.input = 'https://' + args.input
+        elif not args.input.startswith(('http://', 'https://')):
+            args.input = 'https://' + args.input
         print(f"Detected URL: {args.input}")
         video_info = creator.download_video(args.input)
     else:
