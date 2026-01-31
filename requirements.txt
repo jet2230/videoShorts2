@@ -9,6 +9,15 @@ openai-whisper>=20231117
 # Audio processing
 ffmpeg-python>=0.2.0
 
+# AI theme generation (OPTIONAL)
+# Uncomment below to enable requests library for AI theme generation
+# Used for connecting to Ollama (local Llama 3)
+requests>=2.31.0
+
 # System requirements:
 # - ffmpeg (system package)
 # - Python 3.9+
+#
+# Optional for AI theme titles:
+# - Ollama (https://ollama.ai/download)
+# - Llama 3 model: ollama pull llama3
