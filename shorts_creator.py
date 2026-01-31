@@ -70,7 +70,7 @@ class YouTubeShortsCreator:
         return title[:100]
 
     def get_next_folder_number(self) -> int:
-        """Get the next available folder number, skipping deleted/empty folders."""
+        """Get the next folder number."""
         existing = [d for d in self.base_dir.iterdir() if d.is_dir()]
         if not existing:
             return 1
@@ -85,11 +85,7 @@ class YouTubeShortsCreator:
                 if has_video:
                     numbers.append(int(match.group(1)))
 
-        if not numbers:
-            return 1
-
-        # Always use max + 1 (never reuse deleted numbers)
-        return max(numbers) + 1
+        return max(numbers) + 1 if numbers else 1
 
     def download_video(self, url: str) -> Dict[str, str]:
         """Download YouTube video in highest quality."""
