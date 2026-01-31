@@ -246,8 +246,12 @@ Video Path: {video_info['video_path']}
         themes = self._identify_themes(segments, transcript)
 
         # Use AI to generate better titles if available
+        ai_used = False
+        ai_model = None
         if ai_generator and ai_generator.is_available():
             print(f"  Using AI ({ai_generator.model}) for titles...")
+            ai_used = True
+            ai_model = ai_generator.model
             for idx, theme in enumerate(themes):
                 ai_title = ai_generator.generate_title(theme['text'], theme['duration'])
                 if ai_title:
@@ -267,6 +271,13 @@ Video Path: {video_info['video_path']}
             total_duration = self._format_duration(segments[-1]['end']) if segments else 'N/A'
             f.write(f"**Total Duration:** {total_duration}\n\n")
             f.write(f"**Number of Themes:** {len(themes)}\n\n")
+
+            # Indicate whether AI was used for title generation
+            if ai_used:
+                f.write(f"**Title Generation:** AI-powered ({ai_model})\n\n")
+            else:
+                f.write(f"**Title Generation:** Pattern-based\n\n")
+
             f.write(f"---\n\n")
 
             if themes:
