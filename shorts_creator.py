@@ -200,7 +200,11 @@ Video Path: {video_info['video_path']}
             transcript = f.read()
 
         # Parse subtitle segments from SRT file for timing
-        srt_file = subtitle_file.with_suffix('.srt')
+        # The SRT file is named {base_name}.srt while the text file is {base_name}_subtitles.txt
+        srt_file = Path(video_info['folder']) / f"{Path(video_info['video_path']).stem}.srt"
+        if not srt_file.exists():
+            print(f"SRT file not found: {srt_file}, skipping theme generation.")
+            return
         segments = self._parse_srt_segments(srt_file)
 
         # Identify potential themes
@@ -211,7 +215,8 @@ Video Path: {video_info['video_path']}
         with open(themes_path, 'w', encoding='utf-8') as f:
             f.write(f"# Themes for YouTube Shorts\n\n")
             f.write(f"**Video:** {video_info['title']}\n\n")
-            f.write(f"**Total Duration:** {segments[-1]['end'] if segments else 'N/A'}\n\n")
+            total_duration = self._format_duration(segments[-1]['end']) if segments else 'N/A'
+            f.write(f"**Total Duration:** {total_duration}\n\n")
             f.write(f"---\n\n")
             f.write(f"## Identified Themes\n\n")
 
