@@ -8,6 +8,7 @@ import os
 import re
 import json
 import argparse
+import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional
 import yt_dlp
@@ -195,11 +196,11 @@ Video Path: {video_info['video_path']}
         video_path = video_info['video_path']
         print(f"Transcribing: {video_path}")
 
-        # Transcribe with transliteration support
+        # Transcribe with Arabic as default language for proper Arabic script
         result = model.transcribe(
             video_path,
             task='transcribe',
-            language=None,  # Auto-detect
+            language='ar',  # Default to Arabic for proper Arabic script output
             verbose=False
         )
 
@@ -507,11 +508,12 @@ Video Path: {video_info['video_path']}
         text_lower = text.lower()
 
         # Define topics with their keywords - returns short, catchy titles
+        # Order matters: more specific patterns should come first
         topic_patterns = [
+            ('The Mizan (Scales of Justice)', ['mizan', 'mawazin', 'wazan', 'scales', 'scale of justice', 'weighed', 'weighing', 'khafifatani', 'thakilatani']),
             ('Why Your Dua Isn\'t Answered', ['dua', 'answered', 'respond', 'accept', 'prayers']),
             ('Self-Reflection: Know Yourself', ['faults', 'critic', 'yourself', 'shortcomings', 'mistakes']),
             ('Grave and Death Reminder', ['grave', 'death', 'died', 'janasah', 'symmetry', 'bury']),
-            ('Love for the Prophet', ['prophet', 'sunnah', 'love', 'follow', 'abandoned']),
             ('Fearing Hellfire', ['hellfire', 'jahannam', 'fear', 'running', 'fleeing']),
             ('Paradise Requires Effort', ['paradise', 'jannah', 'striving', 'working', 'enter']),
             ('Bridge Between Knowledge and Action', ['knowledge', 'action', 'gap', 'bridge', 'practicing']),
@@ -532,6 +534,7 @@ Video Path: {video_info['video_path']}
             ('What to Say in Sujood', ['sujood', 'allahumma', 'jannah', 'naar', 'remain silent']),
             ('Do Not Remain Silent in Prayer', ['silent', 'silence', 'taslim', 'remain silent']),
             ('Making Dua for Parents', ['parents', 'dua', 'making', 'father', 'mother']),
+            ('Love for the Prophet', ['love the prophet', 'prophet muhammad', 'beloved prophet', 'loving prophet']),
         ]
 
         # Score each topic based on keyword matches
@@ -689,13 +692,259 @@ Video Path: {video_info['video_path']}
 
         return video_info
 
+    def get_video_folder_by_number(self, folder_number: str) -> Optional[Path]:
+        """Find a video folder by its number (e.g., '001')."""
+        for folder in self.base_dir.iterdir():
+            if folder.is_dir() and folder.name.startswith(f"{folder_number}_"):
+                # Check if it has a video file
+                if any(folder.glob("*.mp4")) or any(folder.glob("*.mkv")) or any(folder.glob("*.webm")):
+                    return folder
+        return None
+
+    def get_video_file(self, folder: Path) -> Optional[Path]:
+        """Get the video file from a folder."""
+        for ext in ['*.mp4', '*.mkv', '*.webm']:
+            videos = list(folder.glob(ext))
+            if videos:
+                return videos[0]
+        return None
+
+    def parse_themes_file(self, themes_file: Path) -> List[Dict]:
+        """Parse themes.md file to extract theme information."""
+        if not themes_file.exists():
+            raise FileNotFoundError(f"Themes file not found: {themes_file}")
+
+        themes = []
+        with open(themes_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+
+            # Look for theme markers: "### Theme N: Title"
+            if line.startswith('### Theme'):
+                # Extract theme number and title
+                match = re.match(r'### Theme (\d+):\s*(.+)', line)
+                if match:
+                    theme_num = int(match.group(1))
+                    title = match.group(2)
+
+                    # Look for time range in next few lines
+                    i += 1
+                    time_range = None
+                    while i < len(lines) and not lines[i].startswith('**Why this works:**'):
+                        if '**Time Range:**' in lines[i]:
+                            time_match = re.search(r'(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})', lines[i])
+                            if time_match:
+                                time_range = {
+                                    'start': time_match.group(1),
+                                    'end': time_match.group(2)
+                                }
+                                break
+                        i += 1
+
+                    if time_range:
+                        themes.append({
+                            'number': theme_num,
+                            'title': title,
+                            'start': time_range['start'],
+                            'end': time_range['end']
+                        })
+            i += 1
+
+        return themes
+
+    def parse_timestamp_to_seconds(self, timestamp: str) -> float:
+        """Convert timestamp (HH:MM:SS) to seconds."""
+        parts = timestamp.split(':')
+        h, m, s = int(parts[0]), int(parts[1]), int(parts[2])
+        return h * 3600 + m * 60 + s
+
+    def seconds_to_timestamp(self, seconds: float) -> str:
+        """Convert seconds to SRT timestamp format (HH:MM:SS,mmm)."""
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+        millis = int((seconds % 1) * 1000)
+        return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
+
+    def create_trimmed_srt(self, original_srt: Path, start_seconds: float, end_seconds: float, output_path: Path) -> Path:
+        """Create a trimmed SRT file with timestamps adjusted for the clip."""
+        segments = self._parse_srt_segments(original_srt)
+
+        with open(output_path, 'w', encoding='utf-8') as f:
+            for i, segment in enumerate(segments, start=1):
+                # Adjust timestamps by subtracting start time
+                seg_start = max(0, segment['start'] - start_seconds)
+                seg_end = max(0, segment['end'] - start_seconds)
+
+                # Only include subtitles that appear within our clip range
+                if seg_end > 0 and seg_start < (end_seconds - start_seconds):
+                    start_ts = self.seconds_to_timestamp(seg_start)
+                    end_ts = self.seconds_to_timestamp(seg_end)
+                    text = segment['text'].strip()
+
+                    f.write(f"{i}\n")
+                    f.write(f"{start_ts} --> {end_ts}\n")
+                    f.write(f"{text}\n\n")
+
+        return output_path
+
+    def create_short(self, video_path: Path, theme: Dict, output_dir: Path, srt_path: Path) -> str:
+        """Create a short video clip using ffmpeg with 9:16 aspect ratio and burnt-in subtitles."""
+        output_file = output_dir / f"theme_{theme['number']:03d}_{theme['title'][:30].replace(' ', '_')}.mp4"
+
+        # Convert timestamps to seconds
+        start_seconds = self.parse_timestamp_to_seconds(theme['start'])
+        end_seconds = self.parse_timestamp_to_seconds(theme['end'])
+        duration = end_seconds - start_seconds
+
+        print(f"  Creating: {output_file.name}")
+        print(f"    Time range: {theme['start']} - {theme['end']} ({duration:.1f}s)")
+        print(f"    Aspect ratio: 9:16 (1080x1920)")
+
+        # Create trimmed SRT file with adjusted timestamps for the clip
+        trimmed_srt_name = f"theme_{theme['number']:03d}.srt"
+        trimmed_srt_path = output_dir / trimmed_srt_name
+        self.create_trimmed_srt(srt_path, start_seconds, end_seconds, trimmed_srt_path)
+        print(f"    Created trimmed subtitles: {trimmed_srt_name}")
+
+        # YouTube Shorts format: 1080x1920 (9:16 aspect ratio)
+        # Scale and crop (not pad) to achieve proper 9:16 ratio
+        # For ffmpeg subtitles, we need to escape colons and backslashes in the path
+        trimmed_srt_for_ffmpeg = str(trimmed_srt_path).replace(':', '\\:').replace('\\', '\\\\').replace("'", "\\'")
+
+        print(f"    Burning subtitles...")
+
+        # Filter chain:
+        # 1. Scale to ensure minimum dimensions, then crop to exactly 1080x1920
+        # 2. Burn in subtitles
+        vf_filter = f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(iw-ow)/2:(ih-oh)/2,subtitles={trimmed_srt_for_ffmpeg}:force_style='FontSize=16,MarginV=35,Alignment=2,FontName=Arial'"
+
+        cmd = [
+            'ffmpeg',
+            '-ss', str(start_seconds),
+            '-i', str(video_path),
+            '-t', str(duration),
+            '-vf', vf_filter,
+            '-c:v', 'libx264',
+            '-preset', 'medium',
+            '-crf', '23',
+            '-c:a', 'aac',
+            '-b:a', '128k',
+            '-movflags', '+faststart',
+            '-y',
+            str(output_file)
+        ]
+
+        try:
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=True
+            )
+            print(f"    ✓ Created successfully")
+            return str(output_file)
+        except subprocess.CalledProcessError as e:
+            print(f"    ✗ Failed: {e.stderr.decode()}")
+            return None
+
+    def create_shorts(self, folder_number: str, theme_numbers: str = None) -> None:
+        """Create short video clips based on themes."""
+        print("=" * 60)
+        print("YouTube Shorts Creator - Creating Shorts")
+        print("=" * 60)
+
+        # Find the video folder
+        folder = self.get_video_folder_by_number(folder_number)
+        if not folder:
+            print(f"Error: Video folder '{folder_number}_' not found")
+            return
+
+        print(f"Video folder: {folder.name}")
+
+        # Get the video file
+        video_path = self.get_video_file(folder)
+        if not video_path:
+            print(f"Error: No video file found in {folder}")
+            return
+
+        print(f"Video file: {video_path.name}")
+
+        # Parse themes file
+        themes_file = folder / 'themes.md'
+        if not themes_file.exists():
+            print(f"Error: themes.md not found in {folder}")
+            print("Please run the script on this video first to generate themes.")
+            return
+
+        themes = self.parse_themes_file(themes_file)
+        print(f"Found {len(themes)} themes")
+
+        # Determine which themes to create
+        if theme_numbers == 'all':
+            selected_themes = themes
+        else:
+            # Parse comma-separated theme numbers
+            try:
+                requested_nums = [int(n.strip()) for n in theme_numbers.split(',')]
+                selected_themes = [t for t in themes if t['number'] in requested_nums]
+
+                if not selected_themes:
+                    print(f"Error: No matching themes found for numbers: {theme_numbers}")
+                    return
+
+                # Check for requested themes that don't exist
+                found_nums = {t['number'] for t in selected_themes}
+                missing_nums = set(requested_nums) - found_nums
+                if missing_nums:
+                    print(f"Warning: Theme(s) {sorted(missing_nums)} not found")
+            except ValueError:
+                print(f"Error: Invalid theme numbers format: {theme_numbers}")
+                print("Use comma-separated numbers (e.g., '1,2,5') or 'all'")
+                return
+
+        print(f"Creating {len(selected_themes)} short(s)...")
+
+        # Find the SRT subtitle file
+        srt_path = None
+        for ext in ['*.srt']:
+            srt_files = list(folder.glob(ext))
+            if srt_files:
+                srt_path = srt_files[0]
+                break
+
+        if not srt_path:
+            print("Error: No SRT subtitle file found. Cannot create shorts with burnt-in subtitles.")
+            return
+
+        print(f"Using subtitles: {srt_path.name}")
+
+        # Create output directory for shorts
+        shorts_dir = folder / 'shorts'
+        shorts_dir.mkdir(exist_ok=True)
+
+        # Create each short
+        successful = 0
+        for theme in selected_themes:
+            print(f"\nTheme {theme['number']}: {theme['title']}")
+            result = self.create_short(video_path, theme, shorts_dir, srt_path)
+            if result:
+                successful += 1
+
+        print("\n" + "=" * 60)
+        print(f"Created {successful}/{len(selected_themes)} shorts in: {shorts_dir}")
+        print("=" * 60)
+
 
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
         description='Automatic YouTube Shorts Creation App'
     )
-    parser.add_argument('input', help='YouTube video URL or path to local video file')
+    parser.add_argument('input', help='YouTube video URL, path to local video file, or video folder number (e.g., 001)')
     parser.add_argument(
         '--model',
         choices=['tiny', 'base', 'small', 'medium', 'large'],
@@ -712,11 +961,27 @@ def main():
         action='store_true',
         help='Use local AI (Llama 3 via Ollama) for theme title generation'
     )
+    parser.add_argument(
+        '--theme',
+        type=str,
+        help='Create shorts for specific theme(s). Use comma-separated numbers (e.g., "1,2,5") or "all"'
+    )
 
     args = parser.parse_args()
 
     creator = YouTubeShortsCreator(base_dir=args.output_dir)
 
+    # Mode 1: Create shorts from existing video
+    if args.theme:
+        # Check if input is a folder number (e.g., "001", "002", etc.)
+        if re.match(r'^\d{1,3}$', args.input):
+            creator.create_shorts(args.input, args.theme)
+        else:
+            print("Error: When using --theme, the input must be a video folder number (e.g., '001')")
+            print("Example: python shorts_creator.py 001 --theme=2")
+        return
+
+    # Mode 2: Process a new video (URL or local file)
     # Initialize AI generator if requested
     ai_generator = None
     if args.ai:

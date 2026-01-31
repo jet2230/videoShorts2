@@ -8,6 +8,7 @@ Automatically download YouTube videos, generate subtitles, and identify themes f
 - **Process local video files** with automatic folder organization
 - **Auto-numbered folder structure** (001_, 002_, etc.)
 - **Multi-lingual subtitle generation** using Whisper AI
+- **Arabic subtitles in proper Arabic script** (default) - transliteration disabled
 - **Multiple subtitle formats** (SRT, VTT, TXT)
 - **Smart theme identification** for 20sec-4min shorts
 - **Pattern-based titles** or **AI-generated titles** (Llama 3)
@@ -109,6 +110,29 @@ python shorts_creator.py "/path/to/video.mp4"
 
 The script automatically detects if the input is a URL or a local file path.
 
+### Creating Shorts from Themes
+
+Once a video has been processed and themes identified, you can create actual short video clips:
+
+```bash
+# Create a single short (theme 2 from video 001)
+python shorts_creator.py 001 --theme=2
+
+# Create multiple shorts (themes 1, 2, and 5)
+python shorts_creator.py 001 --theme=1,2,5
+
+# Create shorts for all themes
+python shorts_creator.py 001 --theme=all
+```
+
+The created shorts are saved in a `shorts/` subdirectory within the video folder:
+```
+videos/001_Video_Title/shorts/
+├── theme_001_Theme_Title.mp4
+├── theme_002_Another_Theme.mp4
+└── ...
+```
+
 ## Output Structure
 
 ```
@@ -119,7 +143,10 @@ videos/
     ├── video_name.vtt              # WebVTT subtitles
     ├── video_name_subtitles.txt    # Plain text transcript
     ├── video info.txt              # Video metadata
-    └── themes.md                   # Identified shorts themes
+    ├── themes.md                   # Identified shorts themes
+    └── shorts/                     # Created short clips (optional)
+        ├── theme_001_Theme_Title.mp4
+        └── theme_002_Another_Theme.mp4
 ```
 
 ## themes.md Format
@@ -132,6 +159,17 @@ The `themes.md` file contains:
    - Duration
    - Why it works as a short
    - Transcript preview
+
+## Subtitle Settings
+
+**Default Language:** Arabic (`language='ar'`)
+
+The script is configured to generate subtitles with **proper Arabic script** by default. This ensures:
+- Arabic words appear as **بسم الله الرحمن الرحيم** instead of "Bismillah" or "al-Rahman"
+- Mixed Arabic/English content preserves Arabic script for Arabic portions
+- Consistent with Islamic lecture video requirements
+
+**Note:** This setting was chosen because the primary use case is Islamic content with Arabic terms and Quranic verses. If you need subtitles in a different language, modify the `language` parameter in `shorts_creator.py`.
 
 ## How Theme Selection Works
 
@@ -185,7 +223,8 @@ The algorithm identifies segments that:
 2. **Use --ai flag** for the best titles (requires Ollama)
 3. **Choose the right Whisper model** - `small` is usually best for balance
 4. **Review themes.md** to select the best segments for your audience
-5. **Edit video clips** using the timestamps provided
+5. **Create shorts automatically** using `--theme` flag after processing
+6. **Shorts are created with fast stream copy** - no re-encoding, preserving quality
 
 ## Dependencies
 
