@@ -321,73 +321,144 @@ Video Path: {video_info['video_path']}
     def _identify_themes(self, segments: List[Dict], transcript: str) -> List[Dict]:
         """Identify potential themes for shorts from segments."""
         themes = []
-        min_duration = 30  # 30 seconds
+        min_duration = 20  # 20 seconds
         max_duration = 240  # 4 minutes
 
-        # Strategy: Find segments with interesting content
-        # Look for: questions, emotional statements, key insights, stories
+        # Strategy 1: Find numbered list items (very common in lectures)
+        number_patterns = [
+            r'(?:number|no\.|#)\s*(\d+)',
+            r'the\s+(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)',
+            r'(\d+)\s*(?:st|nd|rd|th)\s*(?:point|thing|reason|way|one)',
+        ]
 
-        # Combine consecutive segments to create themes
-        current_theme = None
-        current_segments = []
+        # Strategy 2: Find question patterns
+        question_indicators = [
+            r'how often',
+            r'do you (?:see|know|think|feel)',
+            r'what (?:is|was|does|did)',
+            r'why (?:is|was|does|did)',
+            r'ask yourself'
+        ]
 
+        # Strategy 3: Find story/narrative patterns
+        story_indicators = [
+            r'(?:he|she|they) said',
+            r'the story of',
+            r'for example',
+            r'let me (?:tell|share)',
+        ]
+
+        # Strategy 4: Find "reasons why" patterns
+        reason_patterns = [
+            r'(?:reason|cause).*because',
+            r'why.*because',
+            r'the reason is',
+        ]
+
+        import re
+
+        # First pass: identify all potential theme boundaries
+        theme_boundaries = []
         for i, seg in enumerate(segments):
-            text = seg['text'].lower()
-            duration = seg['end'] - seg['start']
+            text_lower = seg['text'].lower()
+            text = seg['text']
 
-            # Check if this segment could start a good theme
-            starters = [
-                'here', 'so', 'basically', 'the thing is',
-                'let me tell', 'story', 'imagine',
-                'important', 'remember', 'basically',
-                'actually', 'in fact', 'believe'
-            ]
+            # Check for numbered list patterns
+            for pattern in number_patterns:
+                if re.search(pattern, text_lower):
+                    theme_boundaries.append((i, 'number', seg))
+                    break
 
-            # Check for interesting content
-            has_question = '?' in seg['text']
-            has_exclamation = '!' in seg['text']
-            has_starter = any(starter in text for starter in starters)
+            # Check for question patterns
+            for pattern in question_indicators:
+                if re.search(pattern, text_lower):
+                    theme_boundaries.append((i, 'question', seg))
+                    break
 
-            if has_question or has_exclamation or has_starter or not current_theme:
-                if not current_theme:
-                    current_theme = {
-                        'start': self._format_timestamp(seg['start']),
-                        'end_raw': seg['start'],
-                        'text': seg['text']
-                    }
-                    current_segments = [seg]
-                else:
-                    current_segments.append(seg)
-                    current_theme['text'] += ' ' + seg['text']
-                    current_theme['end_raw'] = seg['end']
-            else:
-                # End current theme if it's long enough
-                if current_theme:
-                    duration = current_theme['end_raw'] - self._parse_timestamp(current_theme['start'])
-                    current_theme['end'] = self._format_timestamp(current_theme['end_raw'])
-                    current_theme['duration'] = self._format_duration(duration)
+            # Check for story patterns
+            for pattern in story_indicators:
+                if re.search(pattern, text_lower):
+                    theme_boundaries.append((i, 'story', seg))
+                    break
 
-                    if min_duration <= duration <= max_duration:
-                        current_theme['title'] = self._generate_theme_title(current_theme['text'])
-                        current_theme['reason'] = self._get_theme_reason(current_theme['text'])
-                        themes.append(current_theme)
+            # Check for reason patterns
+            for pattern in reason_patterns:
+                if re.search(pattern, text_lower):
+                    theme_boundaries.append((i, 'reason', seg))
+                    break
 
-                    current_theme = None
-                    current_segments = []
+            # Check for questions or exclamations
+            if '?' in text or '!' in text:
+                theme_boundaries.append((i, 'emotion', seg))
 
-        # Add any remaining theme
-        if current_theme:
-            duration = current_theme['end_raw'] - self._parse_timestamp(current_theme['start'])
-            current_theme['end'] = self._format_timestamp(current_theme['end_raw'])
-            current_theme['duration'] = self._format_duration(duration)
+        # If we found themes at boundaries, create them
+        if len(theme_boundaries) >= 3:
+            # Sort boundaries by segment index
+            theme_boundaries.sort(key=lambda x: x[0])
 
-            if min_duration <= duration <= max_duration:
-                current_theme['title'] = self._generate_theme_title(current_theme['text'])
-                current_theme['reason'] = self._get_theme_reason(current_theme['text'])
-                themes.append(current_theme)
+            # Create themes from consecutive boundary points
+            for j in range(len(theme_boundaries) - 1):
+                start_idx = theme_boundaries[j][0]
+                end_idx = theme_boundaries[j + 1][0]
 
-        # Limit to top themes
-        return themes[:10]
+                # Combine segments from start_idx to end_idx
+                theme_segments = segments[start_idx:end_idx + 1]
+                if not theme_segments:
+                    continue
+
+                start_time = theme_segments[0]['start']
+                end_time = theme_segments[-1]['end']
+                duration = end_time - start_time
+
+                if min_duration <= duration <= max_duration:
+                    combined_text = ' '.join(s['text'] for s in theme_segments)
+
+                    themes.append({
+                        'start': self._format_timestamp(start_time),
+                        'end': self._format_timestamp(end_time),
+                        'duration': self._format_duration(duration),
+                        'text': combined_text[:800],  # Limit text length
+                        'type': theme_boundaries[j][1]
+                    })
+
+            # Try to get up to 15 themes
+            themes = themes[:15]
+
+        # Fallback strategy: if not enough themes found, use sliding window
+        if len(themes) < 3:
+            themes = []
+            window_size = int(60 / (segments[1]['start'] - segments[0]['start']) if len(segments) > 1 else 10)  # ~60 seconds
+
+            for i in range(0, len(segments), window_size):
+                end_idx = min(i + window_size, len(segments))
+                theme_segments = segments[i:end_idx]
+
+                if not theme_segments:
+                    continue
+
+                start_time = theme_segments[0]['start']
+                end_time = theme_segments[-1]['end']
+                duration = end_time - start_time
+
+                if min_duration <= duration <= max_duration:
+                    combined_text = ' '.join(s['text'] for s in theme_segments)
+
+                    themes.append({
+                        'start': self._format_timestamp(start_time),
+                        'end': self._format_timestamp(end_time),
+                        'duration': self._format_duration(duration),
+                        'text': combined_text[:800],
+                        'type': 'window'
+                    })
+
+            themes = themes[:12]
+
+        # Add titles and reasons
+        for theme in themes:
+            theme['title'] = self._generate_theme_title(theme['text'])
+            theme['reason'] = self._get_theme_reason(theme['text'])
+
+        return themes[:15]
 
     def _format_timestamp(self, seconds: float) -> str:
         """Format seconds to SRT timestamp."""
@@ -408,6 +479,14 @@ Video Path: {video_info['video_path']}
 
         # Define topics with their keywords - returns short, catchy titles
         topic_patterns = [
+            ('Why Your Dua Isn\'t Answered', ['dua', 'answered', 'respond', 'accept', 'prayers']),
+            ('Self-Reflection: Know Yourself', ['faults', 'critic', 'yourself', 'shortcomings', 'mistakes']),
+            ('Grave and Death Reminder', ['grave', 'death', 'died', 'janasah', 'symmetry', 'bury']),
+            ('Love for the Prophet', ['prophet', 'sunnah', 'love', 'follow', 'abandoned']),
+            ('Fearing Hellfire', ['hellfire', 'jahannam', 'fear', 'running', 'fleeing']),
+            ('Paradise Requires Effort', ['paradise', 'jannah', 'striving', 'working', 'enter']),
+            ('Bridge Between Knowledge and Action', ['knowledge', 'action', 'gap', 'bridge', 'practicing']),
+            ('Gratitude for Blessings', ['gratitude', 'blessing', 'thankful', 'enjoy', 'appreciate']),
             ('No Silence in Prayer', ['salah', 'silence', 'prayer', 'tasbih', 'vicar', 'sujood']),
             ('Grave Questioning Explained', ['grave', 'questioning', 'questioned', 'actions', 'accompany']),
             ('Two Angels in the Grave', ['angels', 'munkar', 'nakir', 'malakan', 'come to that person']),
@@ -418,6 +497,7 @@ Video Path: {video_info['video_path']}
             ('Hearing Footsteps After Death', ['footsteps', 'relatives', 'walk away', 'dies', 'hears']),
             ('World of the Unseen', ['unseen', 'ghaybi', 'alamul', 'cannot understand']),
             ('No Accountability Without Sanity', ['hisab', 'pen of responsibility', 'lifted', 'wajib']),
+            ('Practical Sunnah to Practice', ['sunnah', 'practice', 'act upon', 'introduce', 'neglecting']),
         ]
 
         # Score each topic based on keyword matches
