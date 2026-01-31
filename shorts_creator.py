@@ -130,6 +130,41 @@ class YouTubeShortsCreator:
             'folder_number': folder_num
         }
 
+    def process_local_video(self, video_path: str) -> Dict[str, str]:
+        """Process a local video file by copying it to the project structure."""
+        import shutil
+
+        video_file = Path(video_path)
+        if not video_file.exists():
+            raise FileNotFoundError(f"Video file not found: {video_path}")
+
+        # Use filename (without extension) as the folder name
+        filename = video_file.stem  # filename without extension
+        sanitized_title = self.sanitize_title(filename)
+
+        # Create folder
+        folder_num = self.get_next_folder_number()
+        folder_name = f"{folder_num:03d}_{sanitized_title}"
+        output_folder = self.base_dir / folder_name
+        output_folder.mkdir(exist_ok=True)
+
+        print(f"Created folder: {output_folder}")
+
+        # Copy video to project folder
+        output_video_path = output_folder / video_file.name
+        shutil.copy2(video_file, output_video_path)
+        print(f"Copied video to: {output_video_path}")
+
+        return {
+            'folder': str(output_folder),
+            'title': filename,
+            'sanitized_title': sanitized_title,
+            'video_path': str(output_video_path),
+            'url': 'Local video source (not downloaded from YouTube)',
+            'folder_number': folder_num,
+            'is_local': True
+        }
+
     def create_video_info(self, video_info: Dict[str, str]) -> None:
         """Create video info.txt file."""
         info_path = Path(video_info['folder']) / 'video info.txt'
@@ -137,7 +172,7 @@ class YouTubeShortsCreator:
         content = f"""Video Information
 ==================
 Title: {video_info['title']}
-Download URL: {video_info['url']}
+Source: {video_info['url']}
 Folder: {video_info['folder']}
 Folder Number: {video_info['folder_number']}
 Video Path: {video_info['video_path']}
@@ -528,7 +563,12 @@ def main():
     parser = argparse.ArgumentParser(
         description='Automatic YouTube Shorts Creation App'
     )
-    parser.add_argument('url', help='YouTube video URL')
+    parser.add_argument('input', help='YouTube video URL or path to local video file')
+    parser.add_argument(
+        '--local',
+        action='store_true',
+        help='Process a local video file instead of downloading from YouTube'
+    )
     parser.add_argument(
         '--model',
         choices=['tiny', 'base', 'small', 'medium', 'large'],
@@ -544,7 +584,26 @@ def main():
     args = parser.parse_args()
 
     creator = YouTubeShortsCreator(base_dir=args.output_dir)
-    creator.process_video(args.url, whisper_model=args.model)
+
+    if args.local:
+        # Process local video file
+        video_info = creator.process_local_video(args.input)
+    else:
+        # Download from YouTube
+        video_info = creator.download_video(args.input)
+
+    # Create info file
+    creator.create_video_info(video_info)
+
+    # Generate subtitles
+    creator.generate_subtitles(video_info, model_size=args.model)
+
+    # Generate themes
+    creator.generate_themes(video_info)
+
+    print("=" * 60)
+    print(f"Processing complete! Folder: {video_info['folder']}")
+    print("=" * 60)
 
 
 if __name__ == '__main__':
