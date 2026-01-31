@@ -5,6 +5,7 @@ Automatically download YouTube videos, generate subtitles, and identify themes f
 ## Features
 
 - **Download videos** in highest quality using yt-dlp
+- **Process local video files** with automatic folder organization
 - **Auto-numbered folder structure** (001_, 002_, etc.)
 - **Multi-lingual subtitle generation** using Whisper AI
 - **Multiple subtitle formats** (SRT, VTT, TXT)
@@ -67,6 +68,14 @@ Available models: `tiny`, `base`, `small`, `medium`, `large`
 ```bash
 python shorts_creator.py "URL" --output-dir my_videos
 ```
+
+### Process local video file
+
+```bash
+python shorts_creator.py "/path/to/video.mp4" --local
+```
+
+Local videos are copied to the project folder structure and processed the same way as downloaded videos.
 
 ## Output Structure
 
