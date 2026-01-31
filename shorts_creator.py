@@ -70,7 +70,7 @@ class YouTubeShortsCreator:
         return title[:100]
 
     def get_next_folder_number(self) -> int:
-        """Get the next available folder number."""
+        """Get the next available folder number, skipping deleted/empty folders."""
         existing = [d for d in self.base_dir.iterdir() if d.is_dir()]
         if not existing:
             return 1
@@ -79,9 +79,22 @@ class YouTubeShortsCreator:
         for folder in existing:
             match = re.match(r'(\d+)_', folder.name)
             if match:
-                numbers.append(int(match.group(1)))
+                # Only count folders that actually have video files
+                folder_path = self.base_dir / folder.name
+                has_video = any(folder_path.glob("*.mp4")) or any(folder_path.glob("*.mkv")) or any(folder_path.glob("*.webm"))
+                if has_video:
+                    numbers.append(int(match.group(1)))
 
-        return max(numbers) + 1 if numbers else 1
+        if not numbers:
+            return 1
+
+        # Find the first gap in the sequence
+        numbers.sort()
+        for i in range(1, max(numbers) + 2):
+            if i not in numbers:
+                return i
+
+        return max(numbers) + 1
 
     def download_video(self, url: str) -> Dict[str, str]:
         """Download YouTube video in highest quality."""
