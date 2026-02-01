@@ -1056,18 +1056,13 @@ def main():
     parser.add_argument(
         '--model',
         choices=['tiny', 'base', 'small', 'medium', 'large'],
-        default='medium',
-        help='Whisper model size (default: medium)'
+        default='base',
+        help='Whisper model size (default: base)'
     )
     parser.add_argument(
         '--output-dir',
         default='videos',
         help='Base directory for downloaded videos (default: videos)'
-    )
-    parser.add_argument(
-        '--ai',
-        action='store_true',
-        help='Use local AI (Llama 3 via Ollama) for theme title generation'
     )
     parser.add_argument(
         '--theme',
@@ -1090,20 +1085,19 @@ def main():
         return
 
     # Mode 2: Process a new video (URL or local file)
-    # Initialize AI generator if requested
+    # Initialize AI generator (default)
     ai_generator = None
-    if args.ai:
-        try:
-            from ai_theme_generator import AIThemeGenerator
-            ai_generator = AIThemeGenerator()
-            if ai_generator.is_available():
-                print(f"✓ AI enabled: Using {ai_generator.model}")
-            else:
-                print("⚠ AI requested but not available. Using pattern-based titles instead.")
-                ai_generator = None
-        except ImportError:
-            print("⚠ AI module not found. Using pattern-based titles instead.")
+    try:
+        from ai_theme_generator import AIThemeGenerator
+        ai_generator = AIThemeGenerator()
+        if ai_generator.is_available():
+            print(f"✓ AI enabled: Using {ai_generator.model} for theme identification")
+        else:
+            print("⚠ AI not available. Using pattern-based theme identification instead.")
             ai_generator = None
+    except ImportError:
+        print("⚠ AI module not found. Using pattern-based theme identification instead.")
+        ai_generator = None
 
     # Auto-detect if input is a URL or local file
     input_lower = args.input.lower()
