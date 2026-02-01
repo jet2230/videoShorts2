@@ -123,11 +123,34 @@ class YouTubeShortsCreator:
         """Process a local video file by copying it to the project structure."""
         import shutil
 
-        video_file = Path(video_path)
+        video_file = Path(video_path).resolve()
         if not video_file.exists():
             raise FileNotFoundError(f"Video file not found: {video_path}")
 
-        # Use filename (without extension) as the folder name
+        # Check if video is already in the correct folder structure (videos/XXX_name/)
+        parent_folder = video_file.parent
+        folder_name = parent_folder.name
+
+        # Check if parent is the base_dir and folder matches the pattern XXX_name
+        if parent_folder.parent.resolve() == self.base_dir.resolve():
+            # Folder name should start with 3 digits and underscore
+            import re
+            if re.match(r'^\d{3}_', folder_name):
+                # Already in correct structure, use existing folder
+                print(f"Video already in correct folder structure: {parent_folder}")
+                folder_num = int(folder_name.split('_')[0])
+                filename = video_file.stem
+                return {
+                    'folder': str(parent_folder),
+                    'title': filename,
+                    'sanitized_title': self.sanitize_title(filename),
+                    'video_path': str(video_file),
+                    'url': 'Local video source (not downloaded from YouTube)',
+                    'folder_number': folder_num,
+                    'is_local': True
+                }
+
+        # Not in correct structure, create new folder
         filename = video_file.stem  # filename without extension
         sanitized_title = self.sanitize_title(filename)
 
