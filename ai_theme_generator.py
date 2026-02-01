@@ -53,19 +53,20 @@ class AIThemeGenerator:
         Returns:
             Generated title
         """
-        # Truncate transcript if too long
-        transcript_text = transcript[:800]
+        # Use more transcript for better context
+        transcript_text = transcript[:2000]
 
         prompt = f"""You are a YouTube Shorts content expert. Generate a SHORT, CATCHY title for a short video clip.
 
-Transcript (max {duration}):
+Transcript ({duration}):
 {transcript_text}
 
-Requirements:
+CRITICAL RULES:
 - 2-6 words maximum
-- Catchy and click-worthy
+- ONLY use words/terms that ACTUALLY appear in the transcript above
+- NO made-up terms, books, or concepts not in the text
+- Focus on the MAIN topic discussed (look for repeated terms)
 - No filler words like "The", "A", "An" at the start
-- Must capture the MAIN topic
 - Make viewers want to watch
 
 Return ONLY the title, nothing else."""
@@ -78,9 +79,9 @@ Return ONLY the title, nothing else."""
                     'prompt': prompt,
                     'stream': False,
                     'options': {
-                        'temperature': 0.8,
-                        'num_predict': 40,
-                        'top_p': 0.9,
+                        'temperature': 0.6,  # Lower to reduce hallucinations
+                        'num_predict': 35,
+                        'top_p': 0.85,
                     }
                 },
                 timeout=30
