@@ -878,11 +878,10 @@ Video Path: {video_info['video_path']}
         return end_idx
 
     def create_trimmed_srt(self, original_srt: Path, start_seconds: float, end_seconds: float, output_path: Path) -> Path:
-        """Create a trimmed SRT file keeping timestamps at original positions.
+        """Create a trimmed SRT file with timestamps offset to start from 0.
 
-        When using output seeking (-ss after -i), ffmpeg reads the video from the beginning
-        and then trims it. The subtitle timestamps must match the original video timeline
-        for proper synchronization.
+        Using input seeking (-ss before -i) with subtitles filter requires offsetting
+        subtitle timestamps to 0, as the extracted video content starts from output time 0.
         """
         segments = self._parse_srt_segments(original_srt)
 
@@ -894,8 +893,12 @@ Video Path: {video_info['video_path']}
 
                 # Only include subtitles that appear within our clip range
                 if seg_end > start_seconds and seg_start < end_seconds:
-                    start_ts = self.seconds_to_timestamp(seg_start)
-                    end_ts = self.seconds_to_timestamp(seg_end)
+                    # Offset timestamps to start from 0 for the extracted clip
+                    offset_start = max(0, seg_start - start_seconds)
+                    offset_end = max(0, seg_end - start_seconds)
+
+                    start_ts = self.seconds_to_timestamp(offset_start)
+                    end_ts = self.seconds_to_timestamp(offset_end)
                     text = segment['text'].strip()
 
                     f.write(f"{subtitle_num}\n")
@@ -932,14 +935,15 @@ Video Path: {video_info['video_path']}
         print(f"    Burning subtitles...")
 
         # Filter chain:
-        # 1. Scale to ensure minimum dimensions, then crop to exactly 1080x1920
-        # 2. Burn in subtitles
-        vf_filter = f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(iw-ow)/2:(ih-oh)/2,subtitles={trimmed_srt_for_ffmpeg}:force_style='FontSize=16,MarginV=35,Alignment=2,FontName=Arial'"
+        # 1. Reset PTS to 0 (critical for subtitle sync with input seeking)
+        # 2. Scale to ensure minimum dimensions, then crop to exactly 1080x1920
+        # 3. Burn in subtitles
+        vf_filter = f"setpts=PTS-STARTPTS,scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(iw-ow)/2:(ih-oh)/2,subtitles={trimmed_srt_for_ffmpeg}:force_style='FontSize=16,MarginV=35,Alignment=2,FontName=Arial'"
 
         cmd = [
             'ffmpeg',
+            '-ss', str(start_seconds),  # Input seeking: before -i for speed
             '-i', str(video_path),
-            '-ss', str(start_seconds),  # Output seeking: after -i for subtitle sync
             '-t', str(duration),
             '-vf', vf_filter,
             '-c:v', 'libx264',
