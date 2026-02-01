@@ -197,40 +197,31 @@ Video Path: {video_info['video_path']}
         # Save subtitles
         base_name = Path(video_path).stem
         srt_path = Path(video_info['folder']) / f"{base_name}.srt"
-        txt_path = Path(video_info['folder']) / f"{base_name}_subtitles.txt"
 
         # Save SRT
         with open(srt_path, 'w', encoding='utf-8') as f:
             write_srt(result['segments'], f)
 
-        # Save plain text
-        with open(txt_path, 'w', encoding='utf-8') as f:
-            f.write(result['text'])
+        print(f"Created subtitles: {srt_path}")
 
-        print(f"Created subtitles: {srt_path}, {txt_path}")
-
-        return str(txt_path)
+        return str(srt_path)
 
     def generate_themes(self, video_info: Dict[str, str], ai_generator=None) -> None:
         """Generate themes for YouTube Shorts from subtitles."""
-        subtitle_file = Path(video_info['folder']) / f"{Path(video_info['video_path']).stem}_subtitles.txt"
+        # Read from SRT file for both transcript and timing
+        srt_file = Path(video_info['folder']) / f"{Path(video_info['video_path']).stem}.srt"
 
-        if not subtitle_file.exists():
+        if not srt_file.exists():
             print("No subtitle file found, skipping theme generation.")
             return
 
         print("Generating themes for shorts...")
 
-        with open(subtitle_file, 'r', encoding='utf-8') as f:
-            transcript = f.read()
-
-        # Parse subtitle segments from SRT file for timing
-        # The SRT file is named {base_name}.srt while the text file is {base_name}_subtitles.txt
-        srt_file = Path(video_info['folder']) / f"{Path(video_info['video_path']).stem}.srt"
-        if not srt_file.exists():
-            print(f"SRT file not found: {srt_file}, skipping theme generation.")
-            return
+        # Parse SRT to get segments with timing
         segments = self._parse_srt_segments(srt_file)
+
+        # Extract transcript text from segments
+        transcript = ' '.join(seg['text'] for seg in segments)
 
         # Identify themes - use AI for boundary detection if available, otherwise pattern-based
         ai_used = False
