@@ -188,6 +188,85 @@ Video Path: {video_info['video_path']}
 
         print(f"Created video info file: {info_path}")
 
+    def _fix_transcription_errors(self, segments: list) -> list:
+        """Fix common Whisper transcription errors in mixed Arabic/English content."""
+        import re
+
+        # Common transcription error corrections
+        corrections = [
+            # Islamic terms
+            (r'\bCowld\b', 'Haud'),
+            (r'\bwhatsapp\b', 'with us'),
+            (r'\bMizan\b', 'Mizan'),
+            (r'\bHaud\b', 'Haud'),
+            (r'\bKawthar\b', 'Kawthar'),
+            (r'\bQawthar\b', 'Kawthar'),
+            (r'\bQouthar\b', 'Kawthar'),
+
+            # Common Arabic/English mix errors
+            (r'\bJannah\b', 'Jannah'),
+            (r'\bJahannam\b', 'Jahannam'),
+            (r'\bSujood\b', 'Sujood'),
+            (r'\bDua\b', 'Dua'),
+
+            # Remove obvious hallucinations
+            (r'\bElephane\b', 'Imam'),
+            (r'\bMoskva\b', 'Muslim'),
+            (r'\b Matterع\b', ''),
+            (r'\b unter\b', 'under'),
+        ]
+
+        fixed_segments = []
+        for segment in segments:
+            text = segment['text']
+            original_text = text
+
+            # Apply corrections
+            for pattern, replacement in corrections:
+                text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+
+            # Remove lines that are mostly gibberish (high ratio of non-ASCII mixed with English)
+            # Skip this check if line is mostly Arabic (valid)
+            if text and self._is_gibberish(text):
+                # Skip this segment (don't include in output)
+                continue
+
+            # Update segment text if changed
+            if text != original_text:
+                segment = segment.copy()
+                segment['text'] = text
+
+            fixed_segments.append(segment)
+
+        return fixed_segments
+
+    def _is_gibberish(self, text: str) -> bool:
+        """Detect if text is gibberish (mixed scripts without clear meaning)."""
+        import re
+
+        # Count characters by type
+        arabic_chars = len(re.findall(r'[\u0600-\u06FF]', text))
+        latin_chars = len(re.findall(r'[a-zA-Z]', text))
+        total_chars = arabic_chars + latin_chars
+
+        if total_chars < 5:
+            return False  # Too short to judge
+
+        # If text is mostly Arabic, it's probably valid
+        if arabic_chars > total_chars * 0.7:
+            return False
+
+        # If text has significant mix of Arabic and Latin with no clear structure
+        # and contains suspicious patterns like Cyrillic mixed in
+        has_cyrillic = bool(re.search(r'[\u0400-\u04FF]', text))
+        has_mixed = arabic_chars > 3 and latin_chars > 3
+
+        # Check for suspicious patterns
+        if has_cyrillic or (has_mixed and total_chars < 15):
+            return True
+
+        return False
+
     def generate_subtitles(self, video_info: Dict[str, str], model_size: str = 'base') -> str:
         """Generate subtitles using Whisper."""
         print(f"Loading Whisper model ({model_size})...")
@@ -197,12 +276,21 @@ Video Path: {video_info['video_path']}
         print(f"Transcribing: {video_path}")
 
         # Transcribe with Arabic as default language for proper Arabic script
+        # Use beam search and lower temperature for better accuracy
         result = model.transcribe(
             video_path,
             task='transcribe',
             language='ar',  # Default to Arabic for proper Arabic script output
-            verbose=False
+            verbose=False,
+            # Improved accuracy settings
+            temperature=0.0,  # Lower = more deterministic, less hallucination
+            beam_size=5,  # Beam search for better accuracy
+            best_of=5,  # Try multiple times and pick best
+            patience=1.0,  # Beam search patience
         )
+
+        # Post-process segments to fix common transcription errors
+        result['segments'] = self._fix_transcription_errors(result['segments'])
 
         # Save subtitles in multiple formats
         base_name = Path(video_path).stem
