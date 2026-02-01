@@ -1,0 +1,509 @@
+subs delay from 19min 50sec on small
+subs delay from 33min 50sec on small
+
+# YouTube Shorts Creator - Project Documentation & TODO
+
+This file documents all completed work and project state. Use this to replicate or continue the project.
+
+## Project Overview
+Automatic YouTube Shorts creation app that:
+1. Downloads YouTube videos (or processes local videos)
+2. Generates subtitles using Whisper CLI (NOT Python API)
+3. Identifies themes for shorts using AI (Llama 3 via Ollama)
+4. Creates 9:16 vertical short videos with burned-in subtitles
+5. **All configurable via `settings.ini` file**
+
+## Configuration (settings.ini)
+
+The application uses a `settings.ini` file for all default values. This file is automatically created with defaults if it doesn't exist.
+
+### Settings Sections:
+
+**[whisper]** - Speech recognition settings
+- `model` - Whisper model size (tiny, base, small, medium, large)
+- `language` - Transcription language (ar, en, auto, etc.)
+- `task` - Task type (transcribe, translate)
+
+**[video]** - Video output settings
+- `output_dir` - Base directory for videos
+- `aspect_ratio` - Output aspect ratio (9:16)
+- `resolution_width` - Output width (1080)
+- `resolution_height` - Output height (1920)
+- `codec` - Video codec (libx264)
+- `preset` - Encoding preset (medium)
+- `crf` - Quality factor (23)
+
+**[subtitle]** - Subtitle appearance
+- `font_name` - Font (Arial)
+- `font_size` - Size in pixels (24)
+- `primary_colour` - Text color (&HFFFFFF = white)
+- `back_colour` - Background color (&H80000000 = semi-transparent black)
+- `outline_colour` - Outline color (&H00000000 = black)
+- `alignment` - Text position (2 = bottom center)
+- `margin_v` - Distance from bottom (35px)
+
+**[theme]** - Theme generation settings
+- `min_duration` - Minimum theme length in seconds (30)
+- `max_duration` - Maximum theme length in seconds (240)
+- `ai_enabled` - Use AI for themes (true/false)
+- `ai_model` - AI model name (llama3)
+- `ai_provider` - AI provider (ollama)
+- `window_duration` - Theme window size in seconds (600)
+- `window_overlap` - Window overlap in seconds (120)
+
+**[folder]** - Folder naming settings
+- `naming_scheme` - Folder naming (numbered)
+- `number_padding` - Folder number padding (3)
+
+### Changing Settings:
+Edit `settings.ini` directly with a text editor. Command-line arguments override settings file values.
+
+## Completed Features
+
+### 0. Core Application ✓
+- Created Python script `shorts_creator.py` for full workflow automation
+
+### 1. YouTube Video Download ✓
+- Downloads videos in highest quality using yt-dlp
+- Places videos in numbered folders: `videos/001_<video title>/`
+- Folder numbering uses max(existing_number) + 1 logic
+- Only counts folders with actual video files (mp4, mkv, webm)
+- Current implementation doesn't automatically reuse deleted folder numbers
+- User can manually renumber folders or implement a renumber command if needed
+
+### 2. Subtitle Generation ✓
+- **IMPORTANT**: Uses Whisper CLI (NOT Python API) for transcription
+- Command: `whisper video.mp4 --model small --task transcribe --language ar --output_format srt --output_dir .`
+- Set Arabic as default language for proper Arabic script (بسم الله instead of "Bismillah")
+- Handles mixed Arabic/English content correctly
+- **CRITICAL**: Must stop Ollama before running Whisper to free GPU memory
+
+### 3. Video Info File ✓
+- Creates `video info.txt` in each video folder
+- Contains title, source URL, folder path
+
+### 4. Theme Generation ✓
+- AI-powered theme identification using Llama 3 via Ollama
+- Overlapping 10-minute windows (2-minute overlap) for long videos
+- Themes must be 30sec to 4min in duration
+- Saves to `themes.md` with theme list first, then descriptions
+
+### 5. Local Video Support ✓
+- Accepts local video files: `python3 shorts_creator.py /path/to/video.mp4`
+- Copies to proper folder structure
+- Uses video filename as folder name
+
+### 6. Short Video Creation ✓
+- Command format: `python3 shorts_creator.py 001 --theme=2`
+- Multiple themes: `python3 shorts_creator.py 001 --theme=1,2,5`
+- All themes: `python3 shorts_creator.py 001 --theme=all`
+
+### 7. Theme Regeneration ✓
+- **NEW:** Regenerate themes without re-transcribing
+- Command: `python3 shorts_creator.py 001 --regenerate-themes-only`
+- Uses existing subtitles, skips Whisper transcription
+- If no subtitles exist, prompts to generate them first
+- Useful for trying different AI models or theme parameters
+
+### 7. Video Formatting ✓
+- Aspect ratio: 9:16 (1080x1920) for YouTube Shorts
+- Subtitles burned in using ffmpeg
+- Font size: 24px, Font: Arial, Color: White, Outline: Black
+- Position: 35px from bottom
+- No black padding (crop to proper ratio using `crop=ih:iw:0:0` then scale)
+- Input seeking (-ss before -i) for faster processing
+- Subtitle timestamps offset to start from 0 for each clip
+
+## CRITICAL IMPLEMENTATION DECISIONS (Current Session)
+
+### 1. Whisper CLI vs Python API
+**DECISION: Use Whisper CLI, NOT Python API**
+
+**Why:**
+- Python API with `language='ar'` forces ALL speech to Arabic transcription, even when English is spoken
+- Whisper CLI handles mixed Arabic/English content properly
+- Example: CLI outputs `أيهو الإخوة الكرام we come to the final lesson in studying` (mixed)
+- Python API would force: `أيهو الإخوة الكرام نأتي إلى الدرس النهائي في الدراسة` (all Arabic)
+
+**Implementation:**
+```python
+cmd = [
+    'whisper',
+    str(video_path),
+    '--model', 'small',
+    '--task', 'transcribe',
+    '--language', 'ar',
+    '--output_format', 'srt',
+    '--output_dir', str(folder),
+]
+result = subprocess.run(cmd, stdout=subprocess.DEVNULL)
+```
+
+**DO NOT USE Python Whisper API:**
+```python
+# WRONG - This forces all speech to Arabic:
+model = whisper.load_model('small')
+result = model.transcribe(video_path, language='ar')
+```
+
+### 2. GPU Memory Management
+**DECISION: Stop Ollama before running Whisper**
+
+**Problem:**
+- Ollama (llama3) occupies ~4.93 GB GPU memory
+- Whisper small model needs ~2 GB
+- CUDA out of memory error when both are running
+
+**Solution:**
+```python
+# Stop Ollama before transcribing
+subprocess.run(['ollama', 'stop', 'llama3'], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+print("\033[91mStopped Ollama llama3 model\033[0m")  # Red text
+```
+
+### 3. Default Whisper Model
+**DECISION: Use 'small' model, not 'base' or 'tiny'**
+
+**Testing Results (38-minute Arabic/English video):**
+| Model | Time | Total Subs | Hallucinations | Quality |
+|-------|------|------------|----------------|---------|
+| Tiny  | ~1m 25s | 302 | 47+ (15.5%) | Worst - severe repetition |
+| Base  | ~1m 30s | 535 | 30 (5.6%) | Moderate |
+| Small | ~3m 24s | 512 | 0 (0%) | **Best** |
+
+**Default model in code: 'small'**
+
+### 4. Whisper Parameters
+**Current configuration:**
+```python
+cmd = [
+    'whisper',
+    str(video_path),
+    '--model', 'small',
+    '--task', 'transcribe',
+    '--language', 'ar',
+    '--output_format', 'srt',
+    '--output_dir', str(folder),
+]
+```
+
+**DO NOT ADD these parameters (they cause hallucinations):**
+- `temperature=0.0`
+- `beam_size=5`
+- `best_of=5`
+- `patience=1.0`
+- `condition_on_previous_text=False` (CLI doesn't use this)
+
+**Why not condition_on_previous_text=False?**
+- Python API requires explicit parameter
+- CLI doesn't expose this easily
+- Default CLI behavior works better for mixed languages
+
+### 5. Output Handling
+**Current implementation:**
+```python
+result = subprocess.run(cmd, stdout=subprocess.DEVNULL)
+```
+
+**What this does:**
+- Suppresses stdout (the transcription lines like `[00:00 --> 00:07] text`)
+- Shows stderr (progress information)
+
+**Known limitation:**
+- Progress bar percentage doesn't display in subprocess environment
+- Whisper's progress bar requires TTY terminal
+- Attempted solutions: PTY, output filtering - none worked perfectly
+- Current state: Shows stderr output, suppresses verbose transcription lines
+
+### 6. Subtitle Burning (ffmpeg)
+**Current implementation:**
+```python
+cmd = [
+    'ffmpeg',
+    '-ss', str(start_seconds),  # Input seeking (faster)
+    '-i', str(video_path),
+    '-t', str(duration),
+    '-vf', vf_filter,  # Includes crop, scale, subtitles
+    '-c:v', 'libx264',
+    '-preset', 'medium',
+    '-crf', '23',
+    '-c:a', 'aac',
+    '-b:a', '128k',
+    '-movflags', '+faststart',
+    '-y',
+    str(output_file)
+]
+```
+
+**vf_filter construction:**
+```python
+vf_filter = (
+    f'crop=ih:iw:0:0,scale=1080:1920,'
+    f'subtitles={subtitles_path}:force_style='
+    f'FontName=Arial,FontSize=24,PrimaryColour=&HFFFFFF,'
+    f'BackColour=&H80000000,OutlineColour=&H00000000,'
+    f'Alignment=2,MarginV=35'
+)
+```
+
+**Key points:**
+- Input seeking (`-ss` before `-i`) for faster processing
+- Crop first (`crop=ih:iw:0:0`) to remove black bars
+- Scale to 9:16 (`scale=1080:1920`)
+- Subtitle timestamps offset to 0 for each clip
+- Subtitle file left in same folder as short video
+
+## File Structure
+```
+videoShorts2/
+├── shorts_creator.py          # Main application script
+├── ai_theme_generator.py      # AI theme identification using Llama 3
+├── TODO.txt                   # This file
+├── videos/
+│   ├── 001_<video title>/
+│   │   ├── <video title>.mp4
+│   │   ├── video info.txt
+│   │   ├── <video title>.srt
+│   │   ├── themes.md
+│   │   └── shorts/
+│   │       ├── theme_01_<theme_name>.mp4
+│   │       ├── theme_01_<theme_name>.srt
+│   │       ├── theme_02_<theme_name>.mp4
+│   │       └── ...
+```
+
+## Dependencies
+- Python 3.x
+- yt-dlp (YouTube video download)
+- Whisper CLI (OpenAI speech recognition) - `pip install openai-whisper`
+- Ollama (with Llama 3 model for AI themes)
+- ffmpeg (video processing)
+
+## Running the Application
+
+### Process a video (download or local):
+```bash
+# From YouTube
+python3 shorts_creator.py "https://youtube.com/watch?v=xxx"
+
+# Local file
+python3 shorts_creator.py "/path/to/video.mp4"
+
+# By folder number
+python3 shorts_creator.py 001
+```
+
+### Create shorts:
+```bash
+# Single theme
+python3 shorts_creator.py 001 --theme=2
+
+# Multiple themes
+python3 shorts_creator.py 001 --theme=1,2,5
+
+# All themes
+python3 shorts_creator.py 001 --theme=all
+
+# With specific Whisper model (overrides settings.ini)
+python3 shorts_creator.py 001 --theme=2 --model small
+```
+
+### Regenerate themes only:
+```bash
+# Regenerate themes.md from existing subtitles (no transcription)
+python3 shorts_creator.py 001 --regenerate-themes-only
+
+# If no subtitles exist, prompts to generate them first
+```
+
+### Configuration:
+Edit `settings.ini` to change defaults (Whisper model, video resolution, subtitle styling, etc.)
+
+## Known Issues & Solutions
+
+### Issue 1: Whisper Python API vs CLI Output Difference
+**Problem:** Python API with `language='ar'` forces all speech to Arabic, even English parts
+**Solution:** Use Whisper CLI instead - handles mixed content properly
+**Status:** SOLVED - using CLI
+
+### Issue 2: GPU Out of Memory
+**Problem:** CUDA out of memory when running Whisper after Ollama
+**Root cause:** Ollama holds 4.93 GB GPU, Whisper needs 2 GB
+**Solution:** Always run `ollama stop llama3` before Whisper
+**Status:** SOLVED - automatic in code
+
+### Issue 3: Subtitle Hallucinations
+**Problem:** Repetitive text like "يجب أن يجب أن يجب أن..." (20+ repetitions)
+**Root cause:** Extra Whisper parameters (temperature=0.0, beam_size=5, best_of=5, patience=1.0)
+**Solution:** Removed all extra parameters, using only basic CLI flags
+**Status:** SOLVED - small model has 0% hallucinations
+
+### Issue 4: Progress Bar Not Showing
+**Problem:** Progress percentage bar doesn't display when running through Python subprocess
+**Attempted:** PTY, output filtering, stdout/stderr redirection
+**Current:** Shows stderr (some progress info), suppresses stdout (transcription lines)
+**Status:** Known limitation - Whisper's progress bar requires TTY terminal
+
+### Issue 5: Whisper Timing Drift
+**Problem:** Subtitles become misaligned in last third of long videos
+**Root cause:** Whisper's `condition_on_previous_text=True` default
+**Note:** Using default CLI behavior which handles this better than Python API
+**Status:** CLI default behavior works adequately
+
+## Code Changes Summary (Current Session)
+
+### shorts_creator.py
+
+**Imports:**
+- **Removed:** `import whisper` (no longer using Python API)
+- **Added:** `import pty` (later removed - not used in final version)
+
+**generate_subtitles() method:**
+- **Complete rewrite** from Python API to Whisper CLI via subprocess
+- **Added:** Ollama stop before transcribing
+- **Changed:** Default model to 'small'
+- **Removed:** All Python Whisper API calls
+- **Implementation:** Uses `subprocess.run()` with stdout suppressed
+
+**Removed code:**
+- Python Whisper model loading (`whisper.load_model()`)
+- All Whisper Python API transcribe calls
+- Complex PTY/output filtering code
+- GPU memory checking and CPU fallback logic
+- Extra Whisper parameters (temperature, beam_size, best_of, patience)
+- `condition_on_previous_text` parameter
+- `write_srt()` and `format_timestamp()` helper functions (not needed with CLI)
+
+**Final implementation:**
+```python
+def generate_subtitles(self, video_info: Dict[str, str], model_size: str = 'base') -> str:
+    """Generate subtitles using Whisper CLI."""
+    # Stop AI model to free GPU memory
+    try:
+        subprocess.run(['ollama', 'stop', 'llama3'], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        print("\033[91mStopped Ollama llama3 model\033[0m")
+    except Exception:
+        pass
+
+    video_path = video_info['video_path']
+    folder = video_info['folder']
+
+    print(f"Transcribing with Whisper CLI ({model_size})...")
+
+    # Run Whisper CLI - show stderr for progress, suppress stdout
+    cmd = [
+        'whisper',
+        str(video_path),
+        '--model', model_size,
+        '--task', 'transcribe',
+        '--language', 'ar',
+        '--output_format', 'srt',
+        '--output_dir', str(folder),
+    ]
+
+    result = subprocess.run(cmd, stdout=subprocess.DEVNULL)
+
+    if result.returncode != 0:
+        raise RuntimeError(f"Whisper CLI failed with exit code {result.returncode}")
+
+    base_name = Path(video_path).stem
+    srt_path = Path(folder) / f"{base_name}.srt"
+
+    if srt_path.exists():
+        print(f"Created subtitles: {srt_path}")
+    else:
+        raise FileNotFoundError(f"Whisper CLI did not create expected subtitle file: {srt_path}")
+
+    return str(srt_path)
+```
+
+## Testing & Validation
+
+### Model Comparison Results
+**Test video:** 38-minute Arabic/English Islamic lecture (Shaikh Abul Abbaas)
+
+| Model | Processing Time | Total Subtitles | Hallucinations | Quality |
+|-------|----------------|-----------------|----------------|---------|
+| Tiny  | ~1m 25s | 302 | 47+ (15.5%) | Worst - severe repetition issues |
+| Base  | ~1m 30s | 535 | 30 (5.6%) | Moderate - noticeable repetition |
+| Small | ~3m 24s | 512 | 0 (0%) | **Best** - clean output |
+
+**Conclusion:** Small model recommended despite being slower
+
+### CLI Output Quality
+**Correct mixed Arabic/English transcription:**
+```
+أيهو الإخوة الكرام we come to the final lesson in studying
+لامية ابنة بيتايمية رحمه الله
+and in the previous lesson we spoke about
+رؤية الله the believers seeing
+الله سبحانه يوم القيامة
+```
+
+**Arabic script:** Correct (بسم الله الرحمن الرحيم)
+**Not transliterated:** No "Bismillah" or similar
+
+### Hallucination Examples (What to avoid)
+
+**Tiny model output (bad):**
+```
+يجب أن يجب أن يجب أن يجب أن يجب أن يجب أن يجب أن يجب أن يجب أن يجب أن...
+```
+(Words repeated 40+ times)
+
+**Base model output (moderate):**
+```
+وصفحة وصفحة وصفحة وصفحة وصفحة وصفحة وصفحة...
+```
+(Words repeated 20+ times)
+
+**Small model output (good):**
+```
+بسم الله الرحمن الرحيم والحمد لله والصلاة والسلام على رسول الله
+```
+(No repetition)
+
+## Future Improvements
+- [ ] Find working solution for progress bar display in subprocess environment
+- [ ] Implement retry logic for Whisper CLI failures
+- [ ] Add timeout for Whisper transcription (currently can hang)
+- [ ] Consider stable-whisper library for better timestamp handling
+- [ ] Add option to keep both full subtitles and trimmed versions
+- [ ] Implement theme preview (show first few seconds of theme)
+
+## Important Notes for AI Replication
+
+1. **Use Whisper CLI, not Python API** - This is critical for mixed language content
+2. **Stop Ollama before Whisper** - Always run `ollama stop llama3` first
+3. **Use 'small' model** - Best accuracy despite being slower
+4. **Don't add extra parameters** - Keep CLI command minimal
+5. **Suppress stdout** - Transcription lines are verbose, only SRT file needed
+6. **Crop before scaling** - Remove black bars with `crop=ih:iw:0:0` first
+7. **Input seeking** - Use `-ss` before `-i` for faster clip creation
+8. **Offset subtitle timestamps** - Start from 0 for each short clip
+
+## Command Reference
+
+**Manual Whisper CLI (for testing):**
+```bash
+cd "/path/to/video/folder"
+whisper "video.mp4" --model small --task transcribe --language ar --output_format srt --output_dir .
+```
+
+**Manual ffmpeg (for testing subtitle burning):**
+```bash
+ffmpeg -ss 120 -i "input.mp4" -t 60 \
+  -vf "crop=ih:iw:0:0,scale=1080:1920,subs=subtitle.srt:force_style='FontSize=24,MarginV=35'" \
+  -c:v libx264 -preset medium -crf 23 -c:a aac -b:a 128k \
+  -movflags +faststart -y "output.mp4"
+```
+
+**Stop Ollama (manual):**
+```bash
+ollama stop llama3
+```
+
+**Check GPU memory (manual):**
+```bash
+nvidia-smi
+```

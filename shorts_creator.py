@@ -9,10 +9,73 @@ import re
 import json
 import argparse
 import subprocess
+import gc
+import pty
+import configparser
 from pathlib import Path
 from typing import Dict, List, Optional
 import yt_dlp
-import whisper
+
+import torch
+if torch.cuda.is_available():
+    torch.cuda.empty_cache()
+
+
+def load_settings(settings_file: str = 'settings.ini') -> configparser.ConfigParser:
+    """Load settings from settings.ini file."""
+    config = configparser.ConfigParser()
+
+    if Path(settings_file).exists():
+        config.read(settings_file)
+        return config
+    else:
+        # Create default settings if file doesn't exist
+        config['whisper'] = {
+            'model': 'small',
+            'language': 'ar',
+            'task': 'transcribe'
+        }
+        config['video'] = {
+            'output_dir': 'videos',
+            'aspect_ratio': '9:16',
+            'resolution_width': '1080',
+            'resolution_height': '1920',
+            'codec': 'libx264',
+            'preset': 'medium',
+            'crf': '23'
+        }
+        config['subtitle'] = {
+            'font_name': 'Arial',
+            'font_size': '24',
+            'primary_colour': '&HFFFFFF',
+            'back_colour': '&H80000000',
+            'outline_colour': '&H00000000',
+            'alignment': '2',
+            'margin_v': '35'
+        }
+        config['theme'] = {
+            'min_duration': '30',
+            'max_duration': '240',
+            'ai_enabled': 'true',
+            'ai_model': 'llama3',
+            'ai_provider': 'ollama',
+            'window_duration': '600',
+            'window_overlap': '120'
+        }
+        config['folder'] = {
+            'naming_scheme': 'numbered',
+            'number_padding': '3'
+        }
+
+        # Save default settings
+        with open(settings_file, 'w') as f:
+            config.write(f)
+
+        return config
+
+
+# Load settings at module level
+settings = load_settings()
 
 
 def write_srt(segments, file):
@@ -195,41 +258,57 @@ Video Path: {video_info['video_path']}
 
         print(f"Created video info file: {info_path}")
 
-    def generate_subtitles(self, video_info: Dict[str, str], model_size: str = 'base') -> str:
-        """Generate subtitles using Whisper."""
-        print(f"Loading Whisper model ({model_size})...")
-        model = whisper.load_model(model_size)
+    def generate_subtitles(self, video_info: Dict[str, str], model_size: str = None) -> str:
+        """Generate subtitles using Whisper CLI."""
+        # Use settings if model_size not provided
+        if model_size is None:
+            model_size = settings.get('whisper', 'model')
+
+        # Get language and task from settings
+        language = settings.get('whisper', 'language')
+        task = settings.get('whisper', 'task')
+
+        # Stop AI model to free GPU memory
+        try:
+            subprocess.run(['ollama', 'stop', 'llama3'], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+            print("\033[91mStopped Ollama llama3 model\033[0m")
+        except Exception:
+            pass
 
         video_path = video_info['video_path']
-        print(f"Transcribing: {video_path}")
+        folder = video_info['folder']
 
-        # Transcribe with Arabic as default language for proper Arabic script
-        # Use beam search and lower temperature for better accuracy
-        result = model.transcribe(
-            video_path,
-            task='transcribe',
-            language='ar',  # Default to Arabic for proper Arabic script output
-            verbose=False,
-            # Improved accuracy settings
-            temperature=0.0,  # Lower = more deterministic, less hallucination
-            beam_size=5,  # Beam search for better accuracy
-            best_of=5,  # Try multiple times and pick best
-            patience=1.0,  # Beam search patience
-        )
+        print(f"Transcribing with Whisper CLI ({model_size})...")
 
-        # Save subtitles
+        # Run Whisper CLI
+        cmd = [
+            'whisper',
+            str(video_path),
+            '--model', model_size,
+            '--task', task,
+            '--language', language,
+            '--output_format', 'srt',
+            '--output_dir', str(folder),
+        ]
+
+        # Run Whisper CLI - show stderr for progress, suppress stdout
+        result = subprocess.run(cmd)
+
+        if result.returncode != 0:
+            raise RuntimeError(f"Whisper CLI failed with exit code {result.returncode}")
+
+        # Whisper CLI creates SRT in the output dir
         base_name = Path(video_path).stem
-        srt_path = Path(video_info['folder']) / f"{base_name}.srt"
+        srt_path = Path(folder) / f"{base_name}.srt"
 
-        # Save SRT
-        with open(srt_path, 'w', encoding='utf-8') as f:
-            write_srt(result['segments'], f)
-
-        print(f"Created subtitles: {srt_path}")
+        if srt_path.exists():
+            print(f"Created subtitles: {srt_path}")
+        else:
+            raise FileNotFoundError(f"Whisper CLI did not create expected subtitle file: {srt_path}")
 
         return str(srt_path)
 
-    def generate_themes(self, video_info: Dict[str, str], ai_generator=None) -> None:
+    def generate_themes(self, video_info: Dict[str, str], ai_generator=None, model_size='base') -> None:
         """Generate themes for YouTube Shorts from subtitles."""
         # Read from SRT file for both transcript and timing
         srt_file = Path(video_info['folder']) / f"{Path(video_info['video_path']).stem}.srt"
@@ -330,6 +409,7 @@ Video Path: {video_info['video_path']}
             total_duration = self._format_duration(segments[-1]['end']) if segments else 'N/A'
             f.write(f"**Total Duration:** {total_duration}\n\n")
             f.write(f"**Number of Themes:** {len(themes)}\n\n")
+            f.write(f"**Whisper Model:** {model_size}\n\n")
 
             # Indicate whether AI was used for title generation
             if ai_used:
@@ -753,7 +833,7 @@ Video Path: {video_info['video_path']}
         self.generate_subtitles(video_info, model_size=whisper_model)
 
         # Step 4: Generate themes
-        self.generate_themes(video_info)
+        self.generate_themes(video_info, model_size=whisper_model)
 
         print("=" * 60)
         print(f"Processing complete! Folder: {video_info['folder']}")
@@ -878,33 +958,24 @@ Video Path: {video_info['video_path']}
         return end_idx
 
     def create_trimmed_srt(self, original_srt: Path, start_seconds: float, end_seconds: float, output_path: Path) -> Path:
-        """Create a trimmed SRT file with timestamps offset to start from 0.
-
-        Using input seeking (-ss before -i) with subtitles filter requires offsetting
-        subtitle timestamps to 0, as the extracted video content starts from output time 0.
-        """
+        """Create a trimmed SRT file with timestamps offset to start from 0."""
         segments = self._parse_srt_segments(original_srt)
 
         with open(output_path, 'w', encoding='utf-8') as f:
-            subtitle_num = 1
-            for segment in segments:
-                seg_start = segment['start']
-                seg_end = segment['end']
+            for i, segment in enumerate(segments, start=1):
+                # Adjust timestamps by subtracting start time
+                seg_start = max(0, segment['start'] - start_seconds)
+                seg_end = max(0, segment['end'] - start_seconds)
 
                 # Only include subtitles that appear within our clip range
-                if seg_end > start_seconds and seg_start < end_seconds:
-                    # Offset timestamps to start from 0 for the extracted clip
-                    offset_start = max(0, seg_start - start_seconds)
-                    offset_end = max(0, seg_end - start_seconds)
-
-                    start_ts = self.seconds_to_timestamp(offset_start)
-                    end_ts = self.seconds_to_timestamp(offset_end)
+                if seg_end > 0 and seg_start < (end_seconds - start_seconds):
+                    start_ts = self.seconds_to_timestamp(seg_start)
+                    end_ts = self.seconds_to_timestamp(seg_end)
                     text = segment['text'].strip()
 
-                    f.write(f"{subtitle_num}\n")
+                    f.write(f"{i}\n")
                     f.write(f"{start_ts} --> {end_ts}\n")
                     f.write(f"{text}\n\n")
-                    subtitle_num += 1
 
         return output_path
 
@@ -927,28 +998,37 @@ Video Path: {video_info['video_path']}
         self.create_trimmed_srt(srt_path, start_seconds, end_seconds, trimmed_srt_path)
         print(f"    Created trimmed subtitles: {trimmed_srt_name}")
 
-        # YouTube Shorts format: 1080x1920 (9:16 aspect ratio)
+        # YouTube Shorts format: 9:16 aspect ratio
         # Scale and crop (not pad) to achieve proper 9:16 ratio
         # For ffmpeg subtitles, we need to escape colons and backslashes in the path
         trimmed_srt_for_ffmpeg = str(trimmed_srt_path).replace(':', '\\:').replace('\\', '\\\\').replace("'", "\\'")
 
         print(f"    Burning subtitles...")
 
+        # Get settings
+        width = settings.get('video', 'resolution_width')
+        height = settings.get('video', 'resolution_height')
+        font_name = settings.get('subtitle', 'font_name')
+        font_size = settings.get('subtitle', 'font_size')
+        margin_v = settings.get('subtitle', 'margin_v')
+        alignment = settings.get('subtitle', 'alignment')
+        codec = settings.get('video', 'codec')
+        preset = settings.get('video', 'preset')
+        crf = settings.get('video', 'crf')
+
         # Filter chain:
-        # 1. Reset PTS to 0 (critical for subtitle sync with input seeking)
-        # 2. Scale to ensure minimum dimensions, then crop to exactly 1080x1920
-        # 3. Burn in subtitles
-        vf_filter = f"setpts=PTS-STARTPTS,scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(iw-ow)/2:(ih-oh)/2,subtitles={trimmed_srt_for_ffmpeg}:force_style='FontSize=16,MarginV=35,Alignment=2,FontName=Arial'"
+        # Scale and crop to target resolution, then burn in subtitles
+        vf_filter = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}:(iw-ow)/2:(ih-oh)/2,subtitles={trimmed_srt_for_ffmpeg}:force_style='FontSize={font_size},MarginV={margin_v},Alignment={alignment},FontName={font_name}'"
 
         cmd = [
             'ffmpeg',
-            '-ss', str(start_seconds),  # Input seeking: before -i for speed
+            '-ss', str(start_seconds),  # Input seeking
             '-i', str(video_path),
             '-t', str(duration),
             '-vf', vf_filter,
-            '-c:v', 'libx264',
-            '-preset', 'medium',
-            '-crf', '23',
+            '-c:v', codec,
+            '-preset', preset,
+            '-crf', crf,
             '-c:a', 'aac',
             '-b:a', '128k',
             '-movflags', '+faststart',
@@ -1059,6 +1139,10 @@ Video Path: {video_info['video_path']}
 
 def main():
     """Main entry point."""
+    # Reload settings to get latest values
+    global settings
+    settings = load_settings()
+
     parser = argparse.ArgumentParser(
         description='Automatic YouTube Shorts Creation App'
     )
@@ -1066,18 +1150,23 @@ def main():
     parser.add_argument(
         '--model',
         choices=['tiny', 'base', 'small', 'medium', 'large'],
-        default='small',
-        help='Whisper model size (default: small)'
+        default=settings.get('whisper', 'model'),
+        help=f'Whisper model size (default: {settings.get("whisper", "model")})'
     )
     parser.add_argument(
         '--output-dir',
-        default='videos',
-        help='Base directory for downloaded videos (default: videos)'
+        default=settings.get('video', 'output_dir'),
+        help=f'Base directory for downloaded videos (default: {settings.get("video", "output_dir")})'
     )
     parser.add_argument(
         '--theme',
         type=str,
         help='Create shorts for specific theme(s). Use comma-separated numbers (e.g., "1,2,5") or "all"'
+    )
+    parser.add_argument(
+        '--regenerate-themes-only',
+        action='store_true',
+        help='Only regenerate themes.md from existing subtitles (skip transcription)'
     )
 
     args = parser.parse_args()
@@ -1094,7 +1183,78 @@ def main():
             print("Example: python shorts_creator.py 001 --theme=2")
         return
 
-    # Mode 2: Process a new video (URL or local file)
+    # Mode 2: Process a new video (URL or local file) or regenerate themes
+    # Check if regenerating themes only
+    if args.regenerate_themes_only:
+        # Input should be an existing folder number
+        if re.match(r'^\d{1,3}$', args.input):
+            matching_folders = list(Path(args.output_dir).glob(f"{args.input.zfill(3)}_*"))
+
+            if not matching_folders:
+                print(f"Error: Folder {args.input} not found")
+                return
+
+            folder = matching_folders[0]
+            # Find the video file in the folder
+            video_files = list(folder.glob('*.mp4')) + list(folder.glob('*.mkv')) + list(folder.glob('*.webm'))
+            if not video_files:
+                print(f"Error: No video file found in {folder}")
+                return
+
+            video_path = video_files[0]
+
+            # Check if subtitle file exists
+            srt_file = folder / f"{video_path.stem}.srt"
+            if not srt_file.exists():
+                print(f"⚠ No subtitle file found: {srt_file.name}")
+                response = input("Do you want to generate subtitles now? (y/n): ").strip().lower()
+                if response == 'y':
+                    video_info = {
+                        'title': folder.name.split('_', 1)[1] if '_' in folder.name else folder.name,
+                        'url': 'Existing video',
+                        'folder': str(folder),
+                        'folder_number': args.input,
+                        'video_path': str(video_path),
+                        'is_local': True
+                    }
+                    print(f"Generating subtitles for: {video_path.name}")
+                    creator.generate_subtitles(video_info, model_size=args.model)
+                else:
+                    print("Skipping. Cannot generate themes without subtitles.")
+                    return
+
+            video_info = {
+                'title': folder.name.split('_', 1)[1] if '_' in folder.name else folder.name,
+                'url': 'Existing video',
+                'folder': str(folder),
+                'folder_number': args.input,
+                'video_path': str(video_path),
+                'is_local': True
+            }
+
+            print(f"Regenerating themes for: {folder.name}")
+
+            # Initialize AI generator
+            ai_generator = None
+            try:
+                from ai_theme_generator import AIThemeGenerator
+                ai_generator = AIThemeGenerator()
+                if ai_generator.is_available():
+                    print(f"✓ AI enabled: Using {ai_generator.model} for theme identification")
+                else:
+                    ai_generator = None
+            except ImportError:
+                pass
+
+            creator.generate_themes(video_info, ai_generator=ai_generator, model_size=args.model)
+            print("=" * 60)
+            print(f"Themes regenerated! Folder: {folder}")
+            print("=" * 60)
+            return
+        else:
+            print("Error: --regenerate-themes-only requires a folder number (e.g., '001')")
+            return
+
     # Initialize AI generator (default)
     ai_generator = None
     try:
@@ -1139,7 +1299,7 @@ def main():
     creator.generate_subtitles(video_info, model_size=args.model)
 
     # Generate themes (with AI if enabled)
-    creator.generate_themes(video_info, ai_generator=ai_generator)
+    creator.generate_themes(video_info, ai_generator=ai_generator, model_size=args.model)
 
     print("=" * 60)
     print(f"Processing complete! Folder: {video_info['folder']}")
