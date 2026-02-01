@@ -15,5 +15,10 @@
 [done] 14. the subtitles are not working properly on the short video.
 [done] 15. when creating the short video leave the subtitle file in the same folder as the short video.
 [done] 16. Set Arabic as default Whisper language for proper Arabic script output (generates بسم الله الرحمن الرحيم instead of transliteration like "Bismillah"). Documented in README.
-#17. use your own ai model for theme identification
-18. make ai theme identification the default tool for theme identification and theme names
+
+18. make ai theme identification the default tool for theme identification and theme naming, remove the --ai attribute
+
+#ai model has stopped doing decent theme indentification, try to fall back to s
+19. Switch back to whisper to basic model, only transcribe the video and stop.  Examine the subtitles file then report back to me for further instructions.
+
+

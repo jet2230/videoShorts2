@@ -194,27 +194,107 @@ Return the reason only, nothing else."""
         """
         Use AI to identify natural theme boundaries from transcript segments.
 
+        Uses overlapping 10-minute windows to handle arbitrarily long videos:
+        - Window 1: 0-10 minutes
+        - Window 2: 8-18 minutes (2 min overlap)
+        - Window 3: 16-26 minutes (2 min overlap)
+        - etc.
+
+        This prevents themes from being cut at window boundaries.
+
         Args:
             transcript_segments: List of segments with 'start', 'end', 'text' keys
 
         Returns:
             List of theme dicts with 'start_time', 'end_time', and 'description'
         """
-        # Create transcript with timestamps in SECONDS (already in seconds from SRT)
-        # Provide better context by grouping consecutive segments
-        transcript_parts = []
-        # Process all segments to get full transcript coverage
-        for i in range(0, len(transcript_segments), 3):  # Process entire transcript
-            group = transcript_segments[i:i+3]
-            if group:
-                start_sec = int(group[0]['start'])
-                # Get more text per group for better context
-                text = " ".join(seg['text'][:100].strip() for seg in group)
-                transcript_parts.append(f"[{start_sec}s] {text}")
+        if not transcript_segments:
+            return []
 
-        full_transcript = "\n".join(transcript_parts)
+        # Get total duration in seconds
+        total_duration = int(transcript_segments[-1]['end'])
 
-        prompt = f"""Identify YouTube Shorts clips from this Islamic lecture. Find 15-18 clips.
+        # Create overlapping windows (10 minutes each, 2 minute overlap)
+        windows = []
+        current_start = 0
+        while current_start < total_duration:
+            current_end = min(current_start + 600, total_duration)  # 10 minutes = 600 seconds
+            windows.append((current_start, current_end))
+            if current_end >= total_duration:
+                break
+            current_start = current_end - 120  # Backtrack 2 minutes (120 seconds) for overlap
+
+        print(f"  Processing {len(windows)} windows ({total_duration // 60} minutes total)")
+
+        # Process each window and collect themes
+        all_themes = []
+        for window_idx, (window_start, window_end) in enumerate(windows):
+            print(f"  Window {window_idx + 1}/{len(windows)}: {window_start // 60}m{window_start % 60:02d}s - {window_end // 60}m{window_end % 60:02d}s", end='', flush=True)
+
+            # Filter segments for this window
+            window_segments = [
+                seg for seg in transcript_segments
+                if seg['start'] >= window_start and seg['start'] < window_end
+            ]
+
+            if not window_segments:
+                print(" [no segments]")
+                continue
+
+            # Create transcript for this window
+            transcript_parts = []
+            for i in range(0, len(window_segments), 3):
+                group = window_segments[i:i+3]
+                if group:
+                    start_sec = int(group[0]['start'])
+                    text = " ".join(seg['text'][:100].strip() for seg in group)
+                    transcript_parts.append(f"[{start_sec}s] {text}")
+
+            window_transcript = "\n".join(transcript_parts)
+
+            # Generate themes for this window
+            window_themes = self._process_window(
+                window_transcript,
+                window_start,
+                window_end,
+                window_idx + 1,
+                len(windows)
+            )
+
+            if window_themes:
+                all_themes.extend(window_themes)
+                print(f" [{len(window_themes)} themes]")
+            else:
+                print(" [no themes]")
+
+        # Merge overlapping themes and deduplicate
+        merged_themes = self._merge_overlapping_themes(all_themes)
+
+        print(f"  Total themes after merging: {len(merged_themes)}")
+        return merged_themes
+
+    def _process_window(self, transcript: str, window_start: int, window_end: int,
+                        window_num: int, total_windows: int) -> List[Dict]:
+        """
+        Process a single window and identify themes.
+
+        Args:
+            transcript: Transcript text for this window
+            window_start: Window start time in seconds
+            window_end: Window end time in seconds
+            window_num: Current window number (for progress)
+            total_windows: Total number of windows
+
+        Returns:
+            List of themes for this window
+        """
+        # Adjust target number of themes based on window size
+        # For a 10-minute window, aim for 3-5 themes (45-90 seconds each)
+        target_themes = 4 if total_windows > 1 else 15
+
+        prompt = f"""Identify YouTube Shorts clips from this Islamic lecture. Find {target_themes} clips.
+
+TRANSCRIPT COVERS: {window_start // 60}m{window_start % 60:02d}s to {window_end // 60}m{window_end % 60:02d}s
 
 TIMESTAMPS are in SECONDS (just use the numbers like [120s]).
 
@@ -225,17 +305,18 @@ CRITICAL RULES:
 - Start at topic transitions
 - End at complete thoughts
 - No overlaps
+- ALL timestamps must be between {window_start} and {window_end}
 
 Your JSON output:
 [
-  {{"start": 180, "end": 300, "reason": "explains Mizan"}},
-  {{"start": 310, "end": 480, "reason": "discusses Hadith"}}
+  {{"start": {window_start + 30}, "end": {window_start + 90}, "reason": "explains concept"}},
+  {{"start": {window_start + 100}, "end": {window_start + 160}, "reason": "discusses topic"}}
 ]
 
-Aim for shorter clips (45-90 seconds) rather than long ones. Better to have more 60-second clips than fewer 2-minute clips.
+Aim for shorter clips (45-90 seconds) rather than long ones.
 
 Transcript (timestamps in seconds):
-{full_transcript}
+{transcript}
 
 Return ONLY valid JSON. Nothing else."""
 
@@ -248,80 +329,15 @@ Return ONLY valid JSON. Nothing else."""
                     'stream': False,
                     'options': {
                         'temperature': 0.5,
-                        'num_predict': 1200,
+                        'num_predict': 800,
                     }
                 },
-                timeout=90
+                timeout=60
             )
 
             if response.status_code == 200:
                 result = response.json().get('response', '').strip()
-
-                # Try to extract JSON from within conversational text
-
-                # Try to extract JSON from within conversational text
-                # Look for JSON array pattern - capture everything from [ to matching ]
-                import re
-                themes_data = []
-
-                # Try to parse as JSON first
-                start_idx = result.rfind('[')
-                if start_idx != -1:
-                    # Try to find matching closing bracket
-                    bracket_count = 0
-                    for i in range(start_idx, len(result)):
-                        if result[i] == '[':
-                            bracket_count += 1
-                        elif result[i] == ']':
-                            bracket_count -= 1
-                            if bracket_count == 0:
-                                try:
-                                    json_str = result[start_idx:i+1]
-                                    themes_data = json.loads(json_str)
-                                    break
-                                except:
-                                    pass
-
-                # Try format with backticks: 1. `{"start": 0, "end": 30}`
-                if not themes_data:
-                    tick_pattern = r'(\d+)\.\s*`{"start":\s*(\d+),\s*"end":\s*(\d+)}`'
-                    matches = re.findall(tick_pattern, result)
-                    for match in matches:
-                        start_time = float(match[2])
-                        end_time = float(match[3])
-                        themes_data.append({'start': start_time, 'end': end_time, 'reason': 'AI-identified theme'})
-
-                # If JSON parsing failed, try to extract from numbered list format
-                if not themes_data:
-                    # Try format with titles: 1. "Title" (MM:SS - MM:SS)
-                    list_pattern = r'(\d+)\.\s*"([^"]+)"\s*\((\d+):(\d+)\s*-\s*(\d+):(\d+)\)'
-                    matches = re.findall(list_pattern, result)
-                    for match in matches:
-                        title = match[1]
-                        start_min = int(match[2])
-                        start_sec = int(match[3])
-                        end_min = int(match[4])
-                        end_sec = int(match[5])
-                        start_time = start_min * 60 + start_sec
-                        end_time = end_min * 60 + end_sec
-                        themes_data.append({'start': start_time, 'end': end_time, 'reason': title})
-
-                # Try format without titles: 1. "TIMESTAMPS: MM:SS - MM:SS"
-                if not themes_data:
-                    list_pattern = r'(\d+)\.\s*"TIMESTAMPS:\s*(\d+):(\d+)\s*-\s*(\d+):(\d+)'
-                    matches = re.findall(list_pattern, result)
-                    for match in matches:
-                        start_min = int(match[1])
-                        start_sec = int(match[2])
-                        end_min = int(match[3])
-                        end_sec = int(match[4])
-                        start_time = start_min * 60 + start_sec
-                        end_time = end_min * 60 + end_sec
-                        themes_data.append({'start': start_time, 'end': end_time, 'reason': 'AI-identified theme'})
-
-                if not themes_data:
-                    print(f"    AI boundary detection failed, using pattern-based approach")
-                    return []
+                themes_data = self._parse_ai_response(result)
 
                 # Validate and convert to theme format
                 themes = []
@@ -331,8 +347,10 @@ Return ONLY valid JSON. Nothing else."""
                         end_time = float(theme['end'])
                         duration = end_time - start_time
 
-                        # Enforce minimum duration of 30 seconds, max 4 minutes
-                        if 30 <= duration <= 240:
+                        # Enforce duration limits and window bounds
+                        if (30 <= duration <= 240 and
+                            window_start <= start_time < window_end and
+                            window_start < end_time <= window_end):
                             themes.append({
                                 'start_time': start_time,
                                 'end_time': end_time,
@@ -342,16 +360,124 @@ Return ONLY valid JSON. Nothing else."""
 
                 return themes
             else:
-                print(f"  AI boundary detection failed: {response.status_code}")
                 return []
 
-        except json.JSONDecodeError as e:
-            print(f"  AI JSON parsing error: {e}")
-            print(f"  Response was: {result[:200]}")
-            return []
         except Exception as e:
-            print(f"  AI boundary detection error: {e}")
+            print(f" [error: {e}]")
             return []
+
+    def _parse_ai_response(self, result: str) -> List[Dict]:
+        """
+        Parse AI response to extract theme data.
+
+        Args:
+            result: Raw AI response text
+
+        Returns:
+            List of theme dicts with 'start', 'end', 'reason'
+        """
+        import re
+        themes_data = []
+
+        # Try to parse as JSON first
+        start_idx = result.rfind('[')
+        if start_idx != -1:
+            bracket_count = 0
+            for i in range(start_idx, len(result)):
+                if result[i] == '[':
+                    bracket_count += 1
+                elif result[i] == ']':
+                    bracket_count -= 1
+                    if bracket_count == 0:
+                        try:
+                            json_str = result[start_idx:i+1]
+                            themes_data = json.loads(json_str)
+                            break
+                        except:
+                            pass
+
+        # Try format with backticks: 1. `{"start": 0, "end": 30}`
+        if not themes_data:
+            tick_pattern = r'(\d+)\.\s*`{"start":\s*(\d+),\s*"end":\s*(\d+)}`'
+            matches = re.findall(tick_pattern, result)
+            for match in matches:
+                start_time = float(match[2])
+                end_time = float(match[3])
+                themes_data.append({'start': start_time, 'end': end_time, 'reason': 'AI-identified theme'})
+
+        # If JSON parsing failed, try to extract from numbered list format
+        if not themes_data:
+            list_pattern = r'(\d+)\.\s*"([^"]+)"\s*\((\d+):(\d+)\s*-\s*(\d+):(\d+)\)'
+            matches = re.findall(list_pattern, result)
+            for match in matches:
+                title = match[1]
+                start_min = int(match[2])
+                start_sec = int(match[3])
+                end_min = int(match[4])
+                end_sec = int(match[5])
+                start_time = start_min * 60 + start_sec
+                end_time = end_min * 60 + end_sec
+                themes_data.append({'start': start_time, 'end': end_time, 'reason': title})
+
+        # Try format without titles: 1. "TIMESTAMPS: MM:SS - MM:SS"
+        if not themes_data:
+            list_pattern = r'(\d+)\.\s*"TIMESTAMPS:\s*(\d+):(\d+)\s*-\s*(\d+):(\d+)'
+            matches = re.findall(list_pattern, result)
+            for match in matches:
+                start_min = int(match[1])
+                start_sec = int(match[2])
+                end_min = int(match[3])
+                end_sec = int(match[4])
+                start_time = start_min * 60 + start_sec
+                end_time = end_min * 60 + end_sec
+                themes_data.append({'start': start_time, 'end': end_time, 'reason': 'AI-identified theme'})
+
+        return themes_data
+
+    def _merge_overlapping_themes(self, themes: List[Dict]) -> List[Dict]:
+        """
+        Merge overlapping or duplicate themes from different windows.
+
+        Args:
+            themes: List of all themes from all windows
+
+        Returns:
+            Deduplicated and merged list of themes
+        """
+        if not themes:
+            return []
+
+        # Sort by start time
+        sorted_themes = sorted(themes, key=lambda x: x['start_time'])
+
+        # Merge overlapping themes
+        merged = []
+        for theme in sorted_themes:
+            if not merged:
+                merged.append(theme)
+                continue
+
+            last = merged[-1]
+            # Check if themes significantly overlap (>50% overlap)
+            overlap_start = max(last['start_time'], theme['start_time'])
+            overlap_end = min(last['end_time'], theme['end_time'])
+            overlap_duration = overlap_end - overlap_start if overlap_end > overlap_start else 0
+
+            shorter_duration = min(last['duration'], theme['duration'])
+
+            if overlap_duration > shorter_duration * 0.5:
+                # Significant overlap, keep the longer one
+                if theme['duration'] > last['duration']:
+                    merged[-1] = theme
+            elif theme['start_time'] < last['end_time'] + 10:
+                # Slight overlap or very close, skip the shorter one
+                if theme['duration'] > last['duration']:
+                    merged[-1] = theme
+            else:
+                # No overlap, add as new theme
+                merged.append(theme)
+
+        return merged
 
 
 def test_ai_generator():
