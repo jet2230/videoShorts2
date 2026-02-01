@@ -878,24 +878,30 @@ Video Path: {video_info['video_path']}
         return end_idx
 
     def create_trimmed_srt(self, original_srt: Path, start_seconds: float, end_seconds: float, output_path: Path) -> Path:
-        """Create a trimmed SRT file with timestamps adjusted for the clip."""
+        """Create a trimmed SRT file keeping timestamps at original positions.
+
+        When using output seeking (-ss after -i), ffmpeg reads the video from the beginning
+        and then trims it. The subtitle timestamps must match the original video timeline
+        for proper synchronization.
+        """
         segments = self._parse_srt_segments(original_srt)
 
         with open(output_path, 'w', encoding='utf-8') as f:
-            for i, segment in enumerate(segments, start=1):
-                # Adjust timestamps by subtracting start time
-                seg_start = max(0, segment['start'] - start_seconds)
-                seg_end = max(0, segment['end'] - start_seconds)
+            subtitle_num = 1
+            for segment in segments:
+                seg_start = segment['start']
+                seg_end = segment['end']
 
                 # Only include subtitles that appear within our clip range
-                if seg_end > 0 and seg_start < (end_seconds - start_seconds):
+                if seg_end > start_seconds and seg_start < end_seconds:
                     start_ts = self.seconds_to_timestamp(seg_start)
                     end_ts = self.seconds_to_timestamp(seg_end)
                     text = segment['text'].strip()
 
-                    f.write(f"{i}\n")
+                    f.write(f"{subtitle_num}\n")
                     f.write(f"{start_ts} --> {end_ts}\n")
                     f.write(f"{text}\n\n")
+                    subtitle_num += 1
 
         return output_path
 
@@ -932,8 +938,8 @@ Video Path: {video_info['video_path']}
 
         cmd = [
             'ffmpeg',
-            '-ss', str(start_seconds),
             '-i', str(video_path),
+            '-ss', str(start_seconds),  # Output seeking: after -i for subtitle sync
             '-t', str(duration),
             '-vf', vf_filter,
             '-c:v', 'libx264',
