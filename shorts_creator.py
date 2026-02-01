@@ -1056,8 +1056,8 @@ def main():
     parser.add_argument(
         '--model',
         choices=['tiny', 'base', 'small', 'medium', 'large'],
-        default='base',
-        help='Whisper model size (default: base)'
+        default='small',
+        help='Whisper model size (default: small)'
     )
     parser.add_argument(
         '--output-dir',
