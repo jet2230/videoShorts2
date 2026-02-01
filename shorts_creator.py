@@ -28,30 +28,14 @@ def write_srt(segments, file):
         file.write(f"{text}\n\n")
 
 
-def write_vtt(segments, file):
-    """Write segments to VTT format."""
-    file.write("WEBVTT\n\n")
-
-    for i, segment in enumerate(segments, start=1):
-        # Format timestamps: 00:00:00.000
-        start = format_timestamp(segment['start'], vtt=True)
-        end = format_timestamp(segment['end'], vtt=True)
-        text = segment['text'].strip()
-
-        file.write(f"{i}\n")
-        file.write(f"{start} --> {end}\n")
-        file.write(f"{text}\n\n")
-
-
-def format_timestamp(seconds: float, vtt: bool = False) -> str:
+def format_timestamp(seconds: float) -> str:
     """Format seconds to timestamp string."""
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
     secs = int(seconds % 60)
     ms = int((seconds % 1) * 1000)
 
-    separator = '.' if vtt else ','
-    return f"{hours:02d}:{minutes:02d}:{secs:02d}{separator}{ms:03d}"
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{ms:03d}"
 
 
 class YouTubeShortsCreator:
@@ -210,25 +194,20 @@ Video Path: {video_info['video_path']}
             patience=1.0,  # Beam search patience
         )
 
-        # Save subtitles in multiple formats
+        # Save subtitles
         base_name = Path(video_path).stem
         srt_path = Path(video_info['folder']) / f"{base_name}.srt"
-        vtt_path = Path(video_info['folder']) / f"{base_name}.vtt"
         txt_path = Path(video_info['folder']) / f"{base_name}_subtitles.txt"
 
         # Save SRT
         with open(srt_path, 'w', encoding='utf-8') as f:
             write_srt(result['segments'], f)
 
-        # Save VTT
-        with open(vtt_path, 'w', encoding='utf-8') as f:
-            write_vtt(result['segments'], f)
-
         # Save plain text
         with open(txt_path, 'w', encoding='utf-8') as f:
             f.write(result['text'])
 
-        print(f"Created subtitles: {srt_path}, {vtt_path}, {txt_path}")
+        print(f"Created subtitles: {srt_path}, {txt_path}")
 
         return str(txt_path)
 
