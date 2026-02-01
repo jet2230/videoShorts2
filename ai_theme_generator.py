@@ -203,8 +203,8 @@ Return the reason only, nothing else."""
         # Create transcript with timestamps in SECONDS (already in seconds from SRT)
         # Provide better context by grouping consecutive segments
         transcript_parts = []
-        # Process more segments to get full transcript coverage
-        for i in range(0, min(len(transcript_segments), 500), 3):  # More segments, smaller groups
+        # Process all segments to get full transcript coverage
+        for i in range(0, len(transcript_segments), 3):  # Process entire transcript
             group = transcript_segments[i:i+3]
             if group:
                 start_sec = int(group[0]['start'])
