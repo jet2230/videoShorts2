@@ -214,13 +214,14 @@ Return the reason only, nothing else."""
 
         full_transcript = "\n".join(transcript_parts)
 
-        prompt = f"""Identify YouTube Shorts clips from this Islamic lecture. Find 12-15 clips.
+        prompt = f"""Identify YouTube Shorts clips from this Islamic lecture. Find 15-18 clips.
 
 TIMESTAMPS are in SECONDS (just use the numbers like [120s]).
 
 CRITICAL RULES:
-- MINIMUM 45 seconds per clip (2700 seconds minimum if I say 45)
-- MAXIMUM 3.5 minutes per clip
+- MINIMUM 45 seconds per clip
+- MAXIMUM 2 minutes per clip
+- Most clips should be 45-90 seconds
 - Start at topic transitions
 - End at complete thoughts
 - No overlaps
@@ -231,7 +232,7 @@ Your JSON output:
   {{"start": 310, "end": 480, "reason": "discusses Hadith"}}
 ]
 
-Make clips LONGER, not shorter. Better to have 2 minute clips than 20 second clips.
+Aim for shorter clips (45-90 seconds) rather than long ones. Better to have more 60-second clips than fewer 2-minute clips.
 
 Transcript (timestamps in seconds):
 {full_transcript}
