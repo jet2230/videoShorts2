@@ -195,7 +195,8 @@ Video Path: {video_info['video_path']}
         # Common transcription error corrections
         corrections = [
             # Islamic terms
-            (r'حود', 'Haud'),  # Arabic Haud to English
+            (r'حوض', 'Haud'),  # Arabic Haud (correct spelling) to English
+            (r'حود', 'Haud'),  # Arabic Haud (alt spelling) to English
             (r'\bCowld\b', 'Haud'),
             (r'\bwhatsapp\b', 'with us'),
             (r'\bMizan\b', 'Mizan'),
