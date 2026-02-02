@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Shorts Creator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0f0f0f;
+            --bg-secondary: #1a1a1a;
+            --bg-tertiary: #252525;
+            --text-primary: #ffffff;
+            --text-secondary: #b0b0b0;
+            --accent: #ff0050;
+            --accent-hover: #ff2060;
+            --border: #333;
+            --success: #2ba640;
+            --error: #ff4444;
+            --warning: #ffaa00;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            background: var(--bg-tertiary);
+        }
+
+        .status-badge.online {
+            background: var(--success);
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .tab {
+            padding: 12px 24px;
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .tab:hover {
+            color: var(--text-primary);
+        }
+
+        .tab.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Forms */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        input[type="text"],
+        input[type="url"],
+        input[type="file"],
+        select {
+            width: 100%;
+            padding: 12px 16px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 14px;
+        }
+
+        input:focus,
+        select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .btn-secondary:hover {
+            background: var(--border);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Cards */
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+
+        /* Folder List */
+        .folder-list {
+            display: grid;
+            gap: 12px;
+        }
+
+        .folder-item {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .folder-item:hover {
+            border-color: var(--accent);
+        }
+
+        .folder-item.selected {
+            border-color: var(--accent);
+            background: rgba(255, 0, 80, 0.1);
+        }
+
+        .folder-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .folder-number {
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .folder-name {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .folder-meta {
+            display: flex;
+            gap: 16px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        /* Themes List */
+        .themes-list {
+            display: grid;
+            gap: 12px;
+        }
+
+        .theme-item {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            cursor: pointer;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            user-select: none;
+        }
+
+        .theme-item:hover {
+            border-color: #00bfff;
+            box-shadow: 0 0 10px rgba(0, 191, 255, 0.3);
+        }
+
+        .theme-checkbox {
+            margin-top: 4px;
+            width: 18px;
+            height: 18px;
+            accent-color: var(--accent);
+            pointer-events: none;
+        }
+
+        .theme-content {
+            flex: 1;
+        }
+
+        .theme-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .theme-number {
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .theme-duration {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .theme-title {
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .theme-time {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .theme-created-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            background: var(--success);
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            color: white;
+        }
+
+        .theme-created-badge::before {
+            content: '✓';
+        }
+
+        /* Progress */
+        .progress-container {
+            display: none;
+            margin-top: 20px;
+        }
+
+        .progress-container.active {
+            display: block;
+        }
+
+        .progress-bar {
+            height: 4px;
+            background: var(--bg-tertiary);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-bottom: 8px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--accent);
+            animation: progress 2s ease-in-out infinite;
+        }
+
+        @keyframes progress {
+            0% { width: 0%; margin-left: 0; }
+            50% { width: 50%; margin-left: 25%; }
+            100% { width: 0%; margin-left: 100%; }
+        }
+
+        .progress-text {
+            font-size: 14px;
+            color: var(--text-secondary);
+            text-align: center;
+        }
+
+        /* Notifications */
+        .notification {
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .notification.show {
+            display: block;
+        }
+
+        .notification.success {
+            background: rgba(43, 166, 64, 0.2);
+            border: 1px solid var(--success);
+        }
+
+        .notification.error {
+            background: rgba(255, 68, 68, 0.2);
+            border: 1px solid var(--error);
+        }
+
+        /* Two column layout for themes */
+        .two-column {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 900px) {
+            .two-column {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .actions-bar {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-secondary);
+        }
+
+        .stats {
+            display: flex;
+            gap: 24px;
+            margin-bottom: 20px;
+        }
+
+        .stat {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>YouTube Shorts Creator</h1>
+            <span class="status-badge online">Server Online</span>
+        </header>
+
+        <div class="tabs">
+            <button class="tab active" data-tab="library">Library</button>
+            <button class="tab" data-tab="add">Add Video</button>
+        </div>
+
+        <!-- Library Tab -->
+        <div id="library-tab" class="tab-content active">
+            <div class="card">
+                <div class="card-title">Video Library</div>
+                <div class="folder-list" id="folder-list">
+                    <div class="empty-state">Loading...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add Video Tab -->
+        <div id="add-tab" class="tab-content">
+            <div class="card">
+                <div class="card-title">Add New Video</div>
+
+                <div class="form-group">
+                    <label>YouTube URL</label>
+                    <input type="url" id="url-input" placeholder="https://www.youtube.com/watch?v=...">
+                </div>
+
+                <div style="text-align: center; margin: 20px 0; color: var(--text-secondary);">OR</div>
+
+                <div class="form-group">
+                    <label>Local Video File</label>
+                    <input type="file" id="file-input" accept="video/*">
+                </div>
+
+                <div class="form-group">
+                    <label>Whisper Model</label>
+                    <select id="model-select">
+                        <option value="tiny">Tiny (fastest)</option>
+                        <option value="base">Base</option>
+                        <option value="small" selected>Small</option>
+                        <option value="medium">Medium</option>
+                        <option value="large">Large (best)</option>
+                    </select>
+                </div>
+
+                <button class="btn btn-primary" id="process-btn">
+                    Process Video
+                </button>
+
+                <div class="progress-container" id="process-progress">
+                    <div class="progress-bar">
+                        <div class="progress-fill"></div>
+                    </div>
+                    <div class="progress-text" id="process-text">Processing...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Themes Panel (shown when folder selected) -->
+        <div id="themes-panel" class="card" style="display: none;">
+            <div class="two-column">
+                <div>
+                    <div class="card-title" id="selected-folder-title">Themes</div>
+                    <div class="stats" id="folder-stats"></div>
+                    <div class="themes-list" id="themes-list"></div>
+                    <div class="actions-bar">
+                        <button class="btn btn-secondary" id="select-all-btn" disabled>Select All</button>
+                        <button class="btn btn-secondary" id="deselect-all-btn" disabled>Deselect All</button>
+                        <button class="btn btn-secondary" id="regenerate-btn" disabled>Regenerate Themes</button>
+                        <button class="btn btn-primary" id="create-shorts-btn" disabled>Create Shorts</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="notification" id="notification"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://127.0.0.1:5000/api';
+        let selectedFolder = null;
+        let currentTaskId = null;
+        let taskCheckInterval = null;
+
+        // Tab switching
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                tab.classList.add('active');
+                document.getElementById(`${tab.dataset.tab}-tab`).classList.add('active');
+
+                if (tab.dataset.tab === 'library') {
+                    loadFolders();
+                }
+            });
+        });
+
+        // Load folders
+        async function loadFolders() {
+            try {
+                const response = await fetch(`${API_BASE}/folders`);
+                const folders = await response.json();
+
+                const container = document.getElementById('folder-list');
+                if (folders.length === 0) {
+                    container.innerHTML = '<div class="empty-state">No videos found. Add one to get started!</div>';
+                    return;
+                }
+
+                container.innerHTML = folders.map(folder => `
+                    <div class="folder-item" data-folder="${folder.number}">
+                        <div class="folder-header">
+                            <span class="folder-number">#${folder.number}</span>
+                            <span class="folder-name">${folder.name}</span>
+                        </div>
+                        <div class="folder-meta">
+                            <span>${folder.video_file}</span>
+                            ${folder.has_themes ? '<span>✓ Themes</span>' : '<span>No themes</span>'}
+                            ${folder.shorts_count > 0 ? `<span>${folder.shorts_count} shorts</span>` : ''}
+                        </div>
+                    </div>
+                `).join('');
+
+                // Add click handlers
+                container.querySelectorAll('.folder-item').forEach(item => {
+                    item.addEventListener('click', () => {
+                        document.querySelectorAll('.folder-item').forEach(i => i.classList.remove('selected'));
+                        item.classList.add('selected');
+                        selectFolder(item.dataset.folder);
+                    });
+                });
+            } catch (error) {
+                showNotification('Error loading folders: ' + error.message, 'error');
+            }
+        }
+
+        // Select folder and load themes
+        async function selectFolder(folderNumber) {
+            selectedFolder = folderNumber;
+
+            try {
+                const response = await fetch(`${API_BASE}/folder/${folderNumber}/themes`);
+                if (!response.ok) {
+                    throw new Error('No themes found for this folder');
+                }
+
+                const data = await response.json();
+                displayThemes(data);
+            } catch (error) {
+                showNotification(error.message, 'error');
+                document.getElementById('themes-panel').style.display = 'none';
+            }
+        }
+
+        // Display themes
+        function displayThemes(data) {
+            const panel = document.getElementById('themes-panel');
+            panel.style.display = 'block';
+
+            document.getElementById('selected-folder-title').textContent = data.title;
+            document.getElementById('folder-stats').innerHTML = `
+                <div class="stat">
+                    <div class="stat-value">${data.themes.length}</div>
+                    <div class="stat-label">Themes</div>
+                </div>
+            `;
+
+            const container = document.getElementById('themes-list');
+            container.innerHTML = data.themes.map(theme => `
+                <label class="theme-item">
+                    <input type="checkbox" class="theme-checkbox" data-theme="${theme.number}">
+                    <div class="theme-content">
+                        <div class="theme-header">
+                            <span class="theme-number">Theme ${theme.number}</span>
+                            ${theme.short_created ? '<span class="theme-created-badge">Short Created</span>' : `<span class="theme-duration">${theme.end}</span>`}
+                        </div>
+                        <div class="theme-title">${theme.title}</div>
+                        <div class="theme-time">${theme.start} - ${theme.end}</div>
+                    </div>
+                </label>
+            `).join('');
+
+            // Update create button state
+            container.querySelectorAll('.theme-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', updateCreateButton);
+            });
+
+            // Scroll to themes panel
+            panel.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Update create shorts button
+        function updateCreateButton() {
+            const checked = document.querySelectorAll('.theme-checkbox:checked').length;
+            const hasSelection = checked > 0;
+            document.getElementById('create-shorts-btn').disabled = !hasSelection;
+            document.getElementById('select-all-btn').disabled = !hasSelection;
+            document.getElementById('deselect-all-btn').disabled = !hasSelection;
+            document.getElementById('regenerate-btn').disabled = !hasSelection;
+        }
+
+        // Select/Deselect all
+        document.getElementById('select-all-btn').addEventListener('click', () => {
+            document.querySelectorAll('.theme-checkbox').forEach(cb => cb.checked = true);
+            updateCreateButton();
+        });
+
+        document.getElementById('deselect-all-btn').addEventListener('click', () => {
+            document.querySelectorAll('.theme-checkbox').forEach(cb => cb.checked = false);
+            updateCreateButton();
+        });
+
+        // Process video
+        document.getElementById('process-btn').addEventListener('click', async () => {
+            const url = document.getElementById('url-input').value.trim();
+            const file = document.getElementById('file-input').files[0];
+            const model = document.getElementById('model-select').value;
+
+            if (!url && !file) {
+                showNotification('Please enter a URL or select a file', 'error');
+                return;
+            }
+
+            const progressContainer = document.getElementById('process-progress');
+            const progressText = document.getElementById('process-text');
+            progressContainer.classList.add('active');
+            document.getElementById('process-btn').disabled = true;
+
+            try {
+                const payload = { model };
+                if (url) payload.url = url;
+                if (file) payload.local_file = file.path || file.name;
+
+                const response = await fetch(`${API_BASE}/process`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to start processing');
+                }
+
+                const { task_id } = await response.json();
+                await monitorTask(task_id, (status) => {
+                    progressText.textContent = `Processing: ${status.type}...`;
+                });
+
+                showNotification('Video processed successfully!', 'success');
+
+                // Reset form
+                document.getElementById('url-input').value = '';
+                document.getElementById('file-input').value = '';
+
+                // Switch to library tab
+                setTimeout(() => {
+                    document.querySelector('[data-tab="library"]').click();
+                }, 1500);
+
+            } catch (error) {
+                showNotification('Error: ' + error.message, 'error');
+            } finally {
+                progressContainer.classList.remove('active');
+                document.getElementById('process-btn').disabled = false;
+            }
+        });
+
+        // Regenerate themes
+        document.getElementById('regenerate-btn').addEventListener('click', async () => {
+            if (!selectedFolder) return;
+
+            const model = document.getElementById('model-select').value;
+
+            try {
+                const response = await fetch(`${API_BASE}/regenerate-themes`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ folder_number: selectedFolder, model })
+                });
+
+                if (!response.ok) throw new Error('Failed to regenerate themes');
+
+                const { task_id } = await response.json();
+                showNotification('Regenerating themes...', 'success');
+
+                await monitorTask(task_id);
+
+                // Reload themes
+                selectFolder(selectedFolder);
+                showNotification('Themes regenerated!', 'success');
+            } catch (error) {
+                showNotification('Error: ' + error.message, 'error');
+            }
+        });
+
+        // Create shorts
+        document.getElementById('create-shorts-btn').addEventListener('click', async () => {
+            if (!selectedFolder) return;
+
+            const checkedThemes = Array.from(document.querySelectorAll('.theme-checkbox:checked'))
+                .map(cb => parseInt(cb.dataset.theme));
+
+            if (checkedThemes.length === 0) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/create-shorts`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        folder_number: selectedFolder,
+                        themes: checkedThemes
+                    })
+                });
+
+                if (!response.ok) throw new Error('Failed to create shorts');
+
+                const { task_id } = await response.json();
+                showNotification('Creating shorts...', 'success');
+
+                await monitorTask(task_id);
+
+                // Reload folder list
+                loadFolders();
+                showNotification('Shorts created!', 'success');
+            } catch (error) {
+                showNotification('Error: ' + error.message, 'error');
+            }
+        });
+
+        // Monitor background task
+        async function monitorTask(taskId, callback) {
+            return new Promise((resolve, reject) => {
+                const interval = setInterval(async () => {
+                    try {
+                        const response = await fetch(`${API_BASE}/task/${taskId}`);
+                        const task = await response.json();
+
+                        if (callback) callback(task);
+
+                        if (task.status === 'completed') {
+                            clearInterval(interval);
+                            resolve(task.result);
+                        } else if (task.status === 'failed') {
+                            clearInterval(interval);
+                            reject(new Error(task.error || 'Task failed'));
+                        }
+                    } catch (error) {
+                        clearInterval(interval);
+                        reject(error);
+                    }
+                }, 1000);
+            });
+        }
+
+        // Show notification
+        function showNotification(message, type = 'success') {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.className = `notification ${type} show`;
+
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 3000);
+        }
+
+        // Initial load
+        loadFolders();
+    </script>
+</body>
+</html>
