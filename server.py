@@ -3,12 +3,13 @@
 Flask server for the YouTube Shorts Creator web GUI.
 """
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, send_file
 from flask_cors import CORS
 import subprocess
 import threading
 import queue
 import os
+import sys
 from pathlib import Path
 from typing import Dict, List
 import configparser
@@ -54,16 +55,20 @@ def index():
 @app.route('/videos/<path:filepath>')
 def serve_video(filepath):
     """Serve video files from the videos directory."""
-    from urllib.parse import unquote
-
     base_dir = Path(settings.get('video', 'output_dir'))
-    # filepath is URL-decoded by Flask automatically
+    # Flask automatically decodes URL-encoded paths
     video_path = base_dir / filepath
 
-    if not video_path.exists():
-        return jsonify({'error': 'File not found'}), 404
+    # Debug logging
+    print(f"Video request: {filepath}", file=sys.stderr)
+    print(f"Full path: {video_path}", file=sys.stderr)
+    print(f"Exists: {video_path.exists()}", file=sys.stderr)
 
-    return send_from_directory(str(video_path.parent), video_path.name)
+    if not video_path.exists():
+        return jsonify({'error': f'File not found: {filepath}'}), 404
+
+    # Use send_file with conditional support for range requests
+    return send_file(str(video_path), mimetype='video/mp4')
 
 
 @app.route('/api/settings', methods=['GET'])

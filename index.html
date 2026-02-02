@@ -509,6 +509,26 @@
             flex: 1;
             padding: 6px 12px;
             font-size: 12px;
+            text-align: center;
+        }
+
+        .short-actions .btn-play {
+            border-color: #2ba640;
+            border: 2px solid #2ba640;
+        }
+
+        .short-actions .btn-download {
+            border-color: #0066cc;
+            border: 2px solid #0066cc;
+        }
+
+        .short-actions .btn-edit {
+            border-color: #ffaa00;
+            border: 2px solid #ffaa00;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         /* Progress */
@@ -1000,44 +1020,105 @@
             });
 
             const container = document.getElementById('shorts-grid');
+            container.innerHTML = '';
+
             if (filteredShorts.length === 0) {
                 container.innerHTML = '<div class="empty-state">No shorts found matching your filters.</div>';
                 return;
             }
 
-            container.innerHTML = filteredShorts.map(short => {
-                // Properly encode URL path components
-                const pathParts = short.url_path.split('/');
-                const encodedPath = pathParts.map(part => encodeURIComponent(part)).join('/');
-                const videoUrl = '/videos/' + encodedPath.replace(/^\/+/, '');
+            // Create short items using DOM methods to avoid escaping issues
+            filteredShorts.forEach(short => {
+                const videoUrl = '/videos/' + short.url_path;
                 const displayName = short.filename.replace(/_/g, ' ').replace('.mp4', '');
                 const folderName = short.folder.replace(/^\d+_/, '').replace(/_/g, ' ');
 
-                return `
-                    <div class="short-item" data-video-url="${videoUrl}" data-filename="${short.filename}">
-                        <div class="short-thumbnail">
-                            <video src="${videoUrl}" preload="metadata" muted loop playsinline></video>
-                            <div class="play-icon">▶</div>
-                        </div>
-                        <div class="short-info">
-                            <div class="short-title" title="${displayName}">${displayName}</div>
-                            <div class="short-meta">
-                                <span>📁 ${folderName}</span>
-                                <span>🎬 Theme ${short.theme_number}</span>
-                                <span>📦 ${short.size} MB</span>
-                            </div>
-                            <div class="short-filename">${short.filename}</div>
-                            <div class="short-actions">
-                                <button class="btn btn-secondary btn-play" data-url="${videoUrl}">Play</button>
-                                <button class="btn btn-secondary btn-download" data-url="${videoUrl}" data-filename="${short.filename}">Download</button>
-                            </div>
-                            <div class="short-actions">
-                                <button class="btn btn-secondary btn-edit" data-path="${short.path}" data-filename="${short.filename}" style="width: 100%;">Edit</button>
-                            </div>
-                        </div>
-                    </div>
+                // Encode URL path components separately to handle all special characters
+                const pathParts = videoUrl.split('/');
+                const encodedPath = pathParts.map(part => encodeURIComponent(part)).join('/');
+
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'short-item';
+                itemDiv.dataset.videoUrl = videoUrl;
+                itemDiv.dataset.filename = short.filename;
+
+                const thumbnail = document.createElement('div');
+                thumbnail.className = 'short-thumbnail';
+
+                const video = document.createElement('video');
+                video.src = encodedPath;
+                video.preload = 'metadata';
+                video.muted = true;
+                video.loop = true;
+                video.playsInline = true;
+
+                const playIcon = document.createElement('div');
+                playIcon.className = 'play-icon';
+                playIcon.textContent = '▶';
+
+                thumbnail.appendChild(video);
+                thumbnail.appendChild(playIcon);
+
+                const info = document.createElement('div');
+                info.className = 'short-info';
+
+                const title = document.createElement('div');
+                title.className = 'short-title';
+                title.textContent = displayName;
+                title.title = displayName;
+
+                const meta = document.createElement('div');
+                meta.className = 'short-meta';
+                meta.innerHTML = `
+                    <span>📁 ${folderName}</span>
+                    <span>🎬 Theme ${short.theme_number}</span>
+                    <span>📦 ${short.size} MB</span>
                 `;
-            }).join('');
+
+                const filename = document.createElement('div');
+                filename.className = 'short-filename';
+                filename.textContent = short.filename;
+
+                const actions1 = document.createElement('div');
+                actions1.className = 'short-actions';
+
+                const playBtn = document.createElement('button');
+                playBtn.className = 'btn btn-secondary btn-play';
+                playBtn.textContent = 'Play';
+                playBtn.dataset.url = encodedPath;
+
+                const downloadBtn = document.createElement('button');
+                downloadBtn.className = 'btn btn-secondary btn-download';
+                downloadBtn.textContent = 'Download';
+                downloadBtn.dataset.url = encodedPath;
+                downloadBtn.dataset.filename = short.filename;
+
+                actions1.appendChild(playBtn);
+                actions1.appendChild(downloadBtn);
+
+                const actions2 = document.createElement('div');
+                actions2.className = 'short-actions';
+
+                const editBtn = document.createElement('button');
+                editBtn.className = 'btn btn-secondary btn-edit';
+                editBtn.textContent = 'Edit';
+                editBtn.dataset.path = short.path;
+                editBtn.dataset.filename = short.filename;
+                editBtn.style.width = '100%';
+
+                actions2.appendChild(editBtn);
+
+                info.appendChild(title);
+                info.appendChild(meta);
+                info.appendChild(filename);
+                info.appendChild(actions1);
+                info.appendChild(actions2);
+
+                itemDiv.appendChild(thumbnail);
+                itemDiv.appendChild(info);
+
+                container.appendChild(itemDiv);
+            });
 
             // Add play button handlers
             container.querySelectorAll('.btn-play').forEach(btn => {
@@ -1213,8 +1294,13 @@
 
             container.querySelectorAll('.theme-play-btn').forEach(btn => {
                 const videoPath = btn.dataset.videoPath;
-                // Convert file path to URL
-                const videoUrl = '/' + videoPath.replace(/^\/+/, '');
+                // Properly encode the URL path
+                const pathParts = videoPath.split('/');
+                const encodedPath = pathParts.map(part => encodeURIComponent(part)).join('/');
+                const videoUrl = '/' + encodedPath.replace(/^\/+/, '');
+
+                // Store encoded URL on the button
+                btn.dataset.encodedUrl = videoUrl;
 
                 // Hover tooltip
                 btn.addEventListener('mouseenter', (e) => {
