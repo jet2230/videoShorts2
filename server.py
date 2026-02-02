@@ -463,10 +463,15 @@ def cancel_task(task_id: str):
         return jsonify({'success': True})
 
 
+# Track edit processes for cancellation
+edit_processes: Dict[str, Dict] = {}
+edit_counter = 0
+
+
 @app.route('/api/process-edit', methods=['POST'])
 def process_video_edit():
     """Process video with effects including face tracking."""
-    from video_processor import VideoProcessor
+    global edit_counter
 
     data = request.json
     video_path = data.get('video_path')
@@ -482,25 +487,83 @@ def process_video_edit():
     if not input_video.exists():
         return jsonify({'error': f'Video not found: {video_path}'}), 404
 
+    # Use edited_shorts folder for output
+    output_dir = input_video.parent / 'edited_shorts'
+    output_dir.mkdir(exist_ok=True)
+
     # Generate output path
-    output_filename = f"edited_{input_video.name}"
-    output_video = input_video.parent / 'shorts' / output_filename
-    output_video.parent.mkdir(parents=True, exist_ok=True)
+    output_filename = f"edited_{input_video.stem}.mp4"
+    output_video = output_dir / output_filename
+
+    with task_lock:
+        edit_counter += 1
+        edit_id = f"edit_{edit_counter}"
+        edit_processes[edit_id] = {
+            'status': 'pending',
+            'output_path': str(output_video),
+            'cancelled': False
+        }
+
+    # Start background task
+    thread = threading.Thread(
+        target=run_edit_task,
+        args=(edit_id, str(input_video), str(output_video), edit_settings)
+    )
+    thread.start()
+
+    return jsonify({'edit_id': edit_id, 'status': 'started'})
+
+
+def run_edit_task(edit_id: str, input_video: str, output_video: str, edit_settings: dict):
+    """Run video edit in background thread."""
+    from video_processor import VideoProcessor
 
     try:
-        # Process video
-        processor = VideoProcessor(str(input_video))
-        processor.apply_effects(str(output_video), edit_settings)
+        with task_lock:
+            edit_processes[edit_id]['status'] = 'running'
 
-        return jsonify({
-            'success': True,
-            'message': 'Video processed successfully',
-            'output_path': str(output_video.relative_to(base_dir)),
-            'settings_applied': edit_settings
-        })
+        print(f"Processing video: {input_video}")
+        print(f"Settings: {edit_settings}")
+
+        # Process video with ffmpeg (preserves audio)
+        processor = VideoProcessor(input_video)
+        processor.apply_effects(output_video, edit_settings, cancel_flag=lambda: edit_processes.get(edit_id, {}).get('cancelled', False))
+
+        with task_lock:
+            edit_processes[edit_id]['status'] = 'completed'
+            edit_processes[edit_id]['success'] = True
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Processing error: {error_details}")
+
+        with task_lock:
+            edit_processes[edit_id]['status'] = 'failed'
+            edit_processes[edit_id]['error'] = str(e)
+
+
+@app.route('/api/process-edit/<edit_id>/cancel', methods=['POST'])
+def cancel_edit(edit_id: str):
+    """Cancel a running video edit."""
+    with task_lock:
+        if edit_id not in edit_processes:
+            return jsonify({'error': 'Edit not found'}), 404
+
+        edit_processes[edit_id]['cancelled'] = True
+        edit_processes[edit_id]['status'] = 'cancelled'
+
+    return jsonify({'success': True})
+
+
+@app.route('/api/process-edit/<edit_id>/status', methods=['GET'])
+def get_edit_status(edit_id: str):
+    """Get status of a video edit."""
+    with task_lock:
+        if edit_id not in edit_processes:
+            return jsonify({'error': 'Edit not found'}), 404
+
+        return jsonify(edit_processes[edit_id])
 
 
 
