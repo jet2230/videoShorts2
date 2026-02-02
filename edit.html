@@ -505,6 +505,34 @@
             position: relative;
         }
 
+        .face-tracking-indicator {
+            position: absolute;
+            top: 8px;
+            left: 12px;
+            background: linear-gradient(135deg, rgba(0, 255, 157, 0.2) 0%, rgba(0, 204, 125, 0.2) 100%);
+            border: 1px solid rgba(0, 255, 157, 0.5);
+            color: #00ff9d;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            z-index: 100;
+            pointer-events: none;
+            animation: pulse-glow 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% {
+                box-shadow: 0 0 5px rgba(0, 255, 157, 0.3);
+            }
+            50% {
+                box-shadow: 0 0 15px rgba(0, 255, 157, 0.6);
+            }
+        }
+
         .timeline-container {
             display: flex;
             align-items: center;
@@ -1223,6 +1251,9 @@
                         <span id="timelineDuration">00:00</span>
                     </div>
                     <button class="clear-all-btn" onclick="clearAllEffects()" title="Remove all effect markers">🗑️ Clear All</button>
+                </div>
+                <div class="face-tracking-indicator" id="faceTrackingIndicator" style="display: none;">
+                    👤 Face Tracking
                 </div>
                 <div class="timeline-container">
                     <button class="timeline-effect-btn intro-btn" onclick="togglePanel('intro')" data-panel="intro">
@@ -2668,7 +2699,9 @@
         function toggleFaceTrackingOptions() {
             const enabled = document.getElementById('faceTracking').checked;
             const options = document.getElementById('faceTrackingOptions');
+            const indicator = document.getElementById('faceTrackingIndicator');
             options.style.display = enabled ? 'block' : 'none';
+            indicator.style.display = enabled ? 'flex' : 'none';
 
             // Enable/disable face tracking preview mode
             if (enabled) {
