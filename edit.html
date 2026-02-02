@@ -669,14 +669,31 @@
             pointer-events: auto;
             z-index: 8;
             box-shadow: 0 0 8px rgba(0, 255, 157, 0.6);
-            cursor: pointer;
-            transition: all 0.2s ease;
+            cursor: move;
+            transition: filter 0.2s ease;
             border-left: 2px solid #00ff9d;
             border-right: 2px solid #00ff9d;
         }
 
         .effect-marker:hover {
             filter: brightness(1.2);
+        }
+
+        .effect-marker-resize-handle {
+            position: absolute;
+            top: 0;
+            width: 8px;
+            height: 100%;
+            cursor: ew-resize;
+            z-index: 10;
+        }
+
+        .effect-marker-resize-handle.left {
+            left: 0;
+        }
+
+        .effect-marker-resize-handle.right {
+            right: 0;
         }
 
         .effect-marker::before {
@@ -697,7 +714,7 @@
             white-space: nowrap;
             opacity: 1;
             pointer-events: auto;
-            cursor: pointer;
+            cursor: help;
             border: 1px solid rgba(0, 255, 157, 0.5);
             font-weight: 500;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
@@ -708,6 +725,12 @@
             background: rgba(255, 68, 68, 0.98);
             color: #fff;
             border: 1px solid rgba(255, 68, 68, 0.7);
+        }
+
+        .effect-marker-tooltip:hover::after {
+            content: ' (double-click to remove)';
+            font-size: 10px;
+            opacity: 0.8;
         }
 
         .effect-marker:hover {
@@ -2003,16 +2026,133 @@
                 }, 5000);
             };
 
-            // Add click handler to tooltip
-            tooltip.addEventListener('click', (e) => {
+            // Add click handler to tooltip (double-click to remove)
+            tooltip.addEventListener('dblclick', (e) => {
                 e.stopPropagation();
                 showConfirmPopup(e);
             });
 
-            // Add click handler to marker
-            marker.addEventListener('click', (e) => {
-                showConfirmPopup(e);
+            // Create resize handles
+            const leftHandle = document.createElement('div');
+            leftHandle.className = 'effect-marker-resize-handle left';
+            marker.appendChild(leftHandle);
+
+            const rightHandle = document.createElement('div');
+            rightHandle.className = 'effect-marker-resize-handle right';
+            marker.appendChild(rightHandle);
+
+            // Minimum duration in seconds
+            const minDuration = 0.5;
+            const minDurationPercent = minDuration / (video.duration || 1);
+
+            // Drag functionality for moving the entire marker
+            let isDragging = false;
+            let isResizing = false;
+            let resizeSide = null;
+            let dragStartX = 0;
+            let dragStartLeft = 0;
+            let dragStartWidth = 0;
+
+            // Mouse down handler
+            marker.addEventListener('mousedown', (e) => {
+                if (e.target === leftHandle) {
+                    isResizing = true;
+                    resizeSide = 'left';
+                    dragStartX = e.clientX;
+                    dragStartLeft = parseFloat(marker.style.left) || 0;
+                    dragStartWidth = parseFloat(marker.style.width) || 0;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    document.body.style.cursor = 'ew-resize';
+                } else if (e.target === rightHandle) {
+                    isResizing = true;
+                    resizeSide = 'right';
+                    dragStartX = e.clientX;
+                    dragStartWidth = parseFloat(marker.style.width) || 0;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    document.body.style.cursor = 'ew-resize';
+                } else {
+                    isDragging = true;
+                    dragStartX = e.clientX;
+                    dragStartLeft = parseFloat(marker.style.left) || 0;
+                    dragStartWidth = parseFloat(marker.style.width) || 0;
+                    e.preventDefault();
+                    document.body.style.cursor = 'move';
+                }
             });
+
+            // Mouse move handler for dragging/resizing
+            const handleMouseMove = (e) => {
+                if (!isDragging && !isResizing) return;
+
+                const rect = timelineTrack.getBoundingClientRect();
+                const deltaX = e.clientX - dragStartX;
+                const deltaPercent = deltaX / rect.width;
+
+                const currentLeft = parseFloat(marker.style.left) / 100;
+                const currentWidth = parseFloat(marker.style.width) / 100;
+
+                if (isResizing && resizeSide === 'left') {
+                    // Resize from left
+                    const newLeft = Math.max(0, Math.min(1 - minDurationPercent, (dragStartLeft / 100) + deltaPercent));
+                    const newWidth = (dragStartWidth / 100) + ((dragStartLeft / 100) - newLeft);
+                    if (newWidth >= minDurationPercent && newLeft + newWidth <= 1) {
+                        marker.style.left = `${newLeft * 100}%`;
+                        marker.style.width = `${newWidth * 100}%`;
+                        updateEffectPositionData(effectType, newLeft, newLeft + newWidth);
+                    }
+                } else if (isResizing && resizeSide === 'right') {
+                    // Resize from right
+                    const newWidth = Math.max(minDurationPercent, Math.min(1 - currentLeft, (dragStartWidth / 100) + deltaPercent));
+                    if (currentLeft + newWidth <= 1) {
+                        marker.style.width = `${newWidth * 100}%`;
+                        updateEffectPositionData(effectType, currentLeft, currentLeft + newWidth);
+                    }
+                } else if (isDragging) {
+                    // Move entire marker
+                    const newLeft = Math.max(0, Math.min(1 - (dragStartWidth / 100), (dragStartLeft / 100) + deltaPercent));
+                    if (newLeft + (dragStartWidth / 100) <= 1) {
+                        marker.style.left = `${newLeft * 100}%`;
+                        updateEffectPositionData(effectType, newLeft, newLeft + (dragStartWidth / 100));
+                    }
+                }
+
+                updateTooltipPosition();
+                updateTooltipText();
+            };
+
+            // Mouse up handler
+            const handleMouseUp = () => {
+                if (isDragging || isResizing) {
+                    isDragging = false;
+                    isResizing = false;
+                    resizeSide = null;
+                    document.body.style.cursor = '';
+                }
+            };
+
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+
+            // Function to update position data
+            const updateEffectPositionData = (type, start, end) => {
+                if (effectPositions[type]) {
+                    effectPositions[type].start = start;
+                    effectPositions[type].end = end;
+                    const durationSeconds = (end - start) * (video.duration || 1);
+                    effectPositions[type].duration = durationSeconds;
+                }
+            };
+
+            // Function to update tooltip text with new duration
+            const updateTooltipText = () => {
+                const positionData = effectPositions[effectType];
+                if (positionData) {
+                    const durationSeconds = Math.round((positionData.end - positionData.start) * (video.duration || 1));
+                    tooltip.textContent = `${getEffectDisplayName(effectType)} (${durationSeconds}s)`;
+                }
+            };
 
             // Hide magnifier when hovering over marker or tooltip
             const hideMagnifier = () => {
