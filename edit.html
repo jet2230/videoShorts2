@@ -340,6 +340,57 @@
             transform: scale(1.1);
         }
 
+        .effect-item-wrapper {
+            margin-bottom: 8px;
+        }
+
+        .effect-duration-options {
+            display: flex;
+            gap: 8px;
+            margin-top: 6px;
+            padding-left: 28px;
+        }
+
+        .duration-select {
+            flex: 1;
+            background: #1a1a1a;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            color: #fff;
+            padding: 4px 8px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .duration-select:focus {
+            outline: none;
+            border-color: rgba(0, 255, 157, 0.5);
+        }
+
+        .duration-select option {
+            background: #1a1a1a;
+            color: #fff;
+        }
+
+        .custom-duration-input {
+            width: 80px;
+            background: #1a1a1a;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            color: #fff;
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+
+        .custom-duration-input:focus {
+            outline: none;
+            border-color: rgba(0, 255, 157, 0.5);
+        }
+
+        .custom-duration-input::placeholder {
+            color: #666;
+        }
+
         .file-upload {
             border: 2px dashed #444;
             border-radius: 10px;
@@ -611,22 +662,28 @@
             position: absolute;
             top: 0;
             width: 4px;
+            min-width: 4px;
             height: 100%;
-            background: #00ff9d;
+            background: rgba(0, 255, 157, 0.3);
             border-radius: 2px;
             pointer-events: auto;
             z-index: 8;
             box-shadow: 0 0 8px rgba(0, 255, 157, 0.6);
             cursor: pointer;
             transition: all 0.2s ease;
+            border-left: 2px solid #00ff9d;
+            border-right: 2px solid #00ff9d;
+        }
+
+        .effect-marker:hover {
+            filter: brightness(1.2);
         }
 
         .effect-marker::before {
             content: '✨';
             position: absolute;
             top: -18px;
-            left: 50%;
-            transform: translateX(-50%);
+            left: 4px;
             font-size: 12px;
             color: #00ff9d;
         }
@@ -713,19 +770,19 @@
             background: rgba(255, 255, 255, 0.2);
         }
 
-        .effect-marker.mirror { background: #ff6b6b; box-shadow: 0 0 8px rgba(255, 107, 107, 0.6); }
+        .effect-marker.mirror { background: rgba(255, 107, 107, 0.3); box-shadow: 0 0 8px rgba(255, 107, 107, 0.6); border-color: #ff6b6b; }
         .effect-marker.mirror::before { color: #ff6b6b; }
 
-        .effect-marker.grayscale { background: #a0a0a0; box-shadow: 0 0 8px rgba(160, 160, 160, 0.6); }
+        .effect-marker.grayscale { background: rgba(160, 160, 160, 0.3); box-shadow: 0 0 8px rgba(160, 160, 160, 0.6); border-color: #a0a0a0; }
         .effect-marker.grayscale::before { color: #a0a0a0; }
 
-        .effect-marker.sepia { background: #d4a574; box-shadow: 0 0 8px rgba(212, 165, 116, 0.6); }
+        .effect-marker.sepia { background: rgba(212, 165, 116, 0.3); box-shadow: 0 0 8px rgba(212, 165, 116, 0.6); border-color: #d4a574; }
         .effect-marker.sepia::before { color: #d4a574; }
 
-        .effect-marker.blur { background: #74b9ff; box-shadow: 0 0 8px rgba(116, 185, 255, 0.6); }
+        .effect-marker.blur { background: rgba(116, 185, 255, 0.3); box-shadow: 0 0 8px rgba(116, 185, 255, 0.6); border-color: #74b9ff; }
         .effect-marker.blur::before { color: #74b9ff; }
 
-        .effect-marker.zoom { background: #a29bfe; box-shadow: 0 0 8px rgba(162, 155, 254, 0.6); }
+        .effect-marker.zoom { background: rgba(162, 155, 254, 0.3); box-shadow: 0 0 8px rgba(162, 155, 254, 0.6); border-color: #a29bfe; }
         .effect-marker.zoom::before { color: #a29bfe; }
 
         .trim-handle:hover {
@@ -1038,31 +1095,96 @@
         <button class="close-panel" onclick="closePanel('effects')">×</button>
         <h3><span class="icon">✨</span> Effects</h3>
         <div class="checkbox-group">
-            <label class="checkbox-item effect-with-preview" title="Make sure placement on timeline is chosen for this effect">
-                <input type="checkbox" id="effectMirror" data-effect="mirror" onchange="toggleEffectPreview(this, 'mirror')">
-                <span>Mirror (Flip Horizontal)</span>
-                <button class="effect-preview-btn" data-effect="mirror" onclick="previewVideoEffect('mirror')" style="display: none;">👁️</button>
-            </label>
-            <label class="checkbox-item effect-with-preview" title="Make sure placement on timeline is chosen for this effect">
-                <input type="checkbox" id="effectGrayscale" data-effect="grayscale" onchange="toggleEffectPreview(this, 'grayscale')">
-                <span>Black & White</span>
-                <button class="effect-preview-btn" data-effect="grayscale" onclick="previewVideoEffect('grayscale')" style="display: none;">👁️</button>
-            </label>
-            <label class="checkbox-item effect-with-preview" title="Make sure placement on timeline is chosen for this effect">
-                <input type="checkbox" id="effectSepia" data-effect="sepia" onchange="toggleEffectPreview(this, 'sepia')">
-                <span>Sepia (Vintage)</span>
-                <button class="effect-preview-btn" data-effect="sepia" onclick="previewVideoEffect('sepia')" style="display: none;">👁️</button>
-            </label>
-            <label class="checkbox-item effect-with-preview" title="Make sure placement on timeline is chosen for this effect">
-                <input type="checkbox" id="effectBlur" data-effect="blur" onchange="toggleEffectPreview(this, 'blur')">
-                <span>Blur Edges (Vignette)</span>
-                <button class="effect-preview-btn" data-effect="blur" onclick="previewVideoEffect('blur')" style="display: none;">👁️</button>
-            </label>
-            <label class="checkbox-item effect-with-preview" title="Make sure placement on timeline is chosen for this effect">
-                <input type="checkbox" id="effectZoom" data-effect="zoom" onchange="toggleEffectPreview(this, 'zoom')">
-                <span>Slow Zoom In</span>
-                <button class="effect-preview-btn" data-effect="zoom" onclick="previewVideoEffect('zoom')" style="display: none;">👁️</button>
-            </label>
+            <div class="effect-item-wrapper">
+                <label class="checkbox-item effect-with-preview" title="Make sure placement on timeline is chosen for this effect">
+                    <input type="checkbox" id="effectMirror" data-effect="mirror" onchange="toggleEffectPreview(this, 'mirror')">
+                    <span>Mirror (Flip Horizontal)</span>
+                    <button class="effect-preview-btn" data-effect="mirror" onclick="previewVideoEffect('mirror')" style="display: none;">👁️</button>
+                </label>
+                <div class="effect-duration-options" id="durationMirror" style="display: none;">
+                    <select class="duration-select" data-effect="mirror" onchange="updateEffectDuration('mirror', this.value)">
+                        <option value="10">10 seconds</option>
+                        <option value="30">30 seconds</option>
+                        <option value="60">1 minute</option>
+                        <option value="120">2 minutes</option>
+                        <option value="all">Full Video</option>
+                        <option value="custom">Custom...</option>
+                    </select>
+                    <input type="number" class="custom-duration-input" id="customMirror" placeholder="Seconds" min="1" style="display: none;" onchange="updateEffectDuration('mirror', this.value)">
+                </div>
+            </div>
+            <div class="effect-item-wrapper">
+                <label class="checkbox-item effect-with-preview" title="Make sure placement on timeline is chosen for this effect">
+                    <input type="checkbox" id="effectGrayscale" data-effect="grayscale" onchange="toggleEffectPreview(this, 'grayscale')">
+                    <span>Black & White</span>
+                    <button class="effect-preview-btn" data-effect="grayscale" onclick="previewVideoEffect('grayscale')" style="display: none;">👁️</button>
+                </label>
+                <div class="effect-duration-options" id="durationGrayscale" style="display: none;">
+                    <select class="duration-select" data-effect="grayscale" onchange="updateEffectDuration('grayscale', this.value)">
+                        <option value="10">10 seconds</option>
+                        <option value="30">30 seconds</option>
+                        <option value="60">1 minute</option>
+                        <option value="120">2 minutes</option>
+                        <option value="all">Full Video</option>
+                        <option value="custom">Custom...</option>
+                    </select>
+                    <input type="number" class="custom-duration-input" id="customGrayscale" placeholder="Seconds" min="1" style="display: none;" onchange="updateEffectDuration('grayscale', this.value)">
+                </div>
+            </div>
+            <div class="effect-item-wrapper">
+                <label class="checkbox-item effect-with-preview" title="Make sure placement on timeline is chosen for this effect">
+                    <input type="checkbox" id="effectSepia" data-effect="sepia" onchange="toggleEffectPreview(this, 'sepia')">
+                    <span>Sepia (Vintage)</span>
+                    <button class="effect-preview-btn" data-effect="sepia" onclick="previewVideoEffect('sepia')" style="display: none;">👁️</button>
+                </label>
+                <div class="effect-duration-options" id="durationSepia" style="display: none;">
+                    <select class="duration-select" data-effect="sepia" onchange="updateEffectDuration('sepia', this.value)">
+                        <option value="10">10 seconds</option>
+                        <option value="30">30 seconds</option>
+                        <option value="60">1 minute</option>
+                        <option value="120">2 minutes</option>
+                        <option value="all">Full Video</option>
+                        <option value="custom">Custom...</option>
+                    </select>
+                    <input type="number" class="custom-duration-input" id="customSepia" placeholder="Seconds" min="1" style="display: none;" onchange="updateEffectDuration('sepia', this.value)">
+                </div>
+            </div>
+            <div class="effect-item-wrapper">
+                <label class="checkbox-item effect-with-preview" title="Make sure placement on timeline is chosen for this effect">
+                    <input type="checkbox" id="effectBlur" data-effect="blur" onchange="toggleEffectPreview(this, 'blur')">
+                    <span>Blur Edges (Vignette)</span>
+                    <button class="effect-preview-btn" data-effect="blur" onclick="previewVideoEffect('blur')" style="display: none;">👁️</button>
+                </label>
+                <div class="effect-duration-options" id="durationBlur" style="display: none;">
+                    <select class="duration-select" data-effect="blur" onchange="updateEffectDuration('blur', this.value)">
+                        <option value="10">10 seconds</option>
+                        <option value="30">30 seconds</option>
+                        <option value="60">1 minute</option>
+                        <option value="120">2 minutes</option>
+                        <option value="all">Full Video</option>
+                        <option value="custom">Custom...</option>
+                    </select>
+                    <input type="number" class="custom-duration-input" id="customBlur" placeholder="Seconds" min="1" style="display: none;" onchange="updateEffectDuration('blur', this.value)">
+                </div>
+            </div>
+            <div class="effect-item-wrapper">
+                <label class="checkbox-item effect-with-preview" title="Make sure placement on timeline is chosen for this effect">
+                    <input type="checkbox" id="effectZoom" data-effect="zoom" onchange="toggleEffectPreview(this, 'zoom')">
+                    <span>Slow Zoom In</span>
+                    <button class="effect-preview-btn" data-effect="zoom" onclick="previewVideoEffect('zoom')" style="display: none;">👁️</button>
+                </label>
+                <div class="effect-duration-options" id="durationZoom" style="display: none;">
+                    <select class="duration-select" data-effect="zoom" onchange="updateEffectDuration('zoom', this.value)">
+                        <option value="10">10 seconds</option>
+                        <option value="30">30 seconds</option>
+                        <option value="60">1 minute</option>
+                        <option value="120">2 minutes</option>
+                        <option value="all">Full Video</option>
+                        <option value="custom">Custom...</option>
+                    </select>
+                    <input type="number" class="custom-duration-input" id="customZoom" placeholder="Seconds" min="1" style="display: none;" onchange="updateEffectDuration('zoom', this.value)">
+                </div>
+            </div>
         </div>
 
         <div style="border-top: 1px solid rgba(255,255,255,0.1); margin: 15px 0;"></div>
@@ -1767,20 +1889,44 @@
             // Remove existing marker for this effect if any
             removeEffectMarker(effectType);
 
+            // Get duration from dropdown
+            const durationSelect = document.querySelector(`#duration${effectType.charAt(0).toUpperCase() + effectType.slice(1)} .duration-select`);
+            const durationValue = durationSelect?.value || 'all';
+            const customInput = document.getElementById(`custom${effectType.charAt(0).toUpperCase() + effectType.slice(1)}`);
+            const durationSeconds = durationValue === 'custom' ? (parseInt(customInput?.value) || 10) : (durationValue === 'all' ? null : parseInt(durationValue));
+
+            // Calculate end position
+            const videoDuration = video.duration || 1;
+            const startPosition = positionPercent;
+            const endPosition = durationValue === 'all' ? 1 : Math.min(1, startPosition + (durationSeconds / videoDuration));
+
+            // Create marker as a bar with width
             const marker = document.createElement('div');
             marker.className = `effect-marker ${effectType}`;
             marker.id = `marker-${effectType}`;
-            marker.style.left = `${positionPercent * 100}%`;
+            marker.style.left = `${startPosition * 100}%`;
+            marker.style.width = `${(endPosition - startPosition) * 100}%`;
+
+            // Store position data
+            effectPositions[effectType] = {
+                start: startPosition,
+                end: endPosition,
+                duration: durationSeconds
+            };
 
             // Create tooltip (will be appended to body for proper layering)
             const tooltip = document.createElement('div');
             tooltip.className = 'effect-marker-tooltip';
             tooltip.id = `tooltip-${effectType}`;
-            tooltip.textContent = getEffectDisplayName(effectType);
+            const durationText = durationValue === 'all' ? '(Full Video)' : `(${durationSeconds}s)`;
+            tooltip.textContent = `${getEffectDisplayName(effectType)} ${durationText}`;
             tooltip.style.position = 'fixed';
             tooltip.style.zIndex = '100000';
             tooltip.style.pointerEvents = 'auto';
             tooltip.style.cursor = 'pointer';
+            tooltip.style.display = 'block';
+            tooltip.style.visibility = 'visible';
+            tooltip.style.opacity = '1';
             document.body.appendChild(tooltip);
             console.log('Created marker with tooltip:', tooltip.textContent, 'tooltip element:', tooltip);
 
@@ -1792,13 +1938,12 @@
                 tooltip.style.transform = 'translateX(-50%)';
             };
 
-            // Update tooltip position initially and on window resize
-            updateTooltipPosition();
+            // Update tooltip position on window resize
             window.addEventListener('resize', updateTooltipPosition);
 
             // Function to show confirmation popup
             const showConfirmPopup = (e) => {
-                if (e) e.stopPropagation(); // Prevent timeline click
+                if (e) e.stopPropagation();
                 console.log('Marker clicked, showing popup...');
 
                 // Remove any existing popup first
@@ -1831,7 +1976,6 @@
                     e.stopPropagation();
                     e.preventDefault();
                     popup.remove();
-                    // Find and uncheck the checkbox for this effect
                     const checkbox = document.querySelector(`input[data-effect="${effectType}"]`);
                     console.log('Found checkbox:', checkbox, 'for effect:', effectType);
                     if (checkbox) {
@@ -1879,8 +2023,40 @@
             tooltip.addEventListener('mouseenter', hideMagnifier);
 
             timelineTrack.appendChild(marker);
+
+            // Update tooltip position AFTER marker is added to DOM
+            updateTooltipPosition();
+
             effectMarkers[effectType] = { marker, tooltip };
-            effectPositions[effectType] = positionPercent; // Store position for time-based triggers
+        }
+
+        // Update marker duration when changed
+        function updateMarkerDuration(effectType, durationValue) {
+            if (!effectMarkers[effectType] || !effectMarkers[effectType].marker) return;
+
+            const marker = effectMarkers[effectType].marker;
+            const tooltip = effectMarkers[effectType].tooltip;
+            const positionData = effectPositions[effectType];
+
+            if (!positionData) return;
+
+            const videoDuration = video.duration || 1;
+            const startPosition = positionData.start;
+            const endPosition = durationValue === 'all' ? 1 : Math.min(1, startPosition + (parseInt(durationValue) / videoDuration));
+
+            // Update marker width
+            marker.style.width = `${(endPosition - startPosition) * 100}%`;
+
+            // Update tooltip text
+            const durationText = durationValue === 'all' ? '(Full Video)' : `(${parseInt(durationValue)}s)`;
+            tooltip.textContent = `${getEffectDisplayName(effectType)} ${durationText}`;
+
+            // Update stored position data
+            effectPositions[effectType] = {
+                start: startPosition,
+                end: endPosition,
+                duration: durationValue === 'all' ? null : parseInt(durationValue)
+            };
         }
 
         // Remove effect marker from timeline
@@ -1922,17 +2098,18 @@
             let shouldUpdate = false;
 
             // Check each effect marker position
-            for (const [effectType, position] of Object.entries(effectPositions)) {
-                const isActive = currentPercent >= position;
+            for (const [effectType, positionData] of Object.entries(effectPositions)) {
+                // Check if current position is within the effect's range
+                const isActive = positionData && currentPercent >= positionData.start && currentPercent <= positionData.end;
                 const wasActive = activeEffects.has(effectType);
 
                 if (isActive && !wasActive) {
-                    // Just crossed the marker - add effect
+                    // Just entered the effect range - add effect
                     activeEffects.add(effectType);
                     shouldUpdate = true;
                     console.log('Effect activated:', effectType);
                 } else if (!isActive && wasActive) {
-                    // Went back before the marker - remove effect
+                    // Left the effect range - remove effect
                     activeEffects.delete(effectType);
                     shouldUpdate = true;
                     console.log('Effect deactivated:', effectType);
@@ -1981,6 +2158,12 @@
                 previewBtn.style.display = checkbox.checked ? 'inline-block' : 'none';
             }
 
+            // Show/hide duration options
+            const durationOptions = document.getElementById(`duration${effectType.charAt(0).toUpperCase() + effectType.slice(1)}`);
+            if (durationOptions) {
+                durationOptions.style.display = checkbox.checked ? 'flex' : 'none';
+            }
+
             // Add/remove marker on timeline
             if (checkbox.checked) {
                 console.log('Effect checked:', effectType, 'Position:', selectedTimelinePosition);
@@ -1991,6 +2174,21 @@
                 }
             } else {
                 removeEffectMarker(effectType);
+            }
+        }
+
+        // Update effect duration
+        function updateEffectDuration(effectType, value) {
+            // Show/hide custom input based on selection
+            const customInput = document.getElementById(`custom${effectType.charAt(0).toUpperCase() + effectType.slice(1)}`);
+            if (customInput) {
+                customInput.style.display = value === 'custom' ? 'block' : 'none';
+            }
+
+            // Update marker if it exists
+            if (effectMarkers[effectType] && effectMarkers[effectType].marker) {
+                const duration = value === 'custom' ? (customInput?.value || 10) : value;
+                updateMarkerDuration(effectType, duration);
             }
         }
 
