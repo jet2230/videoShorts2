@@ -44,26 +44,31 @@ class VideoProcessor:
         if trim_settings.get('end'):
             end_time = trim_settings['end']
 
-        # If no effect markers, create intermediate file for global effects
-        if not effect_markers:
-            intermediate_output = output_path
-            if global_effects.get('faceTracking'):
-                # Use intermediate file for global effects processing
-                intermediate_output = os.path.join(tempfile.mkdtemp(), 'intermediate.mp4')
-            self._copy_video_with_trim(intermediate_output, start_time, end_time, settings, cancel_flag)
-        else:
-            # Process timeline effect markers
-            # Sort markers by start time
-            sorted_markers = sorted(effect_markers, key=lambda m: m['start_time'])
+        intermediate_output = None
+        segments_dir = None
+        temp_dir_for_cleanup = None
 
-            # Create segments directory
-            segments_dir = tempfile.mkdtemp()
-            segment_files = []
+        try:
+            # If no effect markers, create intermediate file for global effects
+            if not effect_markers:
+                intermediate_output = output_path
+                if global_effects.get('faceTracking'):
+                    # Use intermediate file for global effects processing
+                    temp_dir_for_cleanup = tempfile.mkdtemp()
+                    intermediate_output = os.path.join(temp_dir_for_cleanup, 'intermediate.mp4')
+                self._copy_video_with_trim(intermediate_output, start_time, end_time, settings, cancel_flag)
+            else:
+                # Process timeline effect markers
+                # Sort markers by start time
+                sorted_markers = sorted(effect_markers, key=lambda m: m['start_time'])
 
-            current_time = 0  # in seconds
-            video_duration = self.total_frames / self.fps
+                # Create segments directory
+                segments_dir = tempfile.mkdtemp()
+                segment_files = []
 
-            try:
+                current_time = 0  # in seconds
+                video_duration = self.total_frames / self.fps
+
                 # Create segments based on effect markers
                 for i, marker in enumerate(sorted_markers):
                     effect_type = marker['type']
@@ -94,18 +99,21 @@ class VideoProcessor:
                 intermediate_output = os.path.join(segments_dir, 'concatenated.mp4')
                 self._concatenate_segments(segment_files, intermediate_output, settings, cancel_flag)
 
-            finally:
-                # Clean up segments directory
+            # Apply global effects to the final output
+            if global_effects.get('faceTracking'):
+                self._apply_face_tracking(intermediate_output, output_path, global_effects, cancel_flag)
+            elif intermediate_output != output_path:
+                # Just move intermediate to final output if no global effects
                 import shutil
-                shutil.rmtree(os.path.dirname(intermediate_output), ignore_errors=True)
+                shutil.move(intermediate_output, output_path)
 
-        # Apply global effects to the final output
-        if global_effects.get('faceTracking'):
-            self._apply_face_tracking(intermediate_output, output_path, global_effects, cancel_flag)
-        elif intermediate_output != output_path:
-            # Just move intermediate to final output if no global effects
+        finally:
+            # Clean up temp directories
             import shutil
-            shutil.move(intermediate_output, output_path)
+            if segments_dir:
+                shutil.rmtree(segments_dir, ignore_errors=True)
+            if temp_dir_for_cleanup:
+                shutil.rmtree(temp_dir_for_cleanup, ignore_errors=True)
 
     def _format_time(self, seconds):
         """Format seconds to HH:MM:SS."""
