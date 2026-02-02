@@ -1087,20 +1087,16 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(0, 0, 0, 0.85);
+            background: rgba(0, 0, 0, 0.8);
             display: none;
             align-items: center;
             justify-content: center;
             z-index: 999998;
-            pointer-events: none;
+            backdrop-filter: blur(4px);
         }
 
         .export-progress-modal.visible {
             display: flex;
-        }
-
-        .export-progress-modal * {
-            pointer-events: auto;
         }
 
         .export-progress-content {
@@ -1141,6 +1137,25 @@
             color: #fff;
             text-align: center;
             font-size: 14px;
+            margin-bottom: 20px;
+        }
+
+        .modal-cancel-btn {
+            width: 100%;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .modal-cancel-btn:hover {
+            transform: scale(1.02);
+            box-shadow: 0 5px 20px rgba(255, 68, 68, 0.4);
         }
 
         @media (max-width: 1200px) {
@@ -1171,6 +1186,7 @@
                 <div class="progress-bar-fill" id="exportProgressBar"></div>
             </div>
             <div class="progress-text" id="exportProgressText">Preparing...</div>
+            <button class="modal-cancel-btn" id="modalCancelBtn" onclick="applyChanges()">✖ Cancel Export</button>
         </div>
     </div>
 
@@ -3035,50 +3051,13 @@
         function updateExportButton() {
             const btn = document.getElementById('exportBtn');
             if (isExporting) {
-                // Get button position for fixed positioning
-                const rect = btn.getBoundingClientRect();
-                const originalParent = btn.parentElement;
-
-                btn.textContent = '✖ Cancel Export';
-                btn.classList.remove('primary');
-                btn.classList.add('danger');
-                btn.disabled = false;
-                btn.style.opacity = '1';
-
-                // Move to body to escape modal stacking context
-                document.body.appendChild(btn);
-                btn.style.position = 'fixed';
-                btn.style.top = rect.top + 'px';
-                btn.style.left = rect.left + 'px';
-                btn.style.zIndex = '99999999';
-
-                // Store original parent for restoration
-                btn.dataset.originalParent = '.action-bar';
-                btn.dataset.originalIndex = Array.from(originalParent.children).indexOf(btn);
+                btn.textContent = '⏳ Exporting...';
+                btn.disabled = true;
+                btn.style.opacity = '0.5';
             } else {
                 btn.textContent = '💾 Export';
-                btn.classList.remove('danger');
-                btn.classList.add('primary');
                 btn.disabled = false;
                 btn.style.opacity = '1';
-                btn.style.position = '';
-                btn.style.top = '';
-                btn.style.left = '';
-                btn.style.zIndex = '';
-
-                // Restore to original position
-                const actionBar = document.querySelector('.action-bar');
-                if (actionBar && btn.dataset.originalIndex !== undefined) {
-                    const index = parseInt(btn.dataset.originalIndex);
-                    const refBtn = actionBar.children[index];
-                    if (refBtn && refBtn !== btn) {
-                        actionBar.insertBefore(btn, refBtn);
-                    } else {
-                        actionBar.appendChild(btn);
-                    }
-                }
-                delete btn.dataset.originalParent;
-                delete btn.dataset.originalIndex;
             }
         }
 
