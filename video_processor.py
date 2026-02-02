@@ -258,11 +258,11 @@ class VideoProcessor:
 
         # Smoothing factor (much lower = much more smoothing)
         if smoothing == 'low':
-            smooth_factor = 0.02  # Very smooth
+            smooth_factor = 0.05  # Smooth
         elif smoothing == 'high':
-            smooth_factor = 0.15  # Less smooth, more responsive
+            smooth_factor = 0.25  # More responsive, faster movement
         else:  # medium
-            smooth_factor = 0.05  # Balanced
+            smooth_factor = 0.12  # Balanced
 
         # Create temporary directory for frames
         temp_dir = tempfile.mkdtemp()
