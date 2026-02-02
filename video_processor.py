@@ -33,6 +33,7 @@ class VideoProcessor:
 
         trim_settings = settings.get('trim', {})
         effect_markers = settings.get('effect_markers', [])
+        global_effects = settings.get('effects', {})
 
         # Parse trim settings
         start_time = '0'
@@ -43,55 +44,68 @@ class VideoProcessor:
         if trim_settings.get('end'):
             end_time = trim_settings['end']
 
-        # If no effect markers, just copy the video
+        # If no effect markers, create intermediate file for global effects
         if not effect_markers:
-            self._copy_video_with_trim(output_path, start_time, end_time, settings, cancel_flag)
-            return
+            intermediate_output = output_path
+            if global_effects.get('faceTracking'):
+                # Use intermediate file for global effects processing
+                intermediate_output = os.path.join(tempfile.mkdtemp(), 'intermediate.mp4')
+            self._copy_video_with_trim(intermediate_output, start_time, end_time, settings, cancel_flag)
+        else:
+            # Process timeline effect markers
+            # Sort markers by start time
+            sorted_markers = sorted(effect_markers, key=lambda m: m['start_time'])
 
-        # Sort markers by start time
-        sorted_markers = sorted(effect_markers, key=lambda m: m['start_time'])
+            # Create segments directory
+            segments_dir = tempfile.mkdtemp()
+            segment_files = []
 
-        # Create segments directory
-        segments_dir = tempfile.mkdtemp()
-        segment_files = []
+            current_time = 0  # in seconds
+            video_duration = self.total_frames / self.fps
 
-        current_time = 0  # in seconds
-        video_duration = self.total_frames / self.fps
+            try:
+                # Create segments based on effect markers
+                for i, marker in enumerate(sorted_markers):
+                    effect_type = marker['type']
+                    start = marker['start_time']
+                    end = marker['end_time']
 
-        try:
-            # Create segments based on effect markers
-            for i, marker in enumerate(sorted_markers):
-                effect_type = marker['type']
-                start = marker['start_time']
-                end = marker['end_time']
+                    # Add pre-effect segment (no effects)
+                    if start > current_time + 0.1:  # Only if there's meaningful time gap
+                        pre_end = start
+                        pre_segment = os.path.join(segments_dir, f'pre_{i}.mp4')
+                        self._create_segment(current_time, pre_end, pre_segment, settings, cancel_flag)
+                        segment_files.append(pre_segment)
 
-                # Add pre-effect segment (no effects)
-                if start > current_time + 0.1:  # Only if there's meaningful time gap
-                    pre_end = start
-                    pre_segment = os.path.join(segments_dir, f'pre_{i}.mp4')
-                    self._create_segment(current_time, pre_end, pre_segment, settings, cancel_flag)
-                    segment_files.append(pre_segment)
+                    # Add effect segment
+                    effect_segment = os.path.join(segments_dir, f'effect_{i}.mp4')
+                    self._create_effect_segment(start, end, effect_segment, effect_type, settings, cancel_flag)
+                    segment_files.append(effect_segment)
 
-                # Add effect segment
-                effect_segment = os.path.join(segments_dir, f'effect_{i}.mp4')
-                self._create_effect_segment(start, end, effect_segment, effect_type, settings, cancel_flag)
-                segment_files.append(effect_segment)
+                    current_time = end
 
-                current_time = end
+                # Add post-effects segment (no effects)
+                if current_time < video_duration - 0.1:
+                    post_segment = os.path.join(segments_dir, 'post_final.mp4')
+                    self._copy_video_with_trim(post_segment, self._format_time(current_time), end_time, settings, cancel_flag)
+                    segment_files.append(post_segment)
 
-            # Add post-effects segment (no effects)
-            if current_time < video_duration - 0.1:
-                post_segment = os.path.join(segments_dir, 'post_final.mp4')
-                self._copy_video_with_trim(post_segment, self._format_time(current_time), end_time, settings, cancel_flag)
-                segment_files.append(post_segment)
+                # Concatenate all segments to intermediate file
+                intermediate_output = os.path.join(segments_dir, 'concatenated.mp4')
+                self._concatenate_segments(segment_files, intermediate_output, settings, cancel_flag)
 
-            # Concatenate all segments
-            self._concatenate_segments(segment_files, output_path, settings, cancel_flag)
+            finally:
+                # Clean up segments directory
+                import shutil
+                shutil.rmtree(os.path.dirname(intermediate_output), ignore_errors=True)
 
-        finally:
-            # Clean up segments directory
+        # Apply global effects to the final output
+        if global_effects.get('faceTracking'):
+            self._apply_face_tracking(intermediate_output, output_path, global_effects, cancel_flag)
+        elif intermediate_output != output_path:
+            # Just move intermediate to final output if no global effects
             import shutil
-            shutil.rmtree(segments_dir, ignore_errors=True)
+            shutil.move(intermediate_output, output_path)
 
     def _format_time(self, seconds):
         """Format seconds to HH:MM:SS."""
@@ -213,6 +227,128 @@ class VideoProcessor:
 
         # Clean up concat file
         os.unlink(concat_file.name)
+
+    def _apply_face_tracking(self, input_path: str, output_path: str, effects: dict, cancel_flag=None):
+        """Apply face tracking with zoom and pan."""
+        import tempfile
+        import shutil
+
+        # Load face cascade
+        face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+
+        # Open video
+        cap = cv2.VideoCapture(input_path)
+        fps = int(cap.get(cv2.CAP_PROP_FPS))
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        # Get zoom level and smoothing
+        zoom_level = float(effects.get('faceZoomLevel', 1.5))
+        smoothing = effects.get('faceSmoothing', 'medium')
+
+        # Smoothing factor (lower = more smoothing)
+        if smoothing == 'low':
+            smooth_factor = 0.1
+        elif smoothing == 'high':
+            smooth_factor = 0.5
+        else:  # medium
+            smooth_factor = 0.3
+
+        # Create temporary directory for frames
+        temp_dir = tempfile.mkdtemp()
+        temp_output = os.path.join(temp_dir, 'output.mp4')
+
+        # Setup video writer
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(temp_output, fourcc, fps, (width, height))
+
+        # Calculate target size (zoomed in)
+        target_width = int(width / zoom_level)
+        target_height = int(height / zoom_level)
+
+        # Initialize smoothed position (center)
+        smooth_x = (width - target_width) // 2
+        smooth_y = (height - target_height) // 2
+
+        frame_count = 0
+
+        try:
+            while True:
+                if cancel_flag and cancel_flag():
+                    raise Exception("Cancelled by user")
+
+                ret, frame = cap.read()
+                if not ret:
+                    break
+
+                # Convert to grayscale for face detection
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+                # Detect faces
+                faces = face_cascade.detectMultiScale(gray, 1.1, 4)
+
+                if len(faces) > 0:
+                    # Use the largest face
+                    face = max(faces, key=lambda f: f[2] * f[3])
+                    x, y, w, h = face
+
+                    # Calculate center of face
+                    face_center_x = x + w // 2
+                    face_center_y = y + h // 2
+
+                    # Calculate crop position to center the face
+                    target_x = int(face_center_x - target_width // 2)
+                    target_y = int(face_center_y - target_height // 3)
+
+                    # Clamp to bounds
+                    target_x = max(0, min(target_x, width - target_width))
+                    target_y = max(0, min(target_y, height - target_height))
+                else:
+                    # No face detected, stay in center
+                    target_x = (width - target_width) // 2
+                    target_y = (height - target_height) // 2
+
+                # Smooth the movement
+                smooth_x = int(smooth_x + (target_x - smooth_x) * smooth_factor)
+                smooth_y = int(smooth_y + (target_y - smooth_y) * smooth_factor)
+
+                # Extract and resize the region
+                cropped = frame[smooth_y:smooth_y + target_height, smooth_x:smooth_x + target_width]
+                resized = cv2.resize(cropped, (width, height))
+
+                # Write frame
+                out.write(resized)
+
+                frame_count += 1
+                if frame_count % 30 == 0:
+                    print(f"Processed {frame_count}/{total_frames} frames")
+
+        finally:
+            cap.release()
+            out.release()
+
+        # Use ffmpeg to add audio to the output
+        ffmpeg_cmd = [
+            'ffmpeg', '-i', temp_output, '-i', input_path,
+            '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
+            '-c:a', 'aac', '-b:a', '192k',
+            '-map', '0:v:0', '-map', '1:a:0?',
+            '-movflags', '+faststart', '-y',
+            output_path
+        ]
+
+        if cancel_flag:
+            self._run_with_cancel(ffmpeg_cmd, cancel_flag)
+        else:
+            subprocess.run(ffmpeg_cmd, capture_output=True, check=True)
+
+        # Clean up temp directory
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+        # Clean up input if it was a temporary file
+        if input_path != output_path and os.path.exists(input_path):
+            os.remove(input_path)
 
     def __del__(self):
         """Cleanup on deletion."""
