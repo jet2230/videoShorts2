@@ -51,6 +51,21 @@ def index():
     return send_from_directory('.', 'index.html')
 
 
+@app.route('/videos/<path:filepath>')
+def serve_video(filepath):
+    """Serve video files from the videos directory."""
+    from urllib.parse import unquote
+
+    base_dir = Path(settings.get('video', 'output_dir'))
+    # filepath is URL-decoded by Flask automatically
+    video_path = base_dir / filepath
+
+    if not video_path.exists():
+        return jsonify({'error': 'File not found'}), 404
+
+    return send_from_directory(str(video_path.parent), video_path.name)
+
+
 @app.route('/api/settings', methods=['GET'])
 def get_settings():
     """Get current settings."""
@@ -68,6 +83,31 @@ def get_settings():
             'ai_model': settings.get('theme', 'ai_model'),
         }
     })
+
+
+@app.route('/api/settings', methods=['POST'])
+def save_settings():
+    """Save settings."""
+    data = request.json
+
+    # Update settings
+    if 'whisper' in data:
+        settings.set('whisper', 'model', data['whisper'].get('model', 'small'))
+        settings.set('whisper', 'language', data['whisper'].get('language', 'en'))
+
+    if 'video' in data:
+        settings.set('video', 'output_dir', data['video'].get('output_dir', 'videos'))
+        settings.set('video', 'aspect_ratio', data['video'].get('aspect_ratio', '9:16'))
+
+    if 'theme' in data:
+        settings.set('theme', 'ai_enabled', 'true' if data['theme'].get('ai_enabled', False) else 'false')
+        settings.set('theme', 'ai_model', data['theme'].get('ai_model', 'llama3'))
+
+    # Save to file
+    with open('settings.ini', 'w') as f:
+        settings.write(f)
+
+    return jsonify({'success': True})
 
 
 @app.route('/api/folders', methods=['GET'])
@@ -164,6 +204,40 @@ def get_themes(folder_number: str):
         'title': video_title,
         'themes': themes
     })
+
+
+@app.route('/api/shorts', methods=['GET'])
+def list_shorts():
+    """List all shorts from all folders."""
+    base_dir = Path(settings.get('video', 'output_dir'))
+    shorts = []
+
+    for folder in sorted(base_dir.iterdir()):
+        if folder.is_dir():
+            shorts_dir = folder / 'shorts'
+            if shorts_dir.exists():
+                for short_file in sorted(shorts_dir.glob('theme_*.mp4')):
+                    # Extract theme number from filename
+                    import re
+                    match = re.match(r'theme_(\d+)_', short_file.name)
+                    theme_num = int(match.group(1)) if match else 0
+
+                    # Get file size
+                    size_bytes = short_file.stat().st_size
+                    size_mb = round(size_bytes / (1024 * 1024), 2)
+
+                    shorts.append({
+                        'filename': short_file.name,
+                        'folder': folder.name,
+                        'folder_number': folder.name.split('_')[0],
+                        'theme_number': theme_num,
+                        'path': str(short_file.relative_to(base_dir)),
+                        'url_path': str(short_file.relative_to(base_dir)),
+                        'size': size_mb,
+                        'size_bytes': size_bytes
+                    })
+
+    return jsonify(shorts)
 
 
 @app.route('/api/process', methods=['POST'])

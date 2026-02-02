@@ -311,6 +311,206 @@
             content: '✓';
         }
 
+        .theme-play-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            background: var(--success);
+            border: none;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            color: white;
+            cursor: pointer;
+            margin-top: 8px;
+            transition: background 0.2s;
+        }
+
+        .theme-play-btn:hover {
+            background: #238a36;
+        }
+
+        .theme-play-btn::before {
+            content: '▶';
+            font-size: 8px;
+        }
+
+        .theme-header-row {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 6px;
+        }
+
+        /* Tooltip */
+        .tooltip {
+            position: fixed;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 1000;
+            max-width: 400px;
+            word-break: break-all;
+            display: none;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+        }
+
+        .tooltip.show {
+            display: block;
+        }
+
+        /* Video modal */
+        .video-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .video-modal.show {
+            display: flex;
+        }
+
+        .video-modal video {
+            max-width: 90%;
+            max-height: 90%;
+            border-radius: 8px;
+        }
+
+        .video-modal-close {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .video-modal-close:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        /* Shorts Grid */
+        .shorts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+        }
+
+        .short-item {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            transition: transform 0.2s, border-color 0.2s;
+            cursor: pointer;
+        }
+
+        .short-item:hover {
+            transform: translateY(-4px);
+            border-color: var(--accent);
+        }
+
+        .short-thumbnail {
+            width: 100%;
+            aspect-ratio: 9/16;
+            background: var(--bg-secondary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .short-thumbnail video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0.7;
+            transition: opacity 0.3s;
+        }
+
+        .short-thumbnail:hover video {
+            opacity: 1;
+        }
+
+        .short-thumbnail .play-icon {
+            position: absolute;
+            font-size: 48px;
+            color: white;
+            opacity: 0;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+            transition: opacity 0.3s, transform 0.3s;
+            pointer-events: none;
+        }
+
+        .short-thumbnail:hover .play-icon {
+            opacity: 0.9;
+            transform: scale(1.1);
+        }
+
+        .short-thumbnail canvas {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .short-info {
+            padding: 12px;
+        }
+
+        .short-title {
+            font-weight: 600;
+            margin-bottom: 8px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .short-meta {
+            font-size: 12px;
+            color: var(--text-secondary);
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .short-filename {
+            font-family: monospace;
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        .short-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .short-actions button {
+            flex: 1;
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
         /* Progress */
         .progress-container {
             display: none;
@@ -345,6 +545,27 @@
             font-size: 14px;
             color: var(--text-secondary);
             text-align: center;
+        }
+
+        .progress-cancel {
+            text-align: center;
+            margin-top: 12px;
+        }
+
+        .btn-cancel {
+            background: var(--error);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: none;
+        }
+
+        .btn-cancel:hover {
+            background: #cc0000;
         }
 
         /* Notifications */
@@ -428,6 +649,8 @@
         <div class="tabs">
             <button class="tab active" data-tab="library">Library</button>
             <button class="tab" data-tab="add">Add Video</button>
+            <button class="tab" data-tab="edit-shorts">Edit Shorts</button>
+            <button class="tab" data-tab="settings">Settings</button>
         </div>
 
         <!-- Library Tab -->
@@ -457,17 +680,6 @@
                     <input type="file" id="file-input" accept="video/*">
                 </div>
 
-                <div class="form-group">
-                    <label>Whisper Model</label>
-                    <select id="model-select">
-                        <option value="tiny">Tiny (fastest)</option>
-                        <option value="base">Base</option>
-                        <option value="small" selected>Small</option>
-                        <option value="medium">Medium</option>
-                        <option value="large">Large (best)</option>
-                    </select>
-                </div>
-
                 <button class="btn btn-primary" id="process-btn">
                     Process Video
                 </button>
@@ -477,6 +689,90 @@
                         <div class="progress-fill"></div>
                     </div>
                     <div class="progress-text" id="process-text">Processing...</div>
+                    <div class="progress-cancel">
+                        <button class="btn-cancel" id="cancel-process-btn">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Tab -->
+        <div id="settings-tab" class="tab-content">
+            <div class="card">
+                <div class="card-title">Settings</div>
+
+                <div class="form-group">
+                    <label>Whisper Model</label>
+                    <select id="setting-whisper-model">
+                        <option value="tiny">Tiny (fastest)</option>
+                        <option value="base">Base</option>
+                        <option value="small">Small</option>
+                        <option value="medium">Medium</option>
+                        <option value="large">Large (best)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Whisper Language</label>
+                    <select id="setting-whisper-language">
+                        <option value="en">English</option>
+                        <option value="ar">Arabic</option>
+                        <option value="es">Spanish</option>
+                        <option value="fr">French</option>
+                        <option value="de">German</option>
+                        <option value="auto">Auto-detect</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Video Output Directory</label>
+                    <input type="text" id="setting-video-output-dir">
+                </div>
+
+                <div class="form-group">
+                    <label>Aspect Ratio</label>
+                    <select id="setting-video-aspect-ratio">
+                        <option value="9:16">9:16 (Vertical/Shorts)</option>
+                        <option value="16:9">16:9 (Horizontal)</option>
+                        <option value="1:1">1:1 (Square)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="setting-ai-enabled">
+                        Enable AI Theme Detection
+                    </label>
+                </div>
+
+                <div class="form-group">
+                    <label>AI Model</label>
+                    <select id="setting-ai-model">
+                        <option value="llama3">Llama 3</option>
+                        <option value="mistral">Mistral</option>
+                        <option value="gemma">Gemma</option>
+                    </select>
+                </div>
+
+                <button class="btn btn-primary" id="save-settings-btn">Save Settings</button>
+            </div>
+        </div>
+
+        <!-- Edit Shorts Tab -->
+        <div id="edit-shorts-tab" class="tab-content">
+            <div class="card">
+                <div class="card-title">All Shorts</div>
+
+                <div style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;">
+                    <select id="shorts-folder-filter" style="flex: 1; min-width: 200px;">
+                        <option value="">All Videos</option>
+                    </select>
+                    <input type="text" id="shorts-search" placeholder="Search shorts..." style="flex: 1; min-width: 200px;">
+                    <button class="btn btn-secondary" id="refresh-shorts-btn">Refresh</button>
+                </div>
+
+                <div class="shorts-grid" id="shorts-grid">
+                    <div class="empty-state">Loading shorts...</div>
                 </div>
             </div>
         </div>
@@ -498,7 +794,26 @@
             </div>
         </div>
 
+        <div class="progress-container" id="task-progress" style="display: none;">
+            <div class="progress-bar">
+                <div class="progress-fill"></div>
+            </div>
+            <div class="progress-text" id="task-progress-text">Processing...</div>
+            <div class="progress-cancel">
+                <button class="btn-cancel" id="cancel-task-btn">Cancel</button>
+            </div>
+        </div>
+
         <div class="notification" id="notification"></div>
+
+        <!-- Tooltip for file path -->
+        <div class="tooltip" id="tooltip"></div>
+
+        <!-- Video modal -->
+        <div class="video-modal" id="video-modal">
+            <button class="video-modal-close" id="video-modal-close">&times;</button>
+            <video id="video-player" controls></video>
+        </div>
     </div>
 
     <script>
@@ -515,8 +830,15 @@
                 tab.classList.add('active');
                 document.getElementById(`${tab.dataset.tab}-tab`).classList.add('active');
 
+                // Hide themes panel when switching tabs
+                document.getElementById('themes-panel').style.display = 'none';
+
                 if (tab.dataset.tab === 'library') {
                     loadFolders();
+                } else if (tab.dataset.tab === 'settings') {
+                    loadSettings();
+                } else if (tab.dataset.tab === 'edit-shorts') {
+                    loadShorts();
                 }
             });
         });
@@ -578,6 +900,276 @@
             }
         }
 
+        // Load settings
+        async function loadSettings() {
+            try {
+                const response = await fetch(`${API_BASE}/settings`);
+                const settings = await response.json();
+
+                document.getElementById('setting-whisper-model').value = settings.whisper.model;
+                document.getElementById('setting-whisper-language').value = settings.whisper.language;
+                document.getElementById('setting-video-output-dir').value = settings.video.output_dir;
+                document.getElementById('setting-video-aspect-ratio').value = settings.video.aspect_ratio;
+                document.getElementById('setting-ai-enabled').checked = settings.theme.ai_enabled;
+                document.getElementById('setting-ai-model').value = settings.theme.ai_model;
+            } catch (error) {
+                showNotification('Error loading settings: ' + error.message, 'error');
+            }
+        }
+
+        // Save settings
+        document.getElementById('save-settings-btn').addEventListener('click', async () => {
+            const settings = {
+                whisper: {
+                    model: document.getElementById('setting-whisper-model').value,
+                    language: document.getElementById('setting-whisper-language').value,
+                },
+                video: {
+                    output_dir: document.getElementById('setting-video-output-dir').value,
+                    aspect_ratio: document.getElementById('setting-video-aspect-ratio').value,
+                },
+                theme: {
+                    ai_enabled: document.getElementById('setting-ai-enabled').checked,
+                    ai_model: document.getElementById('setting-ai-model').value,
+                }
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}/settings`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(settings)
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to save settings');
+                }
+
+                showNotification('Settings saved successfully!', 'success');
+            } catch (error) {
+                showNotification('Error saving settings: ' + error.message, 'error');
+            }
+        });
+
+        // Store shorts data globally
+        let allShorts = [];
+
+        // Load shorts
+        async function loadShorts() {
+            try {
+                const response = await fetch(`${API_BASE}/shorts`);
+                allShorts = await response.json();
+
+                // Populate folder filter dropdown
+                const folderFilter = document.getElementById('shorts-folder-filter');
+                const folders = [...new Set(allShorts.map(s => s.folder))];
+
+                // Save current selection
+                const currentSelection = folderFilter.value;
+
+                folderFilter.innerHTML = '<option value="">All Videos</option>' +
+                    folders.map(folder => `<option value="${folder}">${folder.replace(/^\d+_/, '').replace(/_/g, ' ')}</option>`).join('');
+
+                // Restore selection if still valid
+                if (folders.includes(currentSelection)) {
+                    folderFilter.value = currentSelection;
+                }
+
+                // Apply filters and display
+                filterAndDisplayShorts();
+
+            } catch (error) {
+                showNotification('Error loading shorts: ' + error.message, 'error');
+            }
+        }
+
+        // Filter and display shorts based on folder and search
+        function filterAndDisplayShorts() {
+            const folderFilter = document.getElementById('shorts-folder-filter').value;
+            const searchTerm = document.getElementById('shorts-search').value.toLowerCase();
+
+            // Filter shorts
+            const filteredShorts = allShorts.filter(short => {
+                const matchesFolder = !folderFilter || short.folder === folderFilter;
+                const matchesSearch = !searchTerm ||
+                    short.filename.toLowerCase().includes(searchTerm) ||
+                    short.folder.toLowerCase().includes(searchTerm) ||
+                    `theme ${short.theme_number}`.includes(searchTerm);
+
+                return matchesFolder && matchesSearch;
+            });
+
+            const container = document.getElementById('shorts-grid');
+            if (filteredShorts.length === 0) {
+                container.innerHTML = '<div class="empty-state">No shorts found matching your filters.</div>';
+                return;
+            }
+
+            container.innerHTML = filteredShorts.map(short => {
+                // Properly encode URL path components
+                const pathParts = short.url_path.split('/');
+                const encodedPath = pathParts.map(part => encodeURIComponent(part)).join('/');
+                const videoUrl = '/videos/' + encodedPath.replace(/^\/+/, '');
+                const displayName = short.filename.replace(/_/g, ' ').replace('.mp4', '');
+                const folderName = short.folder.replace(/^\d+_/, '').replace(/_/g, ' ');
+
+                return `
+                    <div class="short-item" data-video-url="${videoUrl}" data-filename="${short.filename}">
+                        <div class="short-thumbnail">
+                            <video src="${videoUrl}" preload="metadata" muted loop playsinline></video>
+                            <div class="play-icon">▶</div>
+                        </div>
+                        <div class="short-info">
+                            <div class="short-title" title="${displayName}">${displayName}</div>
+                            <div class="short-meta">
+                                <span>📁 ${folderName}</span>
+                                <span>🎬 Theme ${short.theme_number}</span>
+                                <span>📦 ${short.size} MB</span>
+                            </div>
+                            <div class="short-filename">${short.filename}</div>
+                            <div class="short-actions">
+                                <button class="btn btn-secondary btn-play" data-url="${videoUrl}">Play</button>
+                                <button class="btn btn-secondary btn-download" data-url="${videoUrl}" data-filename="${short.filename}">Download</button>
+                            </div>
+                            <div class="short-actions">
+                                <button class="btn btn-secondary btn-edit" data-path="${short.path}" data-filename="${short.filename}" style="width: 100%;">Edit</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // Add play button handlers
+            container.querySelectorAll('.btn-play').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    // Find the video in this card and play/pause it
+                    const card = btn.closest('.short-item');
+                    const video = card.querySelector('video');
+                    const playIcon = card.querySelector('.play-icon');
+                    if (video) {
+                        if (video.paused) {
+                            stopAllVideos(video);
+                            video.muted = false;
+                            video.play();
+                            if (playIcon) playIcon.style.display = 'none';
+                        } else {
+                            video.pause();
+                            if (playIcon) playIcon.style.display = 'block';
+                        }
+                    }
+                });
+            });
+
+            // Add download button handlers
+            container.querySelectorAll('.btn-download').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const a = document.createElement('a');
+                    a.href = btn.dataset.url;
+                    a.download = btn.dataset.filename;
+                    a.click();
+                });
+            });
+
+            // Add edit button handlers
+            container.querySelectorAll('.btn-edit').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    showNotification('Edit feature coming soon! For now, use video editing software.', 'error');
+                });
+            });
+
+            // Add click handler to play/pause video in thumbnail
+            container.querySelectorAll('.short-thumbnail').forEach(thumbnail => {
+                const video = thumbnail.querySelector('video');
+                const playIcon = thumbnail.querySelector('.play-icon');
+
+                // Toggle play/pause on click
+                thumbnail.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (video.paused) {
+                        stopAllVideos(video);
+                        // Only reset to 0 if video hasn't started or has ended
+                        if (video.currentTime === 0 || video.ended) {
+                            video.currentTime = 0;
+                        }
+                        video.muted = false;
+                        video.play();
+                        if (playIcon) playIcon.style.display = 'none';
+                    } else {
+                        video.pause();
+                        if (playIcon) playIcon.style.display = 'block';
+                    }
+                });
+
+                // Show play icon when video ends
+                video.addEventListener('ended', () => {
+                    if (playIcon) playIcon.style.display = 'block';
+                });
+            });
+
+            // Remove hover playback since click now controls it
+            // Add click handler for the whole card (but not video or buttons)
+            container.querySelectorAll('.short-item').forEach(item => {
+                item.addEventListener('click', (e) => {
+                    // Don't trigger if clicking on video, buttons, or actions
+                    if (e.target.closest('.short-thumbnail') ||
+                        e.target.closest('.short-actions') ||
+                        e.target.closest('button')) {
+                        return;
+                    }
+
+                    // Toggle play/pause the video in the thumbnail
+                    const video = item.querySelector('video');
+                    const playIcon = item.querySelector('.play-icon');
+                    if (video) {
+                        if (video.paused) {
+                            stopAllVideos(video);
+                            // Only reset to 0 if video hasn't started or has ended
+                            if (video.currentTime === 0 || video.ended) {
+                                video.currentTime = 0;
+                            }
+                            video.muted = false;
+                            video.play();
+                            if (playIcon) playIcon.style.display = 'none';
+                        } else {
+                            video.pause();
+                            if (playIcon) playIcon.style.display = 'block';
+                        }
+                    }
+                });
+            });
+        }
+
+        // Stop all videos except the one being played
+        function stopAllVideos(exceptVideo) {
+            document.querySelectorAll('.short-thumbnail video').forEach(video => {
+                if (video !== exceptVideo) {
+                    video.pause();
+                    video.currentTime = 0;
+                    video.muted = true;
+                    const playIcon = video.parentElement.querySelector('.play-icon');
+                    if (playIcon) playIcon.style.display = 'block';
+                }
+            });
+        }
+
+        // Refresh shorts button
+        document.getElementById('refresh-shorts-btn').addEventListener('click', () => {
+            loadShorts();
+        });
+
+        // Folder filter change
+        document.getElementById('shorts-folder-filter').addEventListener('change', () => {
+            filterAndDisplayShorts();
+        });
+
+        // Search input
+        document.getElementById('shorts-search').addEventListener('input', () => {
+            filterAndDisplayShorts();
+        });
+
         // Display themes
         function displayThemes(data) {
             const panel = document.getElementById('themes-panel');
@@ -598,7 +1190,10 @@
                     <div class="theme-content">
                         <div class="theme-header">
                             <span class="theme-number">Theme ${theme.number}</span>
-                            ${theme.short_created ? '<span class="theme-created-badge">Short Created</span>' : `<span class="theme-duration">${theme.end}</span>`}
+                            <div class="theme-header-row">
+                                ${theme.short_created ? '<span class="theme-created-badge">Short Created</span>' : `<span class="theme-duration">${theme.end}</span>`}
+                                ${theme.short_created ? `<button class="theme-play-btn" data-video-path="${theme.short_info.path}">Play</button>` : ''}
+                            </div>
                         </div>
                         <div class="theme-title">${theme.title}</div>
                         <div class="theme-time">${theme.start} - ${theme.end}</div>
@@ -611,8 +1206,55 @@
                 checkbox.addEventListener('change', updateCreateButton);
             });
 
+            // Add hover and click handlers for play buttons
+            const tooltip = document.getElementById('tooltip');
+            const videoModal = document.getElementById('video-modal');
+            const videoPlayer = document.getElementById('video-player');
+
+            container.querySelectorAll('.theme-play-btn').forEach(btn => {
+                const videoPath = btn.dataset.videoPath;
+                // Convert file path to URL
+                const videoUrl = '/' + videoPath.replace(/^\/+/, '');
+
+                // Hover tooltip
+                btn.addEventListener('mouseenter', (e) => {
+                    tooltip.textContent = videoPath;
+                    tooltip.classList.add('show');
+                    updateTooltipPosition(e);
+                });
+
+                btn.addEventListener('mousemove', updateTooltipPosition);
+
+                btn.addEventListener('mouseleave', () => {
+                    tooltip.classList.remove('show');
+                });
+
+                // Click to play video
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    videoPlayer.src = videoUrl;
+                    videoModal.classList.add('show');
+                    videoPlayer.play();
+                });
+            });
+
             // Scroll to themes panel
             panel.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function updateTooltipPosition(e) {
+            const tooltip = document.getElementById('tooltip');
+            const x = e.clientX + 15;
+            const y = e.clientY + 15;
+
+            // Keep tooltip within viewport
+            const maxX = window.innerWidth - tooltip.offsetWidth - 10;
+            const maxY = window.innerHeight - tooltip.offsetHeight - 10;
+
+            tooltip.style.left = Math.min(x, maxX) + 'px';
+            tooltip.style.top = Math.min(y, maxY) + 'px';
         }
 
         // Update create shorts button
@@ -640,7 +1282,7 @@
         document.getElementById('process-btn').addEventListener('click', async () => {
             const url = document.getElementById('url-input').value.trim();
             const file = document.getElementById('file-input').files[0];
-            const model = document.getElementById('model-select').value;
+            const model = 'small'; // Default model
 
             if (!url && !file) {
                 showNotification('Please enter a URL or select a file', 'error');
@@ -649,8 +1291,10 @@
 
             const progressContainer = document.getElementById('process-progress');
             const progressText = document.getElementById('process-text');
+            const cancelBtn = document.getElementById('cancel-process-btn');
             progressContainer.classList.add('active');
             document.getElementById('process-btn').disabled = true;
+            cancelBtn.style.display = 'inline-block';
 
             try {
                 const payload = { model };
@@ -668,6 +1312,7 @@
                 }
 
                 const { task_id } = await response.json();
+                currentTaskId = task_id;
                 await monitorTask(task_id, (status) => {
                     progressText.textContent = `Processing: ${status.type}...`;
                 });
@@ -688,6 +1333,29 @@
             } finally {
                 progressContainer.classList.remove('active');
                 document.getElementById('process-btn').disabled = false;
+                cancelBtn.style.display = 'none';
+                currentTaskId = null;
+            }
+        });
+
+        // Cancel process
+        document.getElementById('cancel-process-btn').addEventListener('click', async () => {
+            if (!currentTaskId) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/task/${currentTaskId}/cancel`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    showNotification('Process cancelled', 'success');
+                    currentTaskId = null;
+                    document.getElementById('process-progress').classList.remove('active');
+                    document.getElementById('process-btn').disabled = false;
+                    document.getElementById('cancel-process-btn').style.display = 'none';
+                }
+            } catch (error) {
+                showNotification('Error cancelling: ' + error.message, 'error');
             }
         });
 
@@ -695,7 +1363,20 @@
         document.getElementById('regenerate-btn').addEventListener('click', async () => {
             if (!selectedFolder) return;
 
-            const model = document.getElementById('model-select').value;
+            const model = 'small'; // Default model
+            const taskProgress = document.getElementById('task-progress');
+            const taskProgressText = document.getElementById('task-progress-text');
+            const cancelTaskBtn = document.getElementById('cancel-task-btn');
+
+            taskProgress.style.display = 'block';
+            taskProgressText.textContent = 'Regenerating themes...';
+            cancelTaskBtn.style.display = 'inline-block';
+
+            // Disable buttons
+            document.getElementById('select-all-btn').disabled = true;
+            document.getElementById('deselect-all-btn').disabled = true;
+            document.getElementById('regenerate-btn').disabled = true;
+            document.getElementById('create-shorts-btn').disabled = true;
 
             try {
                 const response = await fetch(`${API_BASE}/regenerate-themes`, {
@@ -707,7 +1388,7 @@
                 if (!response.ok) throw new Error('Failed to regenerate themes');
 
                 const { task_id } = await response.json();
-                showNotification('Regenerating themes...', 'success');
+                currentTaskId = task_id;
 
                 await monitorTask(task_id);
 
@@ -716,6 +1397,11 @@
                 showNotification('Themes regenerated!', 'success');
             } catch (error) {
                 showNotification('Error: ' + error.message, 'error');
+            } finally {
+                taskProgress.style.display = 'none';
+                cancelTaskBtn.style.display = 'none';
+                currentTaskId = null;
+                updateCreateButton();
             }
         });
 
@@ -727,6 +1413,20 @@
                 .map(cb => parseInt(cb.dataset.theme));
 
             if (checkedThemes.length === 0) return;
+
+            const taskProgress = document.getElementById('task-progress');
+            const taskProgressText = document.getElementById('task-progress-text');
+            const cancelTaskBtn = document.getElementById('cancel-task-btn');
+
+            taskProgress.style.display = 'block';
+            taskProgressText.textContent = 'Creating shorts...';
+            cancelTaskBtn.style.display = 'inline-block';
+
+            // Disable buttons
+            document.getElementById('select-all-btn').disabled = true;
+            document.getElementById('deselect-all-btn').disabled = true;
+            document.getElementById('regenerate-btn').disabled = true;
+            document.getElementById('create-shorts-btn').disabled = true;
 
             try {
                 const response = await fetch(`${API_BASE}/create-shorts`, {
@@ -741,15 +1441,42 @@
                 if (!response.ok) throw new Error('Failed to create shorts');
 
                 const { task_id } = await response.json();
-                showNotification('Creating shorts...', 'success');
+                currentTaskId = task_id;
 
                 await monitorTask(task_id);
 
-                // Reload folder list
+                // Reload folder list and themes to show green badges
                 loadFolders();
+                selectFolder(selectedFolder);
                 showNotification('Shorts created!', 'success');
             } catch (error) {
                 showNotification('Error: ' + error.message, 'error');
+            } finally {
+                taskProgress.style.display = 'none';
+                cancelTaskBtn.style.display = 'none';
+                currentTaskId = null;
+                updateCreateButton();
+            }
+        });
+
+        // Cancel task (for regenerate/create operations)
+        document.getElementById('cancel-task-btn').addEventListener('click', async () => {
+            if (!currentTaskId) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/task/${currentTaskId}/cancel`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    showNotification('Task cancelled', 'success');
+                    document.getElementById('task-progress').style.display = 'none';
+                    document.getElementById('cancel-task-btn').style.display = 'none';
+                    currentTaskId = null;
+                    updateCreateButton();
+                }
+            } catch (error) {
+                showNotification('Error cancelling: ' + error.message, 'error');
             }
         });
 
@@ -769,6 +1496,9 @@
                         } else if (task.status === 'failed') {
                             clearInterval(interval);
                             reject(new Error(task.error || 'Task failed'));
+                        } else if (task.status === 'cancelled') {
+                            clearInterval(interval);
+                            reject(new Error('Task was cancelled'));
                         }
                     } catch (error) {
                         clearInterval(interval);
@@ -784,10 +1514,31 @@
             notification.textContent = message;
             notification.className = `notification ${type} show`;
 
+            // Scroll to notification
+            notification.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
             setTimeout(() => {
                 notification.classList.remove('show');
             }, 3000);
         }
+
+        // Video modal controls
+        document.getElementById('video-modal-close').addEventListener('click', () => {
+            const videoModal = document.getElementById('video-modal');
+            const videoPlayer = document.getElementById('video-player');
+            videoPlayer.pause();
+            videoPlayer.src = '';
+            videoModal.classList.remove('show');
+        });
+
+        document.getElementById('video-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'video-modal') {
+                const videoPlayer = document.getElementById('video-player');
+                videoPlayer.pause();
+                videoPlayer.src = '';
+                e.target.classList.remove('show');
+            }
+        });
 
         // Initial load
         loadFolders();
