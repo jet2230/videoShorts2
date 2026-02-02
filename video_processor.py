@@ -238,6 +238,7 @@ class VideoProcessor:
 
     def _apply_face_tracking(self, input_path: str, output_path: str, effects: dict, cancel_flag=None):
         """Apply face tracking with zoom and pan."""
+        import os
         import tempfile
         import shutil
 
