@@ -256,13 +256,13 @@ class VideoProcessor:
         zoom_level = float(effects.get('faceZoomLevel', 1.5))
         smoothing = effects.get('faceSmoothing', 'medium')
 
-        # Smoothing factor (lower = more smoothing)
+        # Smoothing factor (much lower = much more smoothing)
         if smoothing == 'low':
-            smooth_factor = 0.1
+            smooth_factor = 0.02  # Very smooth
         elif smoothing == 'high':
-            smooth_factor = 0.5
+            smooth_factor = 0.15  # Less smooth, more responsive
         else:  # medium
-            smooth_factor = 0.3
+            smooth_factor = 0.05  # Balanced
 
         # Create temporary directory for frames
         temp_dir = tempfile.mkdtemp()
@@ -276,9 +276,14 @@ class VideoProcessor:
         target_width = int(width / zoom_level)
         target_height = int(height / zoom_level)
 
-        # Initialize smoothed position (center)
-        smooth_x = (width - target_width) // 2
-        smooth_y = (height - target_height) // 2
+        # Initialize smoothed position (center) - use float for precision
+        smooth_x = float(width - target_width) / 2.0
+        smooth_y = float(height - target_height) / 2.0
+
+        # Track previous valid positions for stability
+        prev_valid_x = smooth_x
+        prev_valid_y = smooth_y
+        no_face_count = 0
 
         frame_count = 0
 
@@ -294,8 +299,11 @@ class VideoProcessor:
                 # Convert to grayscale for face detection
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-                # Detect faces
-                faces = face_cascade.detectMultiScale(gray, 1.1, 4)
+                # Detect faces with more conservative parameters for stability
+                faces = face_cascade.detectMultiScale(gray, scaleFactor=1.05, minNeighbors=5, minSize=(50, 50))
+
+                target_x = smooth_x
+                target_y = smooth_y
 
                 if len(faces) > 0:
                     # Use the largest face
@@ -307,23 +315,46 @@ class VideoProcessor:
                     face_center_y = y + h // 2
 
                     # Calculate crop position to center the face
-                    target_x = int(face_center_x - target_width // 2)
-                    target_y = int(face_center_y - target_height // 3)
+                    new_target_x = float(face_center_x - target_width // 2)
+                    new_target_y = float(face_center_y - target_height // 3)
 
-                    # Clamp to bounds
-                    target_x = max(0, min(target_x, width - target_width))
-                    target_y = max(0, min(target_y, height - target_height))
+                    # Validate the new position - reject large jumps
+                    max_jump = max(target_width, target_height) * 0.3
+                    if abs(new_target_x - prev_valid_x) < max_jump and abs(new_target_y - prev_valid_y) < max_jump:
+                        target_x = new_target_x
+                        target_y = new_target_y
+                        prev_valid_x = target_x
+                        prev_valid_y = target_y
+                        no_face_count = 0
+                    else:
+                        # Jump too large, use previous valid position
+                        target_x = prev_valid_x
+                        target_y = prev_valid_y
                 else:
-                    # No face detected, stay in center
-                    target_x = (width - target_width) // 2
-                    target_y = (height - target_height) // 2
+                    # No face detected, gradually return to center over time
+                    no_face_count += 1
+                    center_x = float(width - target_width) / 2.0
+                    center_y = float(height - target_height) / 2.0
 
-                # Smooth the movement
-                smooth_x = int(smooth_x + (target_x - smooth_x) * smooth_factor)
-                smooth_y = int(smooth_y + (target_y - smooth_y) * smooth_factor)
+                    # Very slowly move to center if no face for a while
+                    if no_face_count > 30:
+                        target_x = center_x
+                        target_y = center_y
+
+                # Clamp to bounds
+                target_x = max(0, min(target_x, width - target_width))
+                target_y = max(0, min(target_y, height - target_height))
+
+                # Smooth the movement with float precision
+                smooth_x = smooth_x + (target_x - smooth_x) * smooth_factor
+                smooth_y = smooth_y + (target_y - smooth_y) * smooth_factor
+
+                # Convert to int for array slicing
+                smooth_x_int = int(smooth_x)
+                smooth_y_int = int(smooth_y)
 
                 # Extract and resize the region
-                cropped = frame[smooth_y:smooth_y + target_height, smooth_x:smooth_x + target_width]
+                cropped = frame[smooth_y_int:smooth_y_int + target_height, smooth_x_int:smooth_x_int + target_width]
                 resized = cv2.resize(cropped, (width, height))
 
                 # Write frame
