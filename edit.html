@@ -2585,6 +2585,10 @@
 
         // Apply all active effects to the video
         function applyVideoEffects() {
+            // Check if face tracking is enabled and preserve its transform
+            const faceTrackingEnabled = document.getElementById('faceTracking').checked;
+            const faceTrackingZoom = faceTrackingEnabled ? parseFloat(document.getElementById('faceZoomLevel').value) : null;
+
             // Reset video styles
             video.style.transform = '';
             video.style.filter = '';
@@ -2610,6 +2614,13 @@
                         video.style.transformOrigin = 'center center';
                         break;
                 }
+            }
+
+            // Re-apply face tracking transform on top of timeline effects
+            if (faceTrackingEnabled && faceTrackingZoom) {
+                video.style.transform = (video.style.transform || '') + ` scale(${faceTrackingZoom})`;
+                video.style.transformOrigin = 'center center';
+                video.style.objectFit = 'cover';
             }
         }
 
@@ -2667,6 +2678,9 @@
                 video.dataset.faceTracking = 'false';
                 resetVideoTransform();
             }
+
+            // Re-apply all video effects to include/exclude face tracking
+            applyVideoEffects();
         }
 
         // Preview face tracking effect on the video
