@@ -517,6 +517,7 @@ def process_video_edit():
 def run_edit_task(edit_id: str, input_video: str, output_video: str, edit_settings: dict):
     """Run video edit in background thread."""
     from video_processor import VideoProcessor
+    import os
 
     try:
         with task_lock:
@@ -538,9 +539,21 @@ def run_edit_task(edit_id: str, input_video: str, output_video: str, edit_settin
         error_details = traceback.format_exc()
         print(f"Processing error: {error_details}")
 
+        # Clean up partial output file on error or cancellation
+        if os.path.exists(output_video):
+            try:
+                os.remove(output_video)
+                print(f"Cleaned up partial output file: {output_video}")
+            except Exception as cleanup_error:
+                print(f"Failed to clean up output file: {cleanup_error}")
+
         with task_lock:
-            edit_processes[edit_id]['status'] = 'failed'
-            edit_processes[edit_id]['error'] = str(e)
+            # Check if this was a cancellation
+            if edit_processes.get(edit_id, {}).get('cancelled'):
+                edit_processes[edit_id]['status'] = 'cancelled'
+            else:
+                edit_processes[edit_id]['status'] = 'failed'
+                edit_processes[edit_id]['error'] = str(e)
 
 
 @app.route('/api/process-edit/<edit_id>/cancel', methods=['POST'])
