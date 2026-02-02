@@ -95,9 +95,22 @@ class VideoProcessor:
                     self._copy_video_with_trim(post_segment, self._format_time(current_time), end_time, settings, cancel_flag)
                     segment_files.append(post_segment)
 
-                # Concatenate all segments to intermediate file
-                intermediate_output = os.path.join(segments_dir, 'concatenated.mp4')
-                self._concatenate_segments(segment_files, intermediate_output, settings, cancel_flag)
+                # If face tracking is enabled, concatenate to a temp file outside segments_dir
+                # Otherwise, concatenate directly to intermediate output
+                if global_effects.get('faceTracking'):
+                    # Concatenate to a temporary intermediate file for face tracking
+                    temp_concat = os.path.join(segments_dir, 'temp_concat.mp4')
+                    self._concatenate_segments(segment_files, temp_concat, settings, cancel_flag)
+
+                    # Move to a temp location outside segments_dir for face tracking
+                    temp_dir_for_cleanup = tempfile.mkdtemp()
+                    intermediate_output = os.path.join(temp_dir_for_cleanup, 'intermediate.mp4')
+                    import shutil
+                    shutil.move(temp_concat, intermediate_output)
+                else:
+                    # No face tracking, concatenate directly to output
+                    intermediate_output = output_path
+                    self._concatenate_segments(segment_files, intermediate_output, settings, cancel_flag)
 
             # Apply global effects to the final output
             if global_effects.get('faceTracking'):
