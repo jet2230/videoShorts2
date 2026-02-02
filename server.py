@@ -52,6 +52,12 @@ def index():
     return send_from_directory('.', 'index.html')
 
 
+@app.route('/edit.html')
+def edit_page():
+    """Serve the editor page."""
+    return send_from_directory('.', 'edit.html')
+
+
 @app.route('/videos/<path:filepath>')
 def serve_video(filepath):
     """Serve video files from the videos directory."""
@@ -455,6 +461,47 @@ def cancel_task(task_id: str):
             tasks[task_id]['status'] = 'cancelled'
 
         return jsonify({'success': True})
+
+
+@app.route('/api/process-edit', methods=['POST'])
+def process_video_edit():
+    """Process video with effects including face tracking."""
+    from video_processor import VideoProcessor
+
+    data = request.json
+    video_path = data.get('video_path')
+    edit_settings = data.get('settings', {})
+
+    if not video_path:
+        return jsonify({'error': 'video_path is required'}), 400
+
+    # Construct full video path
+    base_dir = Path(settings.get('video', 'output_dir'))
+    input_video = base_dir / video_path
+
+    if not input_video.exists():
+        return jsonify({'error': f'Video not found: {video_path}'}), 404
+
+    # Generate output path
+    output_filename = f"edited_{input_video.name}"
+    output_video = input_video.parent / 'shorts' / output_filename
+    output_video.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        # Process video
+        processor = VideoProcessor(str(input_video))
+        processor.apply_effects(str(output_video), edit_settings)
+
+        return jsonify({
+            'success': True,
+            'message': 'Video processed successfully',
+            'output_path': str(output_video.relative_to(base_dir)),
+            'settings_applied': edit_settings
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 
 if __name__ == '__main__':

@@ -1102,8 +1102,10 @@
                 const editBtn = document.createElement('button');
                 editBtn.className = 'btn btn-secondary btn-edit';
                 editBtn.textContent = 'Edit';
-                editBtn.dataset.path = short.path;
+                editBtn.dataset.path = short.url_path;
                 editBtn.dataset.filename = short.filename;
+                editBtn.dataset.folderNumber = short.folder_number;
+                editBtn.dataset.themeNumber = short.theme_number;
                 editBtn.style.width = '100%';
 
                 actions2.appendChild(editBtn);
@@ -1157,7 +1159,10 @@
             container.querySelectorAll('.btn-edit').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    showNotification('Edit feature coming soon! For now, use video editing software.', 'error');
+                    const videoPath = btn.dataset.path;
+                    const folderNumber = btn.dataset.folderNumber;
+                    const themeNumber = btn.dataset.themeNumber;
+                    window.open(`edit.html?video=${encodeURIComponent(videoPath)}&folder=${folderNumber}&theme=${themeNumber}`, '_blank');
                 });
             });
 

@@ -1,0 +1,2081 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Editor - YouTube Shorts Creator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            color: #eee;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 30px;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid #333;
+        }
+
+        .header h1 {
+            font-size: 20px;
+            color: #00ff9d;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .back-btn {
+            background: #333;
+            color: #fff;
+            border: 1px solid #555;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .back-btn:hover {
+            background: #444;
+            transform: translateX(-3px);
+        }
+
+        .editor-layout {
+            display: flex;
+            height: calc(100vh - 60px);
+            position: relative;
+        }
+
+        .toolbar-left, .toolbar-right {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 0;
+            overflow-y: visible;
+            z-index: 10;
+        }
+
+        .toolbar-left {
+            position: absolute;
+            left: 5px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        .toolbar-right {
+            position: absolute;
+            right: 5px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        .tool-btn {
+            width: 60px;
+            height: 60px;
+            border: none;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            color: #fff;
+            font-size: 24px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .tool-btn:hover {
+            background: rgba(0, 255, 157, 0.3);
+            transform: scale(1.1);
+        }
+
+        .tool-btn.active {
+            background: linear-gradient(135deg, #00ff9d 0%, #00cc7d 100%);
+            color: #000;
+            box-shadow: 0 0 20px rgba(0, 255, 157, 0.5);
+        }
+
+        .tool-btn .tooltip {
+            position: absolute;
+            bottom: -30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: #fff;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 11px;
+            white-space: nowrap;
+            opacity: 0;
+            transition: opacity 0.2s;
+            pointer-events: none;
+        }
+
+        .toolbar-left .tool-btn .tooltip {
+            left: 100%;
+            right: auto;
+            bottom: 50%;
+            transform: translateY(50%) translateX(10px);
+        }
+
+        .toolbar-right .tool-btn .tooltip {
+            right: 100%;
+            left: auto;
+            bottom: 50%;
+            transform: translateY(50%) translateX(-10px);
+        }
+
+        .tool-btn:hover .tooltip {
+            opacity: 1;
+        }
+
+        .tool-panel {
+            position: fixed;
+            background: rgba(20, 20, 30, 0.98);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 20px;
+            width: 300px;
+            max-height: 80vh;
+            overflow-y: scroll !important;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(0, 255, 157, 0.6) rgba(255, 255, 255, 0.05);
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .tool-panel.visible {
+            opacity: 1 !important;
+            visibility: visible !important;
+        }
+
+        .tool-panel::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        .tool-panel::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 5px;
+        }
+
+        .tool-panel::-webkit-scrollbar-thumb {
+            background: rgba(0, 255, 157, 0.6);
+            border-radius: 5px;
+        }
+
+        .tool-panel::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 255, 157, 0.8);
+        }
+
+        .tool-panel h3 {
+            font-size: 16px;
+            color: #00ff9d;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .tool-panel h3 .icon {
+            font-size: 20px;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        .control-group label {
+            display: block;
+            font-size: 12px;
+            color: #aaa;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .control-group input[type="text"],
+        .control-group input[type="number"],
+        .control-group select {
+            width: 100%;
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid #444;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+
+        .control-group input:focus,
+        .control-group select:focus {
+            outline: none;
+            border-color: #00ff9d;
+        }
+
+        .range-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .range-wrapper input[type="range"] {
+            flex: 1;
+            height: 6px;
+            background: #333;
+            border-radius: 3px;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .range-wrapper input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            background: #00ff9d;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(0, 255, 157, 0.5);
+        }
+
+        .range-wrapper .value {
+            min-width: 55px;
+            text-align: right;
+            font-size: 13px;
+            color: #00ff9d;
+            font-weight: 600;
+        }
+
+        .time-inputs {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .time-inputs input {
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid #444;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 13px;
+            text-align: center;
+        }
+
+        .time-inputs span {
+            color: #666;
+            font-size: 12px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .checkbox-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .checkbox-item input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: #00ff9d;
+        }
+
+        .checkbox-item span {
+            font-size: 13px;
+        }
+
+        .file-upload {
+            border: 2px dashed #444;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .file-upload:hover {
+            border-color: #00ff9d;
+            background: rgba(0, 255, 157, 0.05);
+        }
+
+        .file-upload.has-file {
+            border-color: #00ff9d;
+            background: rgba(0, 255, 157, 0.1);
+        }
+
+        .file-upload input {
+            display: none;
+        }
+
+        .file-upload .icon {
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+
+        .file-upload .text {
+            font-size: 12px;
+            color: #aaa;
+        }
+
+        .file-upload .filename {
+            font-size: 11px;
+            color: #00ff9d;
+            margin-top: 8px;
+            word-break: break-all;
+        }
+
+        .broll-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+
+        .broll-item .info {
+            flex: 1;
+            font-size: 12px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .broll-item .remove {
+            background: #ff4444;
+            color: #fff;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+
+        .preview-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px 70px;
+            gap: 20px;
+        }
+
+        .video-wrapper {
+            position: relative;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            max-height: 70vh;
+            aspect-ratio: 9/16;
+        }
+
+        .video-wrapper video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .video-info {
+            padding: 12px 20px;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+            border-radius: 8px;
+            font-size: 13px;
+            text-align: center;
+            max-width: 300px;
+        }
+
+        .timeline {
+            width: 90vw;
+            max-width: 1200px;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+            padding: 12px;
+            position: relative;
+        }
+
+        .timeline-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .timeline-effect-btn {
+            width: 45px;
+            height: 45px;
+            flex-shrink: 0;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            font-size: 18px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            z-index: 200;
+        }
+
+        .timeline-effect-btn:hover {
+            background: rgba(0, 255, 157, 0.3);
+            border-color: #00ff9d;
+            transform: scale(1.1);
+        }
+
+        .timeline-effect-btn.active {
+            background: linear-gradient(135deg, #00ff9d 0%, #00cc7d 100%);
+            color: #000;
+            border-color: #00ff9d;
+            box-shadow: 0 0 15px rgba(0, 255, 157, 0.5);
+        }
+
+        .timeline-effect-btn .tooltip {
+            position: absolute;
+            bottom: -30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: #fff;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            white-space: nowrap;
+            opacity: 0;
+            transition: opacity 0.2s;
+            pointer-events: none;
+        }
+
+        .intro-btn .tooltip {
+            left: 50%;
+            right: auto;
+            bottom: auto;
+            top: -30px;
+            transform: translateX(-50%);
+        }
+
+        .outro-btn .tooltip {
+            left: 50%;
+            right: auto;
+            bottom: auto;
+            top: -30px;
+            transform: translateX(-50%);
+        }
+
+        .timeline-effect-btn:hover .tooltip {
+            opacity: 1;
+        }
+
+        .timeline-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 11px;
+            color: #aaa;
+        }
+
+        .timeline-track {
+            position: relative;
+            height: 40px;
+            background: #222;
+            border-radius: 6px;
+            overflow: hidden;
+            cursor: pointer;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .timeline-video {
+            position: absolute;
+            height: 18px;
+            top: 4px;
+            left: 0;
+            right: 0;
+            background: linear-gradient(90deg, #00ff9d 0%, #00cc7d 100%);
+            border-radius: 4px;
+            opacity: 0.6;
+            pointer-events: none;
+        }
+
+        .timeline-audio {
+            position: absolute;
+            height: 14px;
+            bottom: 4px;
+            background: transparent;
+            border-radius: 4px;
+            opacity: 0.8;
+            pointer-events: none;
+        }
+
+        .waveform-canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .timeline-trim {
+            position: absolute;
+            height: 100%;
+            background: rgba(255, 255, 0, 0.15);
+            border: 2px solid #ffff00;
+            border-radius: 4px;
+            pointer-events: none;
+        }
+
+        .timeline-playhead {
+            position: absolute;
+            top: 0;
+            width: 2px;
+            height: 100%;
+            background: #fff;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        .trim-handle {
+            position: absolute;
+            top: 0;
+            width: 12px;
+            height: 100%;
+            background: rgba(255, 255, 0, 0.8);
+            border: 2px solid #ffff00;
+            border-radius: 3px;
+            cursor: ew-resize;
+            z-index: 10;
+            transition: background 0.2s;
+        }
+
+        .trim-handle:hover {
+            background: #ffff00;
+        }
+
+        .trim-handle.start {
+            left: 0;
+        }
+
+        .trim-handle.end {
+            right: 0;
+        }
+
+        .trim-handle::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 0;
+            height: 0;
+            border-left: 4px solid transparent;
+            border-right: 4px solid transparent;
+        }
+
+        .trim-handle.start::after {
+            border-top: 6px solid #000;
+        }
+
+        .trim-handle.end::after {
+            border-bottom: 6px solid #000;
+        }
+
+        .timeline-magnifier {
+            position: absolute;
+            width: 250px;
+            height: 90px;
+            background: #1a1a2e;
+            border: 3px solid #00ff9d;
+            border-radius: 10px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s ease;
+            z-index: 100;
+            overflow: hidden;
+            box-shadow: 0 6px 30px rgba(0, 255, 157, 0.5);
+            transform: translateX(-50%);
+        }
+
+        .timeline-magnifier.visible {
+            opacity: 1;
+        }
+
+        .magnifier-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .magnifier-time {
+            position: absolute;
+            bottom: 5px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 13px;
+            color: #00ff9d;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-weight: bold;
+            white-space: nowrap;
+            border: 1px solid #00ff9d;
+        }
+
+        .action-bar {
+            display: flex;
+            gap: 10px;
+        }
+
+        .action-btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .action-btn.primary {
+            background: linear-gradient(135deg, #00ff9d 0%, #00cc7d 100%);
+            color: #000;
+        }
+
+        .action-btn.primary:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 20px rgba(0, 255, 157, 0.4);
+        }
+
+        .action-btn.secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+
+        .action-btn.secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .close-panel {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 5px;
+            line-height: 1;
+        }
+
+        .close-panel:hover {
+            color: #fff;
+        }
+
+        .notification {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: rgba(20, 20, 30, 0.98);
+            border: 2px solid #00ff9d;
+            border-radius: 12px;
+            padding: 15px 25px;
+            z-index: 10000;
+            opacity: 0;
+            transition: all 0.3s ease;
+            text-align: center;
+            min-width: 300px;
+        }
+
+        .notification.visible {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .notification.error {
+            border-color: #ff4444;
+        }
+
+        .notification.success {
+            border-color: #00ff9d;
+        }
+
+        .notification.info {
+            border-color: #4a90ff;
+        }
+
+        @media (max-width: 1200px) {
+            .tool-panel {
+                position: fixed;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎬 Video Editor</h1>
+        <div class="action-bar">
+            <button class="action-btn secondary" onclick="resetAll()">↺ Reset</button>
+            <button class="action-btn secondary" onclick="previewChanges()">👁️ Preview</button>
+            <button class="action-btn primary" onclick="applyChanges()">💾 Export</button>
+            <button class="back-btn" onclick="window.history.back()">← Back</button>
+        </div>
+    </div>
+
+    <div class="notification" id="notification"></div>
+
+    <div class="editor-layout">
+        <!-- Left Toolbar -->
+        <div class="toolbar-left">
+            <button class="tool-btn" onclick="togglePanel('trim')" data-panel="trim">
+                ✂️
+                <span class="tooltip">Trim</span>
+            </button>
+            <button class="tool-btn" onclick="togglePanel('speed')" data-panel="speed">
+                ⏱️
+                <span class="tooltip">Speed</span>
+            </button>
+            <button class="tool-btn" onclick="togglePanel('effects')" data-panel="effects">
+                ✨
+                <span class="tooltip">Effects</span>
+            </button>
+        </div>
+
+        <!-- Preview Area -->
+        <div class="preview-area">
+            <div class="video-wrapper">
+                <video id="mainVideo" controls></video>
+            </div>
+            <div class="video-info" id="videoInfo">
+                Loading video info...
+            </div>
+            <div class="timeline">
+                <div class="timeline-header">
+                    <span id="currentTime">00:00</span>
+                    <span id="timelineDuration">/ 00:00</span>
+                </div>
+                <div class="timeline-container">
+                    <button class="timeline-effect-btn intro-btn" onclick="togglePanel('intro')" data-panel="intro">
+                        📥
+                        <span class="tooltip">Intro</span>
+                    </button>
+                    <div class="timeline-track" id="timelineTrack">
+                        <div class="timeline-video"></div>
+                        <div class="timeline-audio" id="audioTrack">
+                            <canvas class="waveform-canvas" id="waveformCanvas"></canvas>
+                        </div>
+                        <div class="timeline-trim" id="trimRegion">
+                            <div class="trim-handle start" id="trimStart"></div>
+                            <div class="trim-handle end" id="trimEnd"></div>
+                        </div>
+                        <div class="timeline-playhead" id="playhead"></div>
+                    </div>
+                    <button class="timeline-effect-btn outro-btn" onclick="togglePanel('outro')" data-panel="outro">
+                        📤
+                        <span class="tooltip">Outro</span>
+                    </button>
+                </div>
+                <div class="timeline-magnifier" id="magnifier">
+                    <canvas class="magnifier-canvas" id="magnifierCanvas"></canvas>
+                    <div class="magnifier-time" id="magnifierTime">00:00</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Toolbar -->
+        <div class="toolbar-right">
+            <button class="tool-btn" onclick="togglePanel('subtitles')" data-panel="subtitles">
+                📝
+                <span class="tooltip">Subtitles</span>
+            </button>
+            <button class="tool-btn" onclick="togglePanel('audio')" data-panel="audio">
+                🎵
+                <span class="tooltip">Audio</span>
+            </button>
+            <button class="tool-btn" onclick="togglePanel('broll')" data-panel="broll">
+                🎞️
+                <span class="tooltip">B-Roll</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Tool Panels -->
+    <!-- Trim Panel -->
+    <div class="tool-panel left" id="panel-trim">
+        <button class="close-panel" onclick="closePanel('trim')">×</button>
+        <h3><span class="icon">✂️</span> Trim Video</h3>
+        <div class="control-group">
+            <label>Start / End Time</label>
+            <div class="time-inputs">
+                <input type="text" id="startTime" placeholder="00:00:00" value="00:00:00">
+                <span>→</span>
+                <input type="text" id="endTime" placeholder="00:00:00">
+            </div>
+        </div>
+        <div class="control-group">
+            <label>Quick Trim</label>
+            <div class="checkbox-group">
+                <label class="checkbox-item">
+                    <input type="checkbox" id="trimIntro">
+                    <span>Remove 3s intro</span>
+                </label>
+                <label class="checkbox-item">
+                    <input type="checkbox" id="trimOutro">
+                    <span>Remove 3s outro</span>
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Speed Panel -->
+    <div class="tool-panel left" id="panel-speed">
+        <button class="close-panel" onclick="closePanel('speed')">×</button>
+        <h3><span class="icon">⏱️</span> Playback Speed</h3>
+        <div class="control-group">
+            <label>Speed</label>
+            <select id="playbackSpeed">
+                <option value="0.5">0.5x (Slow)</option>
+                <option value="0.75">0.75x</option>
+                <option value="1" selected>1x (Normal)</option>
+                <option value="1.25">1.25x</option>
+                <option value="1.5">1.5x</option>
+                <option value="2">2x (Fast)</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label>Reverse</label>
+            <label class="checkbox-item">
+                <input type="checkbox" id="effectReverse">
+                <span>Play video backwards</span>
+            </label>
+        </div>
+    </div>
+
+    <!-- Effects Panel -->
+    <div class="tool-panel left" id="panel-effects">
+        <button class="close-panel" onclick="closePanel('effects')">×</button>
+        <h3><span class="icon">✨</span> Effects</h3>
+        <div class="checkbox-group">
+            <label class="checkbox-item">
+                <input type="checkbox" id="effectMirror">
+                <span>Mirror (Flip Horizontal)</span>
+            </label>
+            <label class="checkbox-item">
+                <input type="checkbox" id="effectGrayscale">
+                <span>Black & White</span>
+            </label>
+            <label class="checkbox-item">
+                <input type="checkbox" id="effectSepia">
+                <span>Sepia (Vintage)</span>
+            </label>
+            <label class="checkbox-item">
+                <input type="checkbox" id="effectBlur">
+                <span>Blur Edges (Vignette)</span>
+            </label>
+            <label class="checkbox-item">
+                <input type="checkbox" id="effectZoom">
+                <span>Slow Zoom In</span>
+            </label>
+        </div>
+
+        <div style="border-top: 1px solid rgba(255,255,255,0.1); margin: 15px 0;"></div>
+
+        <div class="control-group">
+            <label style="color: #00ff9d;">👤 Face Tracking (AI)</label>
+            <label class="checkbox-item">
+                <input type="checkbox" id="faceTracking" onchange="toggleFaceTrackingOptions()">
+                <span>Enable Face Tracking</span>
+            </label>
+        </div>
+
+        <div id="faceTrackingOptions" style="display: none;">
+            <div class="control-group">
+                <label>Zoom Level</label>
+                <div class="range-wrapper">
+                    <input type="range" id="faceZoomLevel" min="1.2" max="2.5" step="0.1" value="1.5" oninput="updateFaceTrackingPreview(); document.getElementById('faceZoomValue').textContent = this.value + 'x'">
+                    <span class="value" id="faceZoomValue">1.5x</span>
+                </div>
+            </div>
+            <div class="control-group">
+                <label>Smoothing</label>
+                <select id="faceSmoothing" onchange="updateFaceTrackingPreview()">
+                    <option value="low">Low (Fast response)</option>
+                    <option value="medium" selected>Medium (Balanced)</option>
+                    <option value="high">High (Smooth & slow)</option>
+                </select>
+            </div>
+            <button class="action-btn secondary" style="width: 100%; margin-top: 10px; padding: 10px;" onclick="previewFaceTracking()">
+                👁️ Preview Face Tracking
+            </button>
+        </div>
+    </div>
+
+    <!-- Subtitles Panel -->
+    <div class="tool-panel right" id="panel-subtitles">
+        <button class="close-panel" onclick="closePanel('subtitles')">×</button>
+        <h3><span class="icon">📝</span> Subtitles</h3>
+        <div class="control-group">
+            <label>Sync Offset (seconds)</label>
+            <div class="range-wrapper">
+                <input type="range" id="subtitleOffset" min="-5" max="5" step="0.1" value="0">
+                <span class="value" id="subtitleOffsetValue">0s</span>
+            </div>
+        </div>
+        <div class="control-group">
+            <label>Style</label>
+            <select id="subtitleStyle">
+                <option value="default">Default</option>
+                <option value="bold">Bold</option>
+                <option value="outline">Outline Only</option>
+                <option value="neon">Neon Glow</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Audio Panel -->
+    <div class="tool-panel right" id="panel-audio">
+        <button class="close-panel" onclick="closePanel('audio')">×</button>
+        <h3><span class="icon">🎵</span> Add Audio</h3>
+        <div class="file-upload" onclick="document.getElementById('audioFile').click()">
+            <input type="file" id="audioFile" accept="audio/*" onchange="handleAudioUpload(this)">
+            <div class="icon">🎵</div>
+            <div class="text">Upload audio</div>
+            <div class="filename" id="audioFilename"></div>
+        </div>
+        <div class="control-group" style="margin-top: 15px;">
+            <label>Audio Volume</label>
+            <div class="range-wrapper">
+                <input type="range" id="audioVolume" min="0" max="200" value="100">
+                <span class="value" id="audioVolumeValue">100%</span>
+            </div>
+        </div>
+        <div class="control-group">
+            <label>Original Audio</label>
+            <div class="range-wrapper">
+                <input type="range" id="originalAudioVolume" min="0" max="100" value="50">
+                <span class="value" id="originalAudioVolumeValue">50%</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- B-Roll Panel -->
+    <div class="tool-panel right" id="panel-broll">
+        <button class="close-panel" onclick="closePanel('broll')">×</button>
+        <h3><span class="icon">🎞️</span> B-Roll Clips</h3>
+        <div class="file-upload" onclick="document.getElementById('brollFile').click()">
+            <input type="file" id="brollFile" accept="video/*" multiple onchange="handleBrollUpload(this)">
+            <div class="icon">🎬</div>
+            <div class="text">Add clips</div>
+        </div>
+        <div id="brollList" style="margin-top: 15px;"></div>
+    </div>
+
+    <!-- Intro Panel -->
+    <div class="tool-panel left" id="panel-intro">
+        <button class="close-panel" onclick="closePanel('intro')">×</button>
+        <h3><span class="icon">📥</span> Intro Effects</h3>
+        <div class="control-group">
+            <label>Effect Type</label>
+            <select id="introEffect">
+                <option value="none">None</option>
+                <option value="fade-in">Fade In</option>
+                <option value="slide-in-left">Slide In (Left)</option>
+                <option value="slide-in-right">Slide In (Right)</option>
+                <option value="slide-in-top">Slide In (Top)</option>
+                <option value="slide-in-bottom">Slide In (Bottom)</option>
+                <option value="zoom-in">Zoom In</option>
+                <option value="spin-in">Spin In</option>
+                <option value="blur-in">Blur In</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label>Duration (seconds)</label>
+            <div class="range-wrapper">
+                <input type="range" id="introDuration" min="0.5" max="3" step="0.1" value="1" oninput="document.getElementById('introDurationValue').textContent = this.value + 's'">
+                <span class="value" id="introDurationValue">1s</span>
+            </div>
+        </div>
+        <div class="control-group">
+            <label>Easing</label>
+            <select id="introEasing">
+                <option value="linear">Linear</option>
+                <option value="ease-in">Ease In</option>
+                <option value="ease-out" selected>Ease Out</option>
+                <option value="ease-in-out">Ease In Out</option>
+                <option value="bounce">Bounce</option>
+            </select>
+        </div>
+        <button class="action-btn secondary" style="width: 100%; margin-top: 10px; padding: 10px;" onclick="previewEffect('intro')">
+            👁️ Preview Intro
+        </button>
+    </div>
+
+    <!-- Outro Panel -->
+    <div class="tool-panel right" id="panel-outro">
+        <button class="close-panel" onclick="closePanel('outro')">×</button>
+        <h3><span class="icon">📤</span> Outro Effects</h3>
+        <div class="control-group">
+            <label>Effect Type</label>
+            <select id="outroEffect">
+                <option value="none">None</option>
+                <option value="fade-out">Fade Out</option>
+                <option value="slide-out-left">Slide Out (Left)</option>
+                <option value="slide-out-right">Slide Out (Right)</option>
+                <option value="slide-out-top">Slide Out (Top)</option>
+                <option value="slide-out-bottom">Slide Out (Bottom)</option>
+                <option value="zoom-out">Zoom Out</option>
+                <option value="spin-out">Spin Out</option>
+                <option value="blur-out">Blur Out</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label>Duration (seconds)</label>
+            <div class="range-wrapper">
+                <input type="range" id="outroDuration" min="0.5" max="3" step="0.1" value="1" oninput="document.getElementById('outroDurationValue').textContent = this.value + 's'">
+                <span class="value" id="outroDurationValue">1s</span>
+            </div>
+        </div>
+        <div class="control-group">
+            <label>Easing</label>
+            <select id="outroEasing">
+                <option value="linear">Linear</option>
+                <option value="ease-in">Ease In</option>
+                <option value="ease-out" selected>Ease Out</option>
+                <option value="ease-in-out">Ease In Out</option>
+                <option value="bounce">Bounce</option>
+            </select>
+        </div>
+        <button class="action-btn secondary" style="width: 100%; margin-top: 10px; padding: 10px;" onclick="previewEffect('outro')">
+            👁️ Preview Outro
+        </button>
+    </div>
+
+    <script>
+        // Get video info from URL params
+        const urlParams = new URLSearchParams(window.location.search);
+        const videoPath = urlParams.get('video');
+        const folderNumber = urlParams.get('folder');
+        const themeNumber = urlParams.get('theme');
+
+        const video = document.getElementById('mainVideo');
+        const timelineTrack = document.getElementById('timelineTrack');
+        const trimRegion = document.getElementById('trimRegion');
+        const trimStart = document.getElementById('trimStart');
+        const trimEnd = document.getElementById('trimEnd');
+        const playhead = document.getElementById('playhead');
+        const audioTrack = document.getElementById('audioTrack');
+        const waveformCanvas = document.getElementById('waveformCanvas');
+        const magnifier = document.getElementById('magnifier');
+        const magnifierCanvas = document.getElementById('magnifierCanvas');
+        const magnifierTime = document.getElementById('magnifierTime');
+
+        let audioFile = null;
+        let brollFiles = [];
+        let currentPanel = null;
+        let isDraggingStart = false;
+        let isDraggingEnd = false;
+        let audioContext = null;
+        let audioBuffer = null;
+        let waveformPeaks = [];
+
+        // Load video
+        if (videoPath) {
+            const pathParts = videoPath.split('/');
+            const encodedPath = pathParts.map(part => encodeURIComponent(part)).join('/');
+            video.src = `/videos/${encodedPath}`;
+
+            const filename = videoPath.split('/').pop();
+            document.getElementById('videoInfo').innerHTML = `
+                <strong>${filename}</strong><br>
+                Folder: ${folderNumber || 'N/A'} | Theme: ${themeNumber || 'N/A'}
+            `;
+        }
+
+        // Update timeline on video metadata load
+        video.addEventListener('loadedmetadata', () => {
+            const duration = formatTime(video.duration);
+            document.getElementById('endTime').value = duration;
+            document.getElementById('timelineDuration').textContent = `/ ${duration}`;
+            updateTimeline();
+        });
+
+        // Update current time display and playhead
+        video.addEventListener('timeupdate', () => {
+            document.getElementById('currentTime').textContent = formatTime(video.currentTime);
+            updatePlayhead();
+        });
+
+        // Spacebar to play/pause
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && !e.target.matches('input, textarea, select')) {
+                e.preventDefault();
+                if (video.paused) {
+                    video.play();
+                } else {
+                    video.pause();
+                }
+            }
+        });
+
+        // Time formatting
+        function formatTime(seconds) {
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = Math.floor(seconds % 60);
+            if (h > 0) {
+                return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+            }
+            return `${m}:${s.toString().padStart(2, '0')}`;
+        }
+
+        // Parse time string to seconds
+        function parseTime(timeStr) {
+            const parts = timeStr.split(':').map(Number);
+            if (parts.length === 3) {
+                return parts[0] * 3600 + parts[1] * 60 + parts[2];
+            } else if (parts.length === 2) {
+                return parts[0] * 60 + parts[1];
+            }
+            return 0;
+        }
+
+        // Update playhead position
+        function updatePlayhead() {
+            if (video.duration) {
+                const percent = (video.currentTime / video.duration) * 100;
+                playhead.style.left = `${percent}%`;
+            }
+        }
+
+        // Update timeline (trim region and playhead)
+        function updateTimeline() {
+            const start = parseTime(document.getElementById('startTime').value);
+            const end = parseTime(document.getElementById('endTime').value);
+            const duration = video.duration || 1;
+
+            const startPercent = (start / duration) * 100;
+            const widthPercent = ((end - start) / duration) * 100;
+
+            trimRegion.style.left = `${startPercent}%`;
+            trimRegion.style.width = `${widthPercent}%`;
+
+            updatePlayhead();
+        }
+
+        // Timeline click to seek
+        timelineTrack.addEventListener('click', (e) => {
+            if (e.target !== trimStart && e.target !== trimEnd) {
+                const rect = timelineTrack.getBoundingClientRect();
+                const percent = (e.clientX - rect.left) / rect.width;
+                video.currentTime = percent * video.duration;
+            }
+        });
+
+        // Trim handle dragging
+        trimStart.addEventListener('mousedown', (e) => {
+            isDraggingStart = true;
+            e.preventDefault();
+        });
+
+        trimEnd.addEventListener('mousedown', (e) => {
+            isDraggingEnd = true;
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDraggingStart && !isDraggingEnd) return;
+
+            const rect = timelineTrack.getBoundingClientRect();
+            let percent = (e.clientX - rect.left) / rect.width;
+            percent = Math.max(0, Math.min(1, percent));
+            const time = percent * video.duration;
+
+            if (isDraggingStart) {
+                const endTime = parseTime(document.getElementById('endTime').value);
+                if (time < endTime - 0.5) {
+                    document.getElementById('startTime').value = formatTimeSeconds(time);
+                    video.currentTime = time;
+                }
+            } else if (isDraggingEnd) {
+                const startTime = parseTime(document.getElementById('startTime').value);
+                if (time > startTime + 0.5) {
+                    document.getElementById('endTime').value = formatTimeSeconds(time);
+                }
+            }
+
+            updateTimeline();
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDraggingStart = false;
+            isDraggingEnd = false;
+        });
+
+        // Format seconds to time string
+        function formatTimeSeconds(seconds) {
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = Math.floor(seconds % 60);
+            if (h > 0) {
+                return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+            }
+            return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        }
+
+        // Toggle panel visibility
+        function togglePanel(panelName) {
+            const panel = document.getElementById(`panel-${panelName}`);
+            const btn = document.querySelector(`[data-panel="${panelName}"]`);
+
+            // Close current panel if clicking the same button
+            if (currentPanel === panelName) {
+                closePanel(panelName);
+                return;
+            }
+
+            // Close any open panel first
+            if (currentPanel) {
+                closePanel(currentPanel);
+            }
+
+            // TEST: For effects panel, show test box instead
+            if (panelName === 'effects') {
+                const testBox = document.getElementById('test-scroll-box');
+                const btnRect = btn.getBoundingClientRect();
+                const boxHeight = 400; // matches max-height
+
+                // Calculate top position to ensure box fits on screen
+                let topPos = btnRect.top;
+                if (topPos + boxHeight > window.innerHeight - 20) {
+                    // Button is too low, position box above it
+                    topPos = window.innerHeight - boxHeight - 20;
+                }
+
+                testBox.style.left = (btnRect.right + 15) + 'px';
+                testBox.style.top = topPos + 'px';
+                testBox.style.display = 'block';
+                btn.classList.add('active');
+                currentPanel = panelName;
+                return;
+            }
+
+            // Position panel based on type - build complete cssText string
+            let positionCss = '';
+
+            if (panelName === 'intro' || panelName === 'outro') {
+                // Intro/outro panels appear ABOVE their timeline buttons
+                const btnRect = btn.getBoundingClientRect();
+                const bottomPos = window.innerHeight - btnRect.top + 10;
+
+                if (panelName === 'intro') {
+                    positionCss = `left: ${btnRect.right + 15}px !important; right: auto !important; bottom: ${bottomPos}px !important; top: auto !important;`;
+                } else {
+                    positionCss = `right: ${window.innerWidth - btnRect.left + 15}px !important; left: auto !important; bottom: ${bottomPos}px !important; top: auto !important;`;
+                }
+            } else {
+                // Other panels position next to their toolbar buttons
+                const btnRect = btn.getBoundingClientRect();
+                const isLeft = btn.closest('.toolbar-left');
+                const topPos = btnRect.top;
+
+                if (isLeft) {
+                    positionCss = `left: ${btnRect.right + 15}px !important; right: auto !important; top: ${topPos}px !important; bottom: auto !important; max-height: 500px !important;`;
+                } else {
+                    positionCss = `right: ${window.innerWidth - btnRect.left + 15}px !important; left: auto !important; top: ${topPos}px !important; bottom: auto !important; max-height: 500px !important;`;
+                }
+            }
+
+            // Build complete cssText and assign once (this was working before)
+            panel.style.cssText = positionCss +
+                'position: fixed !important;' +
+                'display: block !important;' +
+                'opacity: 1 !important;' +
+                'visibility: visible !important;' +
+                'z-index: 999999 !important;' +
+                'transform: none !important;' +
+                'overflow-y: scroll !important;';
+
+            panel.classList.add('visible');
+            btn.classList.add('active');
+            currentPanel = panelName;
+        }
+
+        // Close panel
+        function closePanel(panelName) {
+            // TEST: Hide test box if closing effects
+            if (panelName === 'effects') {
+                const testBox = document.getElementById('test-scroll-box');
+                testBox.style.display = 'none';
+                const btn = document.querySelector(`[data-panel="${panelName}"]`);
+                btn.classList.remove('active');
+                currentPanel = null;
+                return;
+            }
+
+            const panel = document.getElementById(`panel-${panelName}`);
+            const btn = document.querySelector(`[data-panel="${panelName}"]`);
+            panel.classList.remove('visible');  // Remove class first to avoid CSS !important conflict
+            panel.style.opacity = '0';
+            panel.style.visibility = 'hidden';
+            btn.classList.remove('active');
+            currentPanel = null;
+        }
+
+        // Close panel when clicking outside
+        document.addEventListener('click', (e) => {
+            if (currentPanel && !e.target.closest('.tool-panel') && !e.target.closest('.tool-btn') && !e.target.closest('.timeline-effect-btn')) {
+                closePanel(currentPanel);
+            }
+        });
+
+        // Extract and draw waveform from video
+        async function extractWaveform() {
+            if (!video.src) return;
+
+            try {
+                // Use the video element directly to get audio
+                if (!audioContext) {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+
+                const response = await fetch(video.src);
+                const arrayBuffer = await response.arrayBuffer();
+                audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+                // Calculate waveform peaks - more samples for wider timeline
+                const rawData = audioBuffer.getChannelData(0);
+                const samples = 2000;
+                const blockSize = Math.floor(rawData.length / samples);
+                waveformPeaks = [];
+
+                for (let i = 0; i < samples; i++) {
+                    const start = i * blockSize;
+                    let sum = 0;
+                    for (let j = 0; j < blockSize; j++) {
+                        sum += Math.abs(rawData[start + j]);
+                    }
+                    waveformPeaks.push(sum / blockSize);
+                }
+
+                drawWaveform();
+            } catch (err) {
+                console.log('Could not extract waveform:', err);
+                // Generate mock waveform for demo
+                generateMockWaveform();
+            }
+        }
+
+        // Generate mock waveform for demo
+        function generateMockWaveform() {
+            waveformPeaks = [];
+            for (let i = 0; i < 2000; i++) {
+                // Create more realistic looking waveform
+                const base = Math.sin(i / 50) * 0.3 + 0.3;
+                const noise = Math.random() * 0.2;
+                waveformPeaks.push(Math.min(1, base + noise));
+            }
+            drawWaveform();
+        }
+
+        // Draw waveform on canvas
+        function drawWaveform() {
+            const canvas = waveformCanvas;
+            const ctx = canvas.getContext('2d');
+            const timelineRect = timelineTrack.getBoundingClientRect();
+
+            // Use the full timeline width, not just audioTrack
+            canvas.width = timelineRect.width;
+            canvas.height = 14; // Fixed height matching CSS
+
+            const width = canvas.width;
+            const height = canvas.height;
+
+            ctx.clearRect(0, 0, width, height);
+            ctx.fillStyle = '#ff6b6b';
+
+            const barWidth = width / waveformPeaks.length;
+
+            waveformPeaks.forEach((peak, i) => {
+                const barHeight = Math.max(1, peak * height * 0.95);
+                const x = i * barWidth;
+                const y = (height - barHeight) / 2;
+
+                ctx.fillRect(x, y, Math.ceil(barWidth), barHeight);
+            });
+        }
+
+        // Magnifier hover
+        timelineTrack.addEventListener('mousemove', (e) => {
+            const rect = timelineTrack.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const percent = Math.max(0, Math.min(1, x / rect.width));
+            const time = percent * (video.duration || 1);
+
+            // Position magnifier above the timeline (using absolute positioning)
+            magnifier.style.left = `${x}px`;
+            magnifier.style.bottom = `60px`;
+            magnifier.classList.add('visible');
+
+            // Update time display
+            magnifierTime.textContent = formatTime(time);
+
+            // Draw magnified view
+            drawMagnifiedView(x, percent);
+        });
+
+        timelineTrack.addEventListener('mouseleave', () => {
+            magnifier.classList.remove('visible');
+        });
+
+        // Draw magnified view in magnifier
+        function drawMagnifiedView(x, percent) {
+            const canvas = magnifierCanvas;
+            const ctx = canvas.getContext('2d');
+
+            canvas.width = 250;
+            canvas.height = 90;
+
+            // Clear and draw background
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw magnified waveform section
+            if (waveformPeaks.length > 0) {
+                const samplesToShow = 100;
+                const startIndex = Math.floor(percent * waveformPeaks.length) - samplesToShow / 2;
+                const barWidth = canvas.width / samplesToShow;
+
+                ctx.fillStyle = '#00ff9d';
+
+                for (let i = 0; i < samplesToShow; i++) {
+                    const peakIndex = startIndex + i;
+                    if (peakIndex >= 0 && peakIndex < waveformPeaks.length) {
+                        const peak = waveformPeaks[peakIndex];
+                        const barHeight = Math.max(2, peak * canvas.height * 0.75);
+                        const y = (canvas.height - barHeight) / 2;
+
+                        ctx.fillRect(i * barWidth, y, Math.ceil(barWidth), barHeight);
+                    }
+                }
+            } else {
+                // Draw placeholder waveform if not loaded yet
+                ctx.fillStyle = 'rgba(0, 255, 157, 0.5)';
+                for (let i = 0; i < 100; i++) {
+                    const barHeight = Math.random() * 30 + 5;
+                    const y = (canvas.height - barHeight) / 2;
+                    ctx.fillRect(i * (canvas.width / 100), y, canvas.width / 100 + 1, barHeight);
+                }
+            }
+
+            // Draw fine frame markers
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+            ctx.lineWidth = 1;
+
+            for (let i = 0; i < 25; i++) {
+                const markerX = (i / 25) * canvas.width;
+                ctx.beginPath();
+                ctx.moveTo(markerX, 0);
+                ctx.lineTo(markerX, canvas.height);
+                ctx.stroke();
+            }
+
+            // Draw center cursor line
+            ctx.strokeStyle = '#00ff9d';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(canvas.width / 2, 0);
+            ctx.lineTo(canvas.width / 2, canvas.height);
+            ctx.stroke();
+
+            // Draw time brackets
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+            ctx.font = '10px monospace';
+            ctx.textAlign = 'center';
+
+            const time = percent * (video.duration || 1);
+            const startTime = Math.max(0, time - 0.5);
+            const endTime = Math.min(video.duration || 1, time + 0.5);
+
+            ctx.fillText(formatTime(startTime), 35, canvas.height - 12);
+            ctx.fillText(formatTime(endTime), canvas.width - 35, canvas.height - 12);
+        }
+
+        // Extract waveform when video loads
+        video.addEventListener('loadeddata', () => {
+            extractWaveform();
+        });
+
+        // Redraw waveform on resize
+        window.addEventListener('resize', () => {
+            if (waveformPeaks.length > 0) {
+                drawWaveform();
+            }
+        });
+
+        // Time input listeners
+        document.getElementById('startTime').addEventListener('change', () => {
+            video.currentTime = parseTime(document.getElementById('startTime').value);
+            updateTimeline();
+        });
+
+        document.getElementById('endTime').addEventListener('change', updateTimeline);
+
+        // Subtitle offset slider
+        document.getElementById('subtitleOffset').addEventListener('input', (e) => {
+            document.getElementById('subtitleOffsetValue').textContent = `${e.target.value}s`;
+        });
+
+        // Audio volume slider
+        document.getElementById('audioVolume').addEventListener('input', (e) => {
+            document.getElementById('audioVolumeValue').textContent = `${e.target.value}%`;
+        });
+
+        // Original audio volume slider
+        document.getElementById('originalAudioVolume').addEventListener('input', (e) => {
+            document.getElementById('originalAudioVolumeValue').textContent = `${e.target.value}%`;
+        });
+
+        // Handle audio upload
+        function handleAudioUpload(input) {
+            if (input.files && input.files[0]) {
+                audioFile = input.files[0];
+                document.getElementById('audioFilename').textContent = audioFile.name;
+                input.closest('.file-upload').classList.add('has-file');
+                audioTrack.style.display = 'block';
+            }
+        }
+
+        // Handle B-roll upload
+        function handleBrollUpload(input) {
+            if (input.files) {
+                for (let file of input.files) {
+                    brollFiles.push(file);
+                }
+                updateBrollList();
+            }
+        }
+
+        // Update B-roll list
+        function updateBrollList() {
+            const container = document.getElementById('brollList');
+            container.innerHTML = '';
+
+            brollFiles.forEach((file, index) => {
+                const item = document.createElement('div');
+                item.className = 'broll-item';
+                item.innerHTML = `
+                    <div class="info">🎬 ${file.name}</div>
+                    <button class="remove" onclick="removeBroll(${index})">✕</button>
+                `;
+                container.appendChild(item);
+            });
+        }
+
+        // Remove B-roll
+        function removeBroll(index) {
+            brollFiles.splice(index, 1);
+            updateBrollList();
+        }
+
+        // Preview changes
+        function previewChanges() {
+            const startTime = parseTime(document.getElementById('startTime').value);
+            const endTime = parseTime(document.getElementById('endTime').value);
+
+            video.currentTime = startTime;
+            video.play();
+
+            video.addEventListener('timeupdate', function checkEnd() {
+                if (video.currentTime >= endTime) {
+                    video.pause();
+                    video.removeEventListener('timeupdate', checkEnd);
+                }
+            });
+        }
+
+        // Toggle face tracking options visibility
+        function toggleFaceTrackingOptions() {
+            const enabled = document.getElementById('faceTracking').checked;
+            const options = document.getElementById('faceTrackingOptions');
+            options.style.display = enabled ? 'block' : 'none';
+
+            // Enable/disable face tracking preview mode
+            if (enabled) {
+                video.dataset.faceTracking = 'true';
+                updateFaceTrackingPreview();
+            } else {
+                video.dataset.faceTracking = 'false';
+                resetVideoTransform();
+            }
+        }
+
+        // Preview face tracking effect on the video
+        function updateFaceTrackingPreview() {
+            const enabled = document.getElementById('faceTracking').checked;
+            if (!enabled) return;
+
+            const zoomLevel = parseFloat(document.getElementById('faceZoomLevel').value);
+            applyFaceTrackingTransform(zoomLevel);
+        }
+
+        // Apply face tracking transform to video
+        function applyFaceTrackingTransform(zoomLevel = 1.5) {
+            // Simulate face tracking by zooming into center
+            const scale = zoomLevel;
+            video.style.transform = `scale(${scale})`;
+            video.style.transformOrigin = 'center center';
+            video.style.objectFit = 'cover';
+        }
+
+        // Reset video transform
+        function resetVideoTransform() {
+            video.style.transform = 'none';
+            video.style.objectFit = 'contain';
+            video.style.opacity = '1';
+            video.style.filter = 'none';
+            video.style.transition = 'none';
+        }
+
+        // Preview face tracking with a demo
+        function previewFaceTracking() {
+            const enabled = document.getElementById('faceTracking').checked;
+            if (!enabled) {
+                showNotification('Please enable Face Tracking first', 'error');
+                return;
+            }
+
+            const zoomLevel = parseFloat(document.getElementById('faceZoomLevel').value);
+
+            showNotification('Playing preview with face tracking...', 'info');
+
+            // Save current time
+            const currentTime = video.currentTime;
+
+            // Apply face tracking effect
+            applyFaceTrackingTransform(zoomLevel);
+
+            // Play from current position for 3 seconds
+            video.currentTime = currentTime;
+
+            const playPromise = video.play();
+
+            if (playPromise !== undefined) {
+                playPromise.then(() => {
+                    // Stop after 3 seconds
+                    setTimeout(() => {
+                        video.pause();
+                        showNotification('Preview complete. Click Export to apply permanently.', 'success');
+                    }, 3000);
+                }).catch(error => {
+                    console.error('Playback error:', error);
+                    showNotification('Could not play preview', 'error');
+                });
+            }
+        }
+
+        // Preview intro or outro effect
+        function previewEffect(type) {
+            const effectSelect = document.getElementById(`${type}Effect`);
+            const effect = effectSelect.value;
+            const duration = parseFloat(document.getElementById(`${type}Duration`).value);
+
+            if (effect === 'none') {
+                showNotification('Please select an effect first', 'error');
+                return;
+            }
+
+            showNotification(`Previewing ${type} effect: ${effect}...`, 'info');
+
+            // Reset video
+            resetVideoTransform();
+
+            if (type === 'intro') {
+                // Start from beginning for intro
+                video.currentTime = 0;
+                // Preview for: 1 second of normal video + full duration of effect + 1 second extra
+                var previewTime = 1000 + duration * 1000 + 1000;
+            } else {
+                // Start near end for outro
+                video.currentTime = Math.max(0, video.duration - duration - 3);
+                // Preview for: 1 second of normal video + full duration of effect + 1 second extra
+                var previewTime = 1000 + duration * 1000 + 1000;
+            }
+
+            // Play preview
+            video.play().then(() => {
+                // For outro: wait 1 second, then apply effect
+                // For intro: apply immediately
+                if (type === 'outro') {
+                    setTimeout(() => {
+                        applyVideoEffect(effect, duration);
+                    }, 1000);
+                } else {
+                    applyVideoEffect(effect, duration);
+                }
+
+                // Stop after preview time
+                setTimeout(() => {
+                    video.pause();
+                    resetVideoTransform();
+                    showNotification('Preview complete!', 'success');
+                }, previewTime);
+            }).catch(error => {
+                console.error('Playback error:', error);
+                showNotification('Could not play preview', 'error');
+            });
+        }
+
+        // Apply video effect for preview
+        function applyVideoEffect(effect, duration) {
+            // Remove existing transitions
+            video.style.transition = 'none';
+
+            // Force reflow
+            void video.offsetWidth;
+
+            // Apply effect with FULL duration
+            switch (effect) {
+                case 'fade-in':
+                    video.style.opacity = '0';
+                    video.style.transition = `opacity ${duration}s ease-out`;
+                    requestAnimationFrame(() => {
+                        setTimeout(() => video.style.opacity = '1', 50);
+                    });
+                    break;
+                case 'fade-out':
+                    video.style.opacity = '1';
+                    video.style.transition = `opacity ${duration}s ease-in`;
+                    requestAnimationFrame(() => {
+                        setTimeout(() => video.style.opacity = '0', 50);
+                    });
+                    break;
+                case 'zoom-in':
+                    video.style.transform = 'scale(0.5)';
+                    video.style.transition = `transform ${duration}s ease-out`;
+                    requestAnimationFrame(() => {
+                        setTimeout(() => video.style.transform = 'scale(1)', 50);
+                    });
+                    break;
+                case 'zoom-out':
+                    video.style.transform = 'scale(1)';
+                    video.style.transition = `transform ${duration}s ease-in`;
+                    requestAnimationFrame(() => {
+                        setTimeout(() => video.style.transform = 'scale(0.5)', 50);
+                    });
+                    break;
+                case 'slide-in-left':
+                    video.style.transform = 'translateX(-100%)';
+                    video.style.transition = `transform ${duration}s ease-out`;
+                    requestAnimationFrame(() => {
+                        setTimeout(() => video.style.transform = 'translateX(0)', 50);
+                    });
+                    break;
+                case 'slide-in-right':
+                    video.style.transform = 'translateX(100%)';
+                    video.style.transition = `transform ${duration}s ease-out`;
+                    requestAnimationFrame(() => {
+                        setTimeout(() => video.style.transform = 'translateX(0)', 50);
+                    });
+                    break;
+                case 'slide-in-top':
+                    video.style.transform = 'translateY(-100%)';
+                    video.style.transition = `transform ${duration}s ease-out`;
+                    requestAnimationFrame(() => {
+                        setTimeout(() => video.style.transform = 'translateY(0)', 50);
+                    });
+                    break;
+                case 'slide-in-bottom':
+                    video.style.transform = 'translateY(100%)';
+                    video.style.transition = `transform ${duration}s ease-out`;
+                    requestAnimationFrame(() => {
+                        setTimeout(() => video.style.transform = 'translateY(0)', 50);
+                    });
+                    break;
+                case 'slide-out-left':
+                    video.style.transform = 'translateX(0)';
+                    video.style.transition = `transform ${duration}s ease-in`;
+                    requestAnimationFrame(() => {
+                        setTimeout(() => video.style.transform = 'translateX(-100%)', 50);
+                    });
+                    break;
+                case 'slide-out-right':
+                    video.style.transform = 'translateX(0)';
+                    video.style.transition = `transform ${duration}s ease-in`;
+                    requestAnimationFrame(() => {
+                        setTimeout(() => video.style.transform = 'translateX(100%)', 50);
+                    });
+                    break;
+                case 'slide-out-top':
+                    video.style.transform = 'translateY(0)';
+                    video.style.transition = `transform ${duration}s ease-in`;
+                    requestAnimationFrame(() => {
+                        setTimeout(() => video.style.transform = 'translateY(-100%)', 50);
+                    });
+                    break;
+                case 'slide-out-bottom':
+                    video.style.transform = 'translateY(0)';
+                    video.style.transition = `transform ${duration}s ease-in`;
+                    requestAnimationFrame(() => {
+                        setTimeout(() => video.style.transform = 'translateY(100%)', 50);
+                    });
+                    break;
+                case 'spin-in':
+                    video.style.transform = 'rotate(-360deg) scale(0)';
+                    video.style.transition = `transform ${duration}s ease-out`;
+                    requestAnimationFrame(() => {
+                        setTimeout(() => video.style.transform = 'rotate(0deg) scale(1)', 50);
+                    });
+                    break;
+                case 'spin-out':
+                    video.style.transform = 'rotate(0deg) scale(1)';
+                    video.style.transition = `transform ${duration}s ease-in`;
+                    requestAnimationFrame(() => {
+                        setTimeout(() => video.style.transform = 'rotate(360deg) scale(0)', 50);
+                    });
+                    break;
+                case 'blur-in':
+                    video.style.filter = 'blur(20px)';
+                    video.style.transition = `filter ${duration}s ease-out`;
+                    requestAnimationFrame(() => {
+                        setTimeout(() => video.style.filter = 'blur(0px)', 50);
+                    });
+                    break;
+                case 'blur-out':
+                    video.style.filter = 'blur(0px)';
+                    video.style.transition = `filter ${duration}s ease-in`;
+                    requestAnimationFrame(() => {
+                        setTimeout(() => video.style.filter = 'blur(20px)', 50);
+                    });
+                    break;
+            }
+        }
+
+        // Apply changes and export
+        function applyChanges() {
+            const settings = {
+                trim: {
+                    start: document.getElementById('startTime').value,
+                    end: document.getElementById('endTime').value,
+                    removeIntro: document.getElementById('trimIntro').checked,
+                    removeOutro: document.getElementById('trimOutro').checked
+                },
+                speed: document.getElementById('playbackSpeed').value,
+                reverse: document.getElementById('effectReverse').checked,
+                subtitles: {
+                    offset: document.getElementById('subtitleOffset').value,
+                    style: document.getElementById('subtitleStyle').value
+                },
+                audio: {
+                    file: audioFile ? audioFile.name : null,
+                    volume: document.getElementById('audioVolume').value,
+                    originalVolume: document.getElementById('originalAudioVolume').value
+                },
+                intro: {
+                    effect: document.getElementById('introEffect').value,
+                    duration: document.getElementById('introDuration').value,
+                    easing: document.getElementById('introEasing').value
+                },
+                outro: {
+                    effect: document.getElementById('outroEffect').value,
+                    duration: document.getElementById('outroDuration').value,
+                    easing: document.getElementById('outroEasing').value
+                },
+                effects: {
+                    mirror: document.getElementById('effectMirror').checked,
+                    grayscale: document.getElementById('effectGrayscale').checked,
+                    sepia: document.getElementById('effectSepia').checked,
+                    blur: document.getElementById('effectBlur').checked,
+                    zoom: document.getElementById('effectZoom').checked,
+                    faceTracking: document.getElementById('faceTracking').checked,
+                    faceZoomLevel: document.getElementById('faceZoomLevel').value,
+                    faceSmoothing: document.getElementById('faceSmoothing').value
+                },
+                broll: brollFiles.map(f => f.name)
+            };
+
+            console.log('Export settings:', settings);
+
+            // Send to backend for processing
+            processVideoEdit(settings);
+        }
+
+        // Send edit settings to backend
+        async function processVideoEdit(settings) {
+            const urlParams = new URLSearchParams(window.location.search);
+            const videoPath = urlParams.get('video');
+
+            showNotification('Starting video processing...', 'info');
+
+            try {
+                const response = await fetch('/api/process-edit', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        video_path: videoPath,
+                        settings: settings
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showNotification('Video processed successfully!', 'success');
+                    console.log('Processing result:', result);
+                } else {
+                    showNotification('Error: ' + result.error, 'error');
+                }
+            } catch (error) {
+                console.error('Processing error:', error);
+                showNotification('Failed to process video', 'error');
+            }
+        }
+
+        // Show notification (simple implementation)
+        function showNotification(message, type = 'info') {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.className = `notification ${type} visible`;
+
+            // Hide after 3 seconds
+            setTimeout(() => {
+                notification.classList.remove('visible');
+            }, 3000);
+        }
+
+        // Reset all settings
+        function resetAll() {
+            if (!confirm('Reset all editing changes?')) return;
+
+            document.getElementById('startTime').value = '00:00:00';
+            document.getElementById('endTime').value = formatTime(video.duration);
+            document.getElementById('subtitleOffset').value = 0;
+            document.getElementById('subtitleOffsetValue').textContent = '0s';
+            document.getElementById('subtitleStyle').value = 'default';
+            document.getElementById('audioVolume').value = 100;
+            document.getElementById('audioVolumeValue').textContent = '100%';
+            document.getElementById('originalAudioVolume').value = 50;
+            document.getElementById('originalAudioVolumeValue').textContent = '50%';
+            document.getElementById('playbackSpeed').value = '1';
+
+            // Reset intro effects
+            document.getElementById('introEffect').value = 'none';
+            document.getElementById('introDuration').value = 1;
+            document.getElementById('introDurationValue').textContent = '1s';
+            document.getElementById('introEasing').value = 'ease-out';
+
+            // Reset outro effects
+            document.getElementById('outroEffect').value = 'none';
+            document.getElementById('outroDuration').value = 1;
+            document.getElementById('outroDurationValue').textContent = '1s';
+            document.getElementById('outroEasing').value = 'ease-out';
+
+            // Reset face tracking
+            document.getElementById('faceZoomLevel').value = 1.5;
+            document.getElementById('faceZoomValue').textContent = '1.5x';
+            document.getElementById('faceSmoothing').value = 'medium';
+
+            document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+
+            audioFile = null;
+            brollFiles = [];
+            document.getElementById('audioFilename').textContent = '';
+            document.querySelector('#panel-audio .file-upload').classList.remove('has-file');
+            audioTrack.style.display = 'none';
+            updateBrollList();
+
+            updateTimeline();
+            video.currentTime = 0;
+            resetVideoTransform();
+
+            // Hide face tracking options
+            document.getElementById('faceTrackingOptions').style.display = 'none';
+        }
+    </script>
+
+    <!-- TEST: Scrollable box -->
+    <div id="test-scroll-box" style="
+        position: fixed;
+        top: 100px;
+        left: 20px;
+        width: 300px;
+        max-height: 400px;
+        background: red;
+        border: 5px solid yellow;
+        z-index: 9999999;
+        overflow-y: scroll;
+        padding: 20px;
+        color: white;
+        font-size: 16px;
+        display: none;
+    ">
+        <h3>TEST SCROLL BOX</h3>
+        <p>Item 1</p>
+        <p>Item 2</p>
+        <p>Item 3</p>
+        <p>Item 4</p>
+        <p>Item 5</p>
+        <p>Item 6</p>
+        <p>Item 7</p>
+        <p>Item 8</p>
+        <p>Item 9</p>
+        <p>Item 10</p>
+        <p>Item 11</p>
+        <p>Item 12</p>
+        <p>Item 13</p>
+        <p>Item 14</p>
+        <p>Item 15</p>
+        <p>Item 16</p>
+        <p>Item 17</p>
+        <p>Item 18</p>
+        <p>Item 19</p>
+        <p>Item 20</p>
+        <p>Item 21</p>
+        <p>Item 22</p>
+        <p>Item 23</p>
+        <p>Item 24</p>
+        <p>Item 25</p>
+        <p>Item 26</p>
+        <p>Item 27</p>
+        <p>Item 28</p>
+        <p>Item 29</p>
+        <p>Item 30</p>
+        <p>END</p>
+    </div>
+</body>
+</html>
