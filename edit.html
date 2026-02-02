@@ -313,7 +313,31 @@
         }
 
         .checkbox-item span {
+            flex: 1;
             font-size: 13px;
+        }
+
+        .effect-with-preview {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .effect-preview-btn {
+            background: rgba(0, 255, 157, 0.15);
+            border: 1px solid rgba(0, 255, 157, 0.3);
+            color: #00ff9d;
+            padding: 2px 6px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .effect-preview-btn:hover {
+            background: rgba(0, 255, 157, 0.3);
+            transform: scale(1.1);
         }
 
         .file-upload {
@@ -505,18 +529,20 @@
 
         .timeline-header {
             display: flex;
-            justify-content: space-between;
+            justify-content: center;
+            gap: 8px;
             margin-bottom: 8px;
-            font-size: 11px;
-            color: #aaa;
+            font-size: 14px;
+            color: #fff;
+            font-weight: 500;
         }
 
         .timeline-track {
             position: relative;
-            height: 40px;
+            height: 60px;
             background: #222;
             border-radius: 6px;
-            overflow: hidden;
+            overflow: visible;
             cursor: pointer;
             flex: 1;
             min-width: 0;
@@ -580,6 +606,127 @@
             z-index: 10;
             transition: background 0.2s;
         }
+
+        .effect-marker {
+            position: absolute;
+            top: 0;
+            width: 4px;
+            height: 100%;
+            background: #00ff9d;
+            border-radius: 2px;
+            pointer-events: auto;
+            z-index: 8;
+            box-shadow: 0 0 8px rgba(0, 255, 157, 0.6);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .effect-marker::before {
+            content: '✨';
+            position: absolute;
+            top: -18px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 12px;
+            color: #00ff9d;
+        }
+
+        .effect-marker-tooltip {
+            background: rgba(15, 15, 15, 0.98);
+            color: #00ff9d;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            opacity: 1;
+            pointer-events: auto;
+            cursor: pointer;
+            border: 1px solid rgba(0, 255, 157, 0.5);
+            font-weight: 500;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+            transition: all 0.2s ease;
+        }
+
+        .effect-marker-tooltip:hover {
+            background: rgba(255, 68, 68, 0.98);
+            color: #fff;
+            border: 1px solid rgba(255, 68, 68, 0.7);
+        }
+
+        .effect-marker:hover {
+            filter: brightness(1.3);
+        }
+
+        .marker-confirm-popup {
+            position: absolute;
+            bottom: calc(100% + 35px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 15, 15, 0.98);
+            border: 1px solid rgba(255, 68, 68, 0.7);
+            border-radius: 6px;
+            padding: 10px 12px;
+            min-width: 150px;
+            z-index: 999999 !important;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .marker-confirm-popup .message {
+            color: #fff;
+            font-size: 12px;
+            text-align: center;
+        }
+
+        .marker-confirm-popup .buttons {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+        }
+
+        .marker-confirm-popup button {
+            padding: 4px 12px;
+            border: none;
+            border-radius: 3px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .marker-confirm-popup .btn-confirm {
+            background: rgba(255, 68, 68, 0.8);
+            color: #fff;
+        }
+
+        .marker-confirm-popup .btn-confirm:hover {
+            background: rgba(255, 68, 68, 1);
+        }
+
+        .marker-confirm-popup .btn-cancel {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+
+        .marker-confirm-popup .btn-cancel:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .effect-marker.mirror { background: #ff6b6b; box-shadow: 0 0 8px rgba(255, 107, 107, 0.6); }
+        .effect-marker.mirror::before { color: #ff6b6b; }
+
+        .effect-marker.grayscale { background: #a0a0a0; box-shadow: 0 0 8px rgba(160, 160, 160, 0.6); }
+        .effect-marker.grayscale::before { color: #a0a0a0; }
+
+        .effect-marker.sepia { background: #d4a574; box-shadow: 0 0 8px rgba(212, 165, 116, 0.6); }
+        .effect-marker.sepia::before { color: #d4a574; }
+
+        .effect-marker.blur { background: #74b9ff; box-shadow: 0 0 8px rgba(116, 185, 255, 0.6); }
+        .effect-marker.blur::before { color: #74b9ff; }
+
+        .effect-marker.zoom { background: #a29bfe; box-shadow: 0 0 8px rgba(162, 155, 254, 0.6); }
+        .effect-marker.zoom::before { color: #a29bfe; }
 
         .trim-handle:hover {
             background: #ffff00;
@@ -786,7 +933,8 @@
             <div class="timeline">
                 <div class="timeline-header">
                     <span id="currentTime">00:00</span>
-                    <span id="timelineDuration">/ 00:00</span>
+                    <span> / </span>
+                    <span id="timelineDuration">00:00</span>
                 </div>
                 <div class="timeline-container">
                     <button class="timeline-effect-btn intro-btn" onclick="togglePanel('intro')" data-panel="intro">
@@ -890,25 +1038,30 @@
         <button class="close-panel" onclick="closePanel('effects')">×</button>
         <h3><span class="icon">✨</span> Effects</h3>
         <div class="checkbox-group">
-            <label class="checkbox-item">
-                <input type="checkbox" id="effectMirror">
+            <label class="checkbox-item effect-with-preview" title="Make sure placement on timeline is chosen for this effect">
+                <input type="checkbox" id="effectMirror" data-effect="mirror" onchange="toggleEffectPreview(this, 'mirror')">
                 <span>Mirror (Flip Horizontal)</span>
+                <button class="effect-preview-btn" data-effect="mirror" onclick="previewVideoEffect('mirror')" style="display: none;">👁️</button>
             </label>
-            <label class="checkbox-item">
-                <input type="checkbox" id="effectGrayscale">
+            <label class="checkbox-item effect-with-preview" title="Make sure placement on timeline is chosen for this effect">
+                <input type="checkbox" id="effectGrayscale" data-effect="grayscale" onchange="toggleEffectPreview(this, 'grayscale')">
                 <span>Black & White</span>
+                <button class="effect-preview-btn" data-effect="grayscale" onclick="previewVideoEffect('grayscale')" style="display: none;">👁️</button>
             </label>
-            <label class="checkbox-item">
-                <input type="checkbox" id="effectSepia">
+            <label class="checkbox-item effect-with-preview" title="Make sure placement on timeline is chosen for this effect">
+                <input type="checkbox" id="effectSepia" data-effect="sepia" onchange="toggleEffectPreview(this, 'sepia')">
                 <span>Sepia (Vintage)</span>
+                <button class="effect-preview-btn" data-effect="sepia" onclick="previewVideoEffect('sepia')" style="display: none;">👁️</button>
             </label>
-            <label class="checkbox-item">
-                <input type="checkbox" id="effectBlur">
+            <label class="checkbox-item effect-with-preview" title="Make sure placement on timeline is chosen for this effect">
+                <input type="checkbox" id="effectBlur" data-effect="blur" onchange="toggleEffectPreview(this, 'blur')">
                 <span>Blur Edges (Vignette)</span>
+                <button class="effect-preview-btn" data-effect="blur" onclick="previewVideoEffect('blur')" style="display: none;">👁️</button>
             </label>
-            <label class="checkbox-item">
-                <input type="checkbox" id="effectZoom">
+            <label class="checkbox-item effect-with-preview" title="Make sure placement on timeline is chosen for this effect">
+                <input type="checkbox" id="effectZoom" data-effect="zoom" onchange="toggleEffectPreview(this, 'zoom')">
                 <span>Slow Zoom In</span>
+                <button class="effect-preview-btn" data-effect="zoom" onclick="previewVideoEffect('zoom')" style="display: none;">👁️</button>
             </label>
         </div>
 
@@ -1111,6 +1264,10 @@
         let audioContext = null;
         let audioBuffer = null;
         let waveformPeaks = [];
+        let selectedTimelinePosition = null; // Stores selected position (0-1) on timeline
+        let effectMarkers = {}; // Stores {marker: element, tooltip: element} by effect name
+        let effectPositions = {}; // Stores position (0-1) for each effect type
+        let activeEffects = new Set(); // Currently active effects at playhead position
 
         // Load video
         if (videoPath) {
@@ -1129,7 +1286,7 @@
         video.addEventListener('loadedmetadata', () => {
             const duration = formatTime(video.duration);
             document.getElementById('endTime').value = duration;
-            document.getElementById('timelineDuration').textContent = `/ ${duration}`;
+            document.getElementById('timelineDuration').textContent = duration;
             updateTimeline();
         });
 
@@ -1137,6 +1294,7 @@
         video.addEventListener('timeupdate', () => {
             document.getElementById('currentTime').textContent = formatTime(video.currentTime);
             updatePlayhead();
+            checkEffectMarkers(); // Check if we've crossed any effect markers
         });
 
         // Spacebar to play/pause
@@ -1196,11 +1354,13 @@
             updatePlayhead();
         }
 
-        // Timeline click to seek
+        // Timeline click to seek and track position
         timelineTrack.addEventListener('click', (e) => {
             if (e.target !== trimStart && e.target !== trimEnd) {
                 const rect = timelineTrack.getBoundingClientRect();
                 const percent = (e.clientX - rect.left) / rect.width;
+                selectedTimelinePosition = percent; // Track selected position for effect markers
+                console.log('Timeline clicked, position:', percent);
                 video.currentTime = percent * video.duration;
             }
         });
@@ -1602,7 +1762,238 @@
             });
         }
 
+        // Add effect marker to timeline
+        function addEffectMarker(effectType, positionPercent) {
+            // Remove existing marker for this effect if any
+            removeEffectMarker(effectType);
+
+            const marker = document.createElement('div');
+            marker.className = `effect-marker ${effectType}`;
+            marker.id = `marker-${effectType}`;
+            marker.style.left = `${positionPercent * 100}%`;
+
+            // Create tooltip (will be appended to body for proper layering)
+            const tooltip = document.createElement('div');
+            tooltip.className = 'effect-marker-tooltip';
+            tooltip.id = `tooltip-${effectType}`;
+            tooltip.textContent = getEffectDisplayName(effectType);
+            tooltip.style.position = 'fixed';
+            tooltip.style.zIndex = '100000';
+            tooltip.style.pointerEvents = 'auto';
+            tooltip.style.cursor = 'pointer';
+            document.body.appendChild(tooltip);
+            console.log('Created marker with tooltip:', tooltip.textContent, 'tooltip element:', tooltip);
+
+            // Function to update tooltip position
+            const updateTooltipPosition = () => {
+                const rect = marker.getBoundingClientRect();
+                tooltip.style.left = `${rect.left + rect.width / 2}px`;
+                tooltip.style.top = `${rect.top - 35}px`;
+                tooltip.style.transform = 'translateX(-50%)';
+            };
+
+            // Update tooltip position initially and on window resize
+            updateTooltipPosition();
+            window.addEventListener('resize', updateTooltipPosition);
+
+            // Function to show confirmation popup
+            const showConfirmPopup = (e) => {
+                if (e) e.stopPropagation(); // Prevent timeline click
+                console.log('Marker clicked, showing popup...');
+
+                // Remove any existing popup first
+                const existingPopup = document.querySelector('.marker-confirm-popup');
+                if (existingPopup) {
+                    existingPopup.remove();
+                }
+
+                // Get marker position for popup placement
+                const rect = marker.getBoundingClientRect();
+
+                // Create custom confirmation popup
+                const popup = document.createElement('div');
+                popup.className = 'marker-confirm-popup';
+                popup.style.position = 'fixed';
+                popup.style.left = `${rect.left + rect.width / 2}px`;
+                popup.style.top = `${rect.top - 80}px`;
+                popup.style.transform = 'translateX(-50%)';
+                popup.innerHTML = `
+                    <div class="message">Remove ${getEffectDisplayName(effectType)}?</div>
+                    <div class="buttons">
+                        <button class="btn-confirm">Remove</button>
+                        <button class="btn-cancel">Cancel</button>
+                    </div>
+                `;
+
+                // Add button handlers
+                popup.querySelector('.btn-confirm').addEventListener('click', (e) => {
+                    console.log('Remove button clicked');
+                    e.stopPropagation();
+                    e.preventDefault();
+                    popup.remove();
+                    // Find and uncheck the checkbox for this effect
+                    const checkbox = document.querySelector(`input[data-effect="${effectType}"]`);
+                    console.log('Found checkbox:', checkbox, 'for effect:', effectType);
+                    if (checkbox) {
+                        checkbox.checked = false;
+                        toggleEffectPreview(checkbox, effectType);
+                    }
+                });
+
+                popup.querySelector('.btn-cancel').addEventListener('click', (e) => {
+                    console.log('Cancel button clicked');
+                    e.stopPropagation();
+                    e.preventDefault();
+                    popup.remove();
+                });
+
+                // Add popup to body
+                document.body.appendChild(popup);
+                console.log('Popup added to body');
+
+                // Auto-close popup after 5 seconds
+                setTimeout(() => {
+                    if (popup.parentElement) {
+                        popup.remove();
+                    }
+                }, 5000);
+            };
+
+            // Add click handler to tooltip
+            tooltip.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showConfirmPopup(e);
+            });
+
+            // Add click handler to marker
+            marker.addEventListener('click', (e) => {
+                showConfirmPopup(e);
+            });
+
+            // Hide magnifier when hovering over marker or tooltip
+            const hideMagnifier = () => {
+                magnifier.classList.remove('visible');
+            };
+
+            marker.addEventListener('mouseenter', hideMagnifier);
+            tooltip.addEventListener('mouseenter', hideMagnifier);
+
+            timelineTrack.appendChild(marker);
+            effectMarkers[effectType] = { marker, tooltip };
+            effectPositions[effectType] = positionPercent; // Store position for time-based triggers
+        }
+
+        // Remove effect marker from timeline
+        function removeEffectMarker(effectType) {
+            if (effectMarkers[effectType]) {
+                // Remove tooltip from body if exists
+                if (effectMarkers[effectType].tooltip) {
+                    effectMarkers[effectType].tooltip.remove();
+                }
+                // Remove marker from timeline if exists
+                if (effectMarkers[effectType].marker) {
+                    effectMarkers[effectType].marker.remove();
+                }
+                delete effectMarkers[effectType];
+            }
+            if (effectPositions[effectType]) {
+                delete effectPositions[effectType];
+            }
+            activeEffects.delete(effectType); // Remove from active effects
+        }
+
+        // Get display name for effect type
+        function getEffectDisplayName(effectType) {
+            const names = {
+                'mirror': '🪞 Mirror Effect',
+                'grayscale': '🖤 Grayscale',
+                'sepia': '🟤 Sepia Tone',
+                'blur': '💨 Blur Background',
+                'zoom': '🔍 Zoom Effect'
+            };
+            return names[effectType] || effectType;
+        }
+
+        // Check if playhead has crossed any effect markers
+        function checkEffectMarkers() {
+            if (!video.duration) return;
+
+            const currentPercent = video.currentTime / video.duration;
+            let shouldUpdate = false;
+
+            // Check each effect marker position
+            for (const [effectType, position] of Object.entries(effectPositions)) {
+                const isActive = currentPercent >= position;
+                const wasActive = activeEffects.has(effectType);
+
+                if (isActive && !wasActive) {
+                    // Just crossed the marker - add effect
+                    activeEffects.add(effectType);
+                    shouldUpdate = true;
+                    console.log('Effect activated:', effectType);
+                } else if (!isActive && wasActive) {
+                    // Went back before the marker - remove effect
+                    activeEffects.delete(effectType);
+                    shouldUpdate = true;
+                    console.log('Effect deactivated:', effectType);
+                }
+            }
+
+            if (shouldUpdate) {
+                applyVideoEffects();
+            }
+        }
+
+        // Apply all active effects to the video
+        function applyVideoEffects() {
+            // Reset video styles
+            video.style.transform = '';
+            video.style.filter = '';
+            video.style.transformOrigin = '';
+
+            // Apply each active effect
+            for (const effectType of activeEffects) {
+                switch (effectType) {
+                    case 'mirror':
+                        video.style.transform = (video.style.transform || '') + ' scaleX(-1)';
+                        break;
+                    case 'grayscale':
+                        video.style.filter = (video.style.filter || '') + ' grayscale(100%)';
+                        break;
+                    case 'sepia':
+                        video.style.filter = (video.style.filter || '') + ' sepia(100%)';
+                        break;
+                    case 'blur':
+                        video.style.filter = (video.style.filter || '') + ' blur(5px)';
+                        break;
+                    case 'zoom':
+                        video.style.transform = (video.style.transform || '') + ' scale(1.2)';
+                        video.style.transformOrigin = 'center center';
+                        break;
+                }
+            }
+        }
+
         // Toggle face tracking options visibility
+        function toggleEffectPreview(checkbox, effectType) {
+            const previewBtn = checkbox.parentElement.querySelector('.effect-preview-btn');
+            if (previewBtn) {
+                previewBtn.style.display = checkbox.checked ? 'inline-block' : 'none';
+            }
+
+            // Add/remove marker on timeline
+            if (checkbox.checked) {
+                console.log('Effect checked:', effectType, 'Position:', selectedTimelinePosition);
+                if (selectedTimelinePosition !== null) {
+                    addEffectMarker(effectType, selectedTimelinePosition);
+                } else {
+                    console.warn('No timeline position selected. Click on the timeline first.');
+                }
+            } else {
+                removeEffectMarker(effectType);
+            }
+        }
+
         function toggleFaceTrackingOptions() {
             const enabled = document.getElementById('faceTracking').checked;
             const options = document.getElementById('faceTrackingOptions');
@@ -1645,7 +2036,69 @@
             video.style.transition = 'none';
         }
 
-        // Preview face tracking with a demo
+        // Preview video effects (mirror, grayscale, etc.)
+        function previewVideoEffect(effectType) {
+            // Reset video first
+            resetVideoTransform();
+
+            const duration = 2; // 2 second preview
+            showNotification(`Previewing ${effectType} effect...`, 'info');
+
+            // Play from current position for preview
+            const currentTime = video.currentTime;
+            video.play().then(() => {
+                // Apply effect
+                switch (effectType) {
+                    case 'mirror':
+                        video.style.transform = 'scaleX(-1)';
+                        video.style.transition = 'transform 0.3s ease';
+                        setTimeout(() => {
+                            video.style.transform = 'scaleX(1)';
+                        }, 300);
+                        break;
+                    case 'grayscale':
+                        video.style.filter = 'grayscale(100%)';
+                        video.style.transition = 'filter 0.5s ease';
+                        setTimeout(() => {
+                            video.style.filter = 'none';
+                        }, duration * 500);
+                        break;
+                    case 'sepia':
+                        video.style.filter = 'sepia(100%)';
+                        video.style.transition = 'filter 0.5s ease';
+                        setTimeout(() => {
+                            video.style.filter = 'none';
+                        }, duration * 500);
+                        break;
+                    case 'blur':
+                        video.style.filter = 'blur(5px)';
+                        video.style.transition = 'filter 0.5s ease';
+                        setTimeout(() => {
+                            video.style.filter = 'none';
+                        }, duration * 500);
+                        break;
+                    case 'zoom':
+                        video.style.transform = 'scale(1)';
+                        video.style.transition = 'transform 2s ease-out';
+                        setTimeout(() => {
+                            video.style.transform = 'scale(1.3)';
+                        }, 100);
+                        break;
+                }
+
+                // Stop after preview duration
+                setTimeout(() => {
+                    video.pause();
+                    resetVideoTransform();
+                    video.currentTime = currentTime;
+                    showNotification('Preview complete', 'success');
+                }, duration * 1000);
+            }).catch(error => {
+                console.error('Playback error:', error);
+                showNotification('Could not play preview', 'error');
+            });
+        }
+
         function previewFaceTracking() {
             const enabled = document.getElementById('faceTracking').checked;
             if (!enabled) {
