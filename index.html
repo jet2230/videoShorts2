@@ -999,13 +999,11 @@
             event.stopPropagation(); // Prevent folder selection
 
             const videoUrl = `/videos/${folderPath}/${videoFile}`;
-            console.log('Playing video:', videoUrl);
 
             // Create or get existing video modal
             let modal = document.getElementById('video-modal');
 
             if (!modal) {
-                console.log('Creating new modal');
                 modal = document.createElement('div');
                 modal.id = 'video-modal';
                 modal.style.display = 'none'; // Hidden by default
@@ -1021,27 +1019,23 @@
                 const player = document.createElement('video');
                 player.controls = true;
 
-                // Store player reference directly on modal
-                modal.videoPlayer = player;
-
                 content.appendChild(closeBtn);
                 content.appendChild(player);
                 modal.appendChild(content);
                 document.body.appendChild(modal);
-
-                console.log('Modal created and added to DOM');
             }
 
             modal.style.display = 'flex';
 
-            // Get player from stored reference
-            const player = modal.videoPlayer;
+            // Get the video element - it's the second child of modal (after content div, close button, then video)
+            // Actually it's: modal > content > closeBtn + video
+            const content = modal.querySelector('.video-modal-content');
+            const player = content ? content.querySelector('video') : null;
 
-            console.log('Player found:', player);
+            console.log('Player:', player);
 
             if (!player) {
                 showNotification('Error: Video player not found', 'error');
-                console.error('Player element not found');
                 return;
             }
 
@@ -1049,7 +1043,6 @@
 
             try {
                 await player.play();
-                console.log('Video playing successfully');
             } catch (error) {
                 console.log('Autoplay prevented, user needs to click play');
             }
@@ -1057,7 +1050,8 @@
 
         function closeVideoModal() {
             const modal = document.getElementById('video-modal');
-            const player = modal ? modal.videoPlayer : null;
+            const content = modal ? modal.querySelector('.video-modal-content') : null;
+            const player = content ? content.querySelector('video') : null;
 
             if (player) {
                 player.pause();
