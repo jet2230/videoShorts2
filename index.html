@@ -245,6 +245,12 @@
             transform: scale(1.1);
         }
 
+        .library-video-player {
+            width: 100%;
+            max-height: 75vh;
+            display: block;
+        }
+
         .folder-name {
             font-size: 14px;
             color: var(--text-secondary);
@@ -1013,11 +1019,8 @@
                 closeBtn.onclick = closeVideoModal;
 
                 const player = document.createElement('video');
-                // Use data attribute to store reference
-                player.setAttribute('data-video-modal-player', 'true');
+                player.className = 'library-video-player';
                 player.controls = true;
-                player.style.width = '100%';
-                player.style.display = 'block';
 
                 content.appendChild(closeBtn);
                 content.appendChild(player);
@@ -1029,8 +1032,8 @@
 
             modal.style.display = 'flex';
 
-            // Get player using data attribute selector
-            const player = modal.querySelector('[data-video-modal-player="true"]');
+            // Get player using class selector
+            const player = modal.querySelector('.library-video-player');
 
             console.log('Player found:', player);
 
@@ -1039,7 +1042,6 @@
                 console.error('Player element not found');
                 console.log('Modal:', modal);
                 console.log('Modal children:', modal?.children);
-                console.log('Modal innerHTML:', modal?.innerHTML);
                 return;
             }
 
@@ -1055,7 +1057,7 @@
 
         function closeVideoModal() {
             const modal = document.getElementById('video-modal');
-            const player = modal ? modal.querySelector('[data-video-modal-player="true"]') : null;
+            const player = modal ? modal.querySelector('.library-video-player') : null;
 
             if (player) {
                 player.pause();
