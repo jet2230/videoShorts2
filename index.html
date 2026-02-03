@@ -962,11 +962,11 @@
                 }
 
                 container.innerHTML = folders.map(folder => `
-                    <div class="folder-item" data-folder="${folder.number}" data-video="${folder.video_file}" data-folder-name="${folder.name}">
+                    <div class="folder-item" data-folder="${folder.number}" data-video="${folder.video_file}" data-folder-name="${folder.name}" data-folder-path="${folder.name}">
                         <div class="folder-header">
                             <span class="folder-number">
                                 #${folder.number}
-                                <button class="play-video-btn" onclick="playFolderVideo(event, '${folder.name}', '${folder.video_file}')" title="Play video">▶</button>
+                                <button class="play-video-btn" data-play-folder="${folder.name}" data-play-video="${folder.video_file}" title="Play video">▶</button>
                             </span>
                             <span class="folder-name">${folder.name}</span>
                         </div>
@@ -981,9 +981,15 @@
                 // Add click handlers
                 container.querySelectorAll('.folder-item').forEach(item => {
                     item.addEventListener('click', (e) => {
-                        // Don't trigger if clicking the play button
-                        if (e.target.classList.contains('play-video-btn')) return;
+                        // Check if play button was clicked
+                        if (e.target.classList.contains('play-video-btn')) {
+                            const folderName = e.target.dataset.playFolder;
+                            const videoFile = e.target.dataset.playVideo;
+                            playFolderVideo(e, folderName, videoFile);
+                            return;
+                        }
 
+                        // Regular folder selection
                         document.querySelectorAll('.folder-item').forEach(i => i.classList.remove('selected'));
                         item.classList.add('selected');
                         selectFolder(item.dataset.folder);
