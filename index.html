@@ -1015,12 +1015,17 @@
                 document.body.appendChild(modal);
             }
 
+            // Wait for DOM to update before accessing player
+            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
             // Get player using document.getElementById since modal is now in DOM
             const player = document.getElementById('video-modal-player');
 
             if (!player) {
                 showNotification('Error: Video player not found', 'error');
                 console.error('Player element not found');
+                console.log('Modal:', modal);
+                console.log('Modal children:', modal?.children);
                 return;
             }
 
