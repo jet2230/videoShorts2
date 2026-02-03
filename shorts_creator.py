@@ -135,9 +135,9 @@ class YouTubeShortsCreator:
 
         return max(numbers) + 1 if numbers else 1
 
-    def download_video(self, url: str) -> Dict[str, str]:
-        """Download YouTube video in highest quality."""
-        print(f"Downloading video from: {url}")
+    def download_video(self, url: str, resolution: str = 'best') -> Dict[str, str]:
+        """Download YouTube video in specified quality."""
+        print(f"Downloading video from: {url} (resolution: {resolution})")
 
         # Get video info first
         ydl_opts_info = {
@@ -158,9 +158,18 @@ class YouTubeShortsCreator:
 
         print(f"Created folder: {output_folder}")
 
+        # Map resolution to yt-dlp format string
+        format_map = {
+            'best': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+            '1080': 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]',
+            '720': 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[height<=720]',
+            '480': 'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=480]+bestaudio/best[height<=480]',
+            '360': 'bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=360]+bestaudio/best[height<=360]',
+        }
+
         # Download video
         ydl_opts_download = {
-            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+            'format': format_map.get(resolution, format_map['best']),
             'outtmpl': str(output_folder / '%(title)s.%(ext)s'),
             'quiet': True,
             'no_warnings': True,

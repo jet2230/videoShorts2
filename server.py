@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List
 import configparser
+from datetime import datetime
 
 from shorts_creator import YouTubeShortsCreator, load_settings
 
@@ -29,8 +30,37 @@ task_counter = 0
 task_lock = threading.Lock()
 
 
+class OutputCapture:
+    """Context manager to capture stdout and stderr."""
+    def __init__(self):
+        self.outputs = []
+        self.lock = threading.Lock()
+
+    def write(self, text):
+        if text.strip():
+            timestamp = datetime.now().strftime('%H:%M:%S')
+            with self.lock:
+                self.outputs.append(f"{timestamp} - {text.strip()}")
+
+    def flush(self):
+        pass
+
+    def get_output(self):
+        with self.lock:
+            return '\n'.join(self.outputs)
+
+
 def run_task(task_id: str, func, *args, **kwargs):
     """Run a function in a background thread and update task status."""
+    # Set up output capture
+    capture = OutputCapture()
+
+    # Redirect stdout and stderr
+    original_stdout = sys.stdout
+    original_stderr = sys.stderr
+    sys.stdout = capture
+    sys.stderr = capture
+
     try:
         with task_lock:
             tasks[task_id]['status'] = 'running'
@@ -44,6 +74,13 @@ def run_task(task_id: str, func, *args, **kwargs):
         with task_lock:
             tasks[task_id]['status'] = 'failed'
             tasks[task_id]['error'] = str(e)
+    finally:
+        # Restore original stdout/stderr
+        sys.stdout = original_stdout
+        sys.stderr = original_stderr
+        # Update task with logs
+        with task_lock:
+            tasks[task_id]['log'] = capture.get_output()
 
 
 @app.route('/')
@@ -260,6 +297,7 @@ def process_video():
     url = data.get('url', '').strip()
     local_file = data.get('local_file', '').strip()
     model = data.get('model', settings.get('whisper', 'model'))
+    resolution = data.get('resolution', 'best')
 
     if not url and not local_file:
         return jsonify({'error': 'Either URL or local file must be provided'}), 400
@@ -276,14 +314,14 @@ def process_video():
     # Start background task
     thread = threading.Thread(
         target=run_task,
-        args=(task_id, _process_video, url, local_file, model)
+        args=(task_id, _process_video, url, local_file, model, resolution)
     )
     thread.start()
 
     return jsonify({'task_id': task_id})
 
 
-def _process_video(url: str, local_file: str, model: str):
+def _process_video(url: str, local_file: str, model: str, resolution: str = 'best'):
     """Process video in background."""
     # Initialize AI generator
     ai_generator = None
@@ -296,7 +334,7 @@ def _process_video(url: str, local_file: str, model: str):
         pass
 
     if url:
-        video_info = creator.download_video(url)
+        video_info = creator.download_video(url, resolution=resolution)
     else:
         video_info = creator.process_local_video(local_file)
 

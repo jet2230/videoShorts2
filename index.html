@@ -598,6 +598,31 @@
             text-align: center;
         }
 
+        .process-log {
+            margin-top: 16px;
+            padding: 12px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            color: var(--text-secondary);
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            line-height: 1.5;
+            display: none;
+        }
+
+        .process-log.active {
+            display: block;
+        }
+
+        .process-log:empty {
+            display: none;
+        }
+
         .progress-cancel {
             text-align: center;
             margin-top: 12px;
@@ -790,6 +815,17 @@
                     <input type="url" id="url-input" placeholder="https://www.youtube.com/watch?v=...">
                 </div>
 
+                <div class="form-group">
+                    <label>Video Resolution</label>
+                    <select id="resolution-input">
+                        <option value="best" selected>Best Quality</option>
+                        <option value="1080">1080p (Full HD)</option>
+                        <option value="720">720p (HD)</option>
+                        <option value="480">480p</option>
+                        <option value="360">360p</option>
+                    </select>
+                </div>
+
                 <div style="text-align: center; margin: 20px 0; color: var(--text-secondary);">OR</div>
 
                 <div class="form-group">
@@ -797,7 +833,7 @@
                     <input type="file" id="file-input" accept="video/*">
                 </div>
 
-                <button class="btn btn-primary" id="process-btn">
+                <button class="btn btn-primary" id="process-btn" style="width: 100%;">
                     Process Video
                 </button>
 
@@ -806,6 +842,7 @@
                         <div class="progress-fill"></div>
                     </div>
                     <div class="progress-text" id="process-text">Processing...</div>
+                    <div class="process-log" id="process-log"></div>
                     <div class="progress-cancel">
                         <button class="btn-cancel" id="cancel-process-btn">Cancel</button>
                     </div>
@@ -1512,6 +1549,7 @@
         document.getElementById('process-btn').addEventListener('click', async () => {
             const url = document.getElementById('url-input').value.trim();
             const file = document.getElementById('file-input').files[0];
+            const resolution = document.getElementById('resolution-input').value;
             const model = 'small'; // Default model
 
             if (!url && !file) {
@@ -1521,14 +1559,20 @@
 
             const progressContainer = document.getElementById('process-progress');
             const progressText = document.getElementById('process-text');
+            const processLog = document.getElementById('process-log');
             const cancelBtn = document.getElementById('cancel-process-btn');
             progressContainer.classList.add('active');
+            processLog.classList.add('active');
+            processLog.textContent = '';
             document.getElementById('process-btn').disabled = true;
             cancelBtn.style.display = 'inline-block';
 
             try {
                 const payload = { model };
-                if (url) payload.url = url;
+                if (url) {
+                    payload.url = url;
+                    payload.resolution = resolution;
+                }
                 if (file) payload.local_file = file.path || file.name;
 
                 const response = await fetch(`${API_BASE}/process`, {
@@ -1545,6 +1589,10 @@
                 currentTaskId = task_id;
                 await monitorTask(task_id, (status) => {
                     progressText.textContent = `Processing: ${status.type}...`;
+                    if (status.log) {
+                        processLog.textContent = status.log;
+                        processLog.scrollTop = processLog.scrollHeight;
+                    }
                 });
 
                 showNotification('Video processed successfully!', 'success');
@@ -1562,6 +1610,7 @@
                 showNotification('Error: ' + error.message, 'error');
             } finally {
                 progressContainer.classList.remove('active');
+                processLog.classList.remove('active');
                 document.getElementById('process-btn').disabled = false;
                 cancelBtn.style.display = 'none';
                 currentTaskId = null;
