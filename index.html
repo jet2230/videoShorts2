@@ -966,7 +966,7 @@
                         <div class="folder-header">
                             <span class="folder-number">
                                 #${folder.number}
-                                <button class="play-video-btn" onclick="playFolderVideo(event, '${folder.path}', '${folder.video_file}')" title="Play video">▶</button>
+                                <button class="play-video-btn" onclick="playFolderVideo(event, '${folder.name}', '${folder.video_file}')" title="Play video">▶</button>
                             </span>
                             <span class="folder-name">${folder.name}</span>
                         </div>
@@ -995,10 +995,11 @@
         }
 
         // Play folder video
-        async function playFolderVideo(event, folderPath, videoFile) {
+        async function playFolderVideo(event, folderName, videoFile) {
             event.stopPropagation(); // Prevent folder selection
 
-            const videoUrl = `/videos/${folderPath}/${videoFile}`;
+            const videoUrl = `/videos/${folderName}/${videoFile}`;
+            console.log('Playing video:', videoUrl);
 
             // Create or get existing video modal
             let modal = document.getElementById('video-modal');
