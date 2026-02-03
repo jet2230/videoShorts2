@@ -1023,7 +1023,10 @@
                 const closeBtn = document.createElement('button');
                 closeBtn.className = 'video-modal-close';
                 closeBtn.textContent = '×';
-                closeBtn.addEventListener('click', () => {
+                closeBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    console.log('Close button clicked');
+
                     const modal = document.getElementById('video-modal');
                     const player = modal ? modal.querySelector('video') : null;
 
@@ -1035,6 +1038,8 @@
                     if (modal) {
                         modal.style.display = 'none';
                     }
+
+                    console.log('Modal closed');
                 });
 
                 const player = document.createElement('video');
@@ -1073,6 +1078,7 @@
         }
 
         function closeVideoModal() {
+            console.log('closeVideoModal called');
             const modal = document.getElementById('video-modal');
             const player = modal ? modal.querySelector('video') : null;
 
@@ -1086,7 +1092,7 @@
             }
         }
 
-        // Make closeVideoModal available globally for the onclick attribute
+        // Make closeVideoModal available globally
         window.closeVideoModal = closeVideoModal;
 
         // Select folder and load themes
