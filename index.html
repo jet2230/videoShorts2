@@ -1019,8 +1019,10 @@
                 closeBtn.onclick = closeVideoModal;
 
                 const player = document.createElement('video');
-                player.className = 'library-video-player';
                 player.controls = true;
+
+                // Store player reference directly on modal
+                modal.videoPlayer = player;
 
                 content.appendChild(closeBtn);
                 content.appendChild(player);
@@ -1032,16 +1034,14 @@
 
             modal.style.display = 'flex';
 
-            // Get player using class selector
-            const player = modal.querySelector('.library-video-player');
+            // Get player from stored reference
+            const player = modal.videoPlayer;
 
             console.log('Player found:', player);
 
             if (!player) {
                 showNotification('Error: Video player not found', 'error');
                 console.error('Player element not found');
-                console.log('Modal:', modal);
-                console.log('Modal children:', modal?.children);
                 return;
             }
 
@@ -1057,7 +1057,7 @@
 
         function closeVideoModal() {
             const modal = document.getElementById('video-modal');
-            const player = modal ? modal.querySelector('.library-video-player') : null;
+            const player = modal ? modal.videoPlayer : null;
 
             if (player) {
                 player.pause();
