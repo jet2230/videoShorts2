@@ -572,6 +572,11 @@
             display: block;
         }
 
+        /* Keep visible when there's an error */
+        .progress-container.error {
+            display: block;
+        }
+
         .progress-bar {
             height: 20px;
             background: var(--bg-tertiary);
@@ -843,7 +848,7 @@
                     </div>
                     <div class="progress-text" id="process-text">Processing...</div>
                     <!-- Second progress bar for subtitle generation -->
-                    <div class="progress-bar" style="margin-top: 8px; height: 12px; opacity: 0.3;">
+                    <div class="progress-bar" id="subtitle-progress-container" style="margin-top: 8px; height: 20px; opacity: 0.3;">
                         <div class="progress-fill" id="subtitle-progress-fill"></div>
                     </div>
                     <div class="progress-text" id="subtitle-text" style="font-size: 12px; color: var(--text-secondary);"></div>
@@ -1570,6 +1575,7 @@
             const progressContainer = document.getElementById('process-progress');
             const progressBar = document.getElementById('main-progress-fill');
             const subtitleProgressBar = document.getElementById('subtitle-progress-fill');
+            const subtitleProgressContainer = document.getElementById('subtitle-progress-container');
             const themeProgressBar = document.getElementById('theme-progress-fill');
             const progressText = document.getElementById('process-text');
             const subtitleText = document.getElementById('subtitle-text');
@@ -1583,8 +1589,12 @@
             progressBar.style.animation = 'none';
             subtitleProgressBar.style.width = '0%';
             themeProgressBar.style.width = '0%';
-            subtitleProgressBar.parentElement.style.opacity = '0.3';
-            themeProgressBar.parentElement.style.opacity = '0.3';
+            if (subtitleProgressContainer) {
+                subtitleProgressContainer.style.opacity = '0.3';
+            }
+            if (themeProgressBar && themeProgressBar.parentElement) {
+                themeProgressBar.parentElement.style.opacity = '0.3';
+            }
             document.getElementById('process-btn').disabled = true;
             cancelBtn.style.display = 'inline-block';
 
@@ -1616,32 +1626,76 @@
                         // Detect current stage and update progress text
                         const log = status.log.toLowerCase();
 
-                        // Download stage - look for [download] with percentage
-                        if (log.includes('[download]')) {
-                            // Find all download percentages and use the last one
-                            const downloadMatches = [...status.log.matchAll(/\[download\]\s+(\d+\.?\d*)%/gi)];
-                            if (downloadMatches.length > 0) {
-                                const lastMatch = downloadMatches[downloadMatches.length - 1];
-                                const percent = parseFloat(lastMatch[1]);
-                                progressBar.style.width = `${percent}%`;
-                                progressBar.style.animation = 'none';
-                                progressText.textContent = `⬇️ Downloading: ${percent}%`;
-                                // Hide other bars
-                                subtitleProgressBar.parentElement.style.opacity = '0.3';
-                                themeProgressBar.parentElement.style.opacity = '0.3';
+                        // Theme generation stage (check FIRST - has priority for "Progress:" during generation)
+                        if (log.includes('theme') || log.includes('generating')) {
+                            // Keep main download bar at 100% and full opacity
+                            progressBar.style.width = '100%';
+                            if (progressBar.parentElement) {
+                                progressBar.parentElement.style.opacity = '1';
+                            }
+
+                            // Keep subtitle bar at 100% (complete) and show theme bar
+                            if (subtitleProgressContainer) {
+                                subtitleProgressContainer.style.opacity = '1';
+                                subtitleProgressBar.style.width = '100%';
+                            }
+                            subtitleText.textContent = '✅ Subtitles complete';
+                            if (themeProgressBar && themeProgressBar.parentElement) {
+                                themeProgressBar.parentElement.style.opacity = '1';
+                            }
+
+                            // Find all progress percentages and use the last one
+                            const themeMatches = [...status.log.matchAll(/Progress:\s*(\d+)%/gi)];
+                            // Find the last theme title
+                            const titleMatches = [...status.log.matchAll(/Theme\s+\d+:\s*(.+?)(?:\.\.\.|$)/gim)];
+                            if (themeMatches.length > 0) {
+                                const lastMatch = themeMatches[themeMatches.length - 1];
+                                const percent = parseInt(lastMatch[1]);
+                                themeProgressBar.style.width = `${percent}%`;
+                                themeProgressBar.style.animation = 'none';
+                                // Show theme title if available
+                                if (titleMatches.length > 0) {
+                                    const lastTitle = titleMatches[titleMatches.length - 1];
+                                    const titleText = lastTitle[1].trim();
+                                    progressText.textContent = `⬇️ Download: Complete | 🎤 Subtitles: Complete | ✨ Themes: ${percent}%`;
+                                    themeText.textContent = `✨ ${titleText}`;
+                                } else {
+                                    progressText.textContent = `⬇️ Download: Complete | 🎤 Subtitles: Complete | ✨ Themes: ${percent}%`;
+                                    themeText.textContent = `✨ Generating: ${percent}%`;
+                                }
+                            } else if (log.includes('identified') || log.includes('ai identified')) {
+                                progressText.textContent = '✨ Identifying themes with AI...';
+                                themeText.textContent = 'AI analyzing...';
                             } else {
-                                progressText.textContent = '⬇️ Downloading...';
+                                progressText.textContent = '✨ Generating themes...';
+                                themeText.textContent = 'Processing...';
                             }
                         }
-                        // Whisper/subtitle stage
-                        else if (log.includes('whisper') || log.includes('transcrib') || log.includes('subtitle')) {
+                        // Whisper/subtitle stage (checks for "Progress:" when not generating themes)
+                        else if (log.includes('progress:') || log.includes('whisper') || log.includes('transcrib') || log.includes('subtitle')) {
+                            // Keep main download bar at 100% and full opacity
+                            progressBar.style.width = '100%';
+                            if (progressBar.parentElement) {
+                                progressBar.parentElement.style.opacity = '1';
+                            }
+
                             // Show subtitle bar, hide theme bar
-                            subtitleProgressBar.parentElement.style.opacity = '1';
-                            themeProgressBar.parentElement.style.opacity = '0.3';
+                            if (subtitleProgressContainer) {
+                                subtitleProgressContainer.style.opacity = '1';
+                            }
+                            if (themeProgressBar && themeProgressBar.parentElement) {
+                                themeProgressBar.parentElement.style.opacity = '0.3';
+                            }
 
                             // Find all whisper percentages and use the last one
                             const whisperMatches = [...status.log.matchAll(/(\d+)%/gi)];
-                            if (whisperMatches.length > 0) {
+                            if (log.includes('subtitles: complete') || log.includes('created subtitles')) {
+                                // Subtitles are complete - keep bar at 100%
+                                subtitleProgressBar.style.width = '100%';
+                                subtitleProgressBar.style.animation = 'none';
+                                progressText.textContent = `⬇️ Download: Complete | 🎤 Subtitles: Complete`;
+                                subtitleText.textContent = '✅ Subtitles complete';
+                            } else if (whisperMatches.length > 0) {
                                 const lastMatch = whisperMatches[whisperMatches.length - 1];
                                 const percent = parseInt(lastMatch[1]);
                                 subtitleProgressBar.style.width = `${percent}%`;
@@ -1656,19 +1710,25 @@
                                 subtitleText.textContent = '🎤 Starting...';
                             }
                         }
-                        // Theme generation stage
-                        else if (log.includes('theme') || log.includes('generating')) {
-                            // Show theme bar, hide subtitle bar
-                            themeProgressBar.parentElement.style.opacity = '1';
-                            subtitleProgressBar.parentElement.style.opacity = '0.3';
-
-                            // Update theme progress if available
-                            if (log.includes('identified') || log.includes('ai identified')) {
-                                progressText.textContent = '✨ Identifying themes with AI...';
-                                subtitleText.textContent = 'AI analyzing...';
+                        // Download stage - look for [download] with percentage
+                        else if (log.includes('[download]')) {
+                            // Find all download percentages and use the last one
+                            const downloadMatches = [...status.log.matchAll(/\[download\]\s+(\d+\.?\d*)%/gi)];
+                            if (downloadMatches.length > 0) {
+                                const lastMatch = downloadMatches[downloadMatches.length - 1];
+                                const percent = parseFloat(lastMatch[1]);
+                                progressBar.style.width = `${percent}%`;
+                                progressBar.style.animation = 'none';
+                                progressText.textContent = `⬇️ Downloading: ${percent}%`;
+                                // Hide other bars
+                                if (subtitleProgressContainer) {
+                                    subtitleProgressContainer.style.opacity = '0.3';
+                                }
+                                if (themeProgressBar && themeProgressBar.parentElement) {
+                                    themeProgressBar.parentElement.style.opacity = '0.3';
+                                }
                             } else {
-                                progressText.textContent = '✨ Generating themes...';
-                                subtitleText.textContent = 'Processing...';
+                                progressText.textContent = '⬇️ Downloading...';
                             }
                         }
                         // Processing stage
@@ -1677,18 +1737,24 @@
                         }
                         // Default/fallback
                         else {
-                            progressText.textContent = `Processing: ${status.type}...`;
+                            progressText.textContent = 'Processing: ' + (status.type || 'unknown') + '...';
                         }
                     } else {
-                        progressText.textContent = `Processing: ${status.type}...`;
+                        progressText.textContent = 'Processing: ' + (status.type || 'unknown') + '...';
                     }
                 });
 
                 showNotification('Video processed successfully!', 'success');
 
-                // Set progress to 100%
-                progressBar.style.width = '100%';
-                progressText.textContent = 'Complete!';
+                // Hide progress container and clear all progress indicators
+                progressContainer.classList.remove('active');
+                processLog.classList.remove('active');
+                progressBar.style.width = '0%';
+                subtitleProgressBar.style.width = '0%';
+                themeProgressBar.style.width = '0%';
+                progressText.textContent = 'Processing...';
+                subtitleText.textContent = '';
+                themeText.textContent = '';
 
                 // Reset form
                 document.getElementById('url-input').value = '';
@@ -1700,13 +1766,32 @@
                 }, 1500);
 
             } catch (error) {
+                // Add error to log and keep it visible
+                processLog.textContent += '\n\n❌ ERROR: ' + error.message + '\n\n(Click "Close" to dismiss)';
+                processLog.style.color = '#ff6b6b';
+                progressText.textContent = '❌ Error occurred';
+                progressContainer.classList.add('error');  // Keep visible
+                cancelBtn.textContent = 'Close';
+                cancelBtn.onclick = () => {
+                    progressContainer.classList.remove('active', 'error');
+                    processLog.classList.remove('active');
+                    processLog.style.color = '';
+                    document.getElementById('process-btn').disabled = false;
+                    cancelBtn.style.display = 'none';
+                    cancelBtn.textContent = 'Cancel';
+                    cancelBtn.onclick = null;
+                    currentTaskId = null;
+                };
                 showNotification('Error: ' + error.message, 'error');
             } finally {
-                progressContainer.classList.remove('active');
-                processLog.classList.remove('active');
-                document.getElementById('process-btn').disabled = false;
-                cancelBtn.style.display = 'none';
-                currentTaskId = null;
+                // Only hide if there's no error
+                if (!processContainer.classList.contains('error')) {
+                    progressContainer.classList.remove('active');
+                    processLog.classList.remove('active');
+                    document.getElementById('process-btn').disabled = false;
+                    cancelBtn.style.display = 'none';
+                    currentTaskId = null;
+                }
             }
         });
 
@@ -1867,7 +1952,9 @@
                             resolve(task.result);
                         } else if (task.status === 'failed') {
                             clearInterval(interval);
-                            reject(new Error(task.error || 'Task failed'));
+                            // Include log in error for debugging
+                            const logInfo = task.log ? '\n\nLog:\n' + task.log.slice(-500) : '';
+                            reject(new Error((task.error || 'Task failed') + logInfo));
                         } else if (task.status === 'cancelled') {
                             clearInterval(interval);
                             reject(new Error('Task was cancelled'));

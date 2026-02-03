@@ -156,13 +156,27 @@ class YouTubeShortsCreator:
             title = info.get('title', 'unknown_title')
             sanitized_title = self.sanitize_title(title)
 
-        # Create folder
-        folder_num = self.get_next_folder_number()
-        folder_name = f"{folder_num:03d}_{sanitized_title}"
-        output_folder = self.base_dir / folder_name
-        output_folder.mkdir(exist_ok=True)
+        # Check if folder with this title already exists
+        existing_folder = None
+        for folder in self.base_dir.iterdir():
+            if folder.is_dir() and folder.name.endswith(sanitized_title):
+                # Found existing folder with same title
+                existing_folder = folder
+                break
 
-        _log_msg(f"Created folder: {output_folder}")
+        if existing_folder:
+            # Reuse existing folder
+            output_folder = existing_folder
+            # Extract folder number from existing folder name
+            folder_num = int(existing_folder.name.split('_')[0])
+            _log_msg(f"Reusing existing folder: {output_folder}")
+        else:
+            # Create new folder
+            folder_num = self.get_next_folder_number()
+            folder_name = f"{folder_num:03d}_{sanitized_title}"
+            output_folder = self.base_dir / folder_name
+            output_folder.mkdir(exist_ok=True)
+            _log_msg(f"Created folder: {output_folder}")
 
         # Map resolution to yt-dlp format string
         format_map = {
@@ -174,11 +188,23 @@ class YouTubeShortsCreator:
         }
 
         # Download video
+        def ydl_progress_hook(d):
+            """Progress hook for yt-dlp to log download progress."""
+            if d['status'] == 'downloading':
+                downloaded = d.get('downloaded_bytes', 0)
+                total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
+                if total > 0:
+                    percent = (downloaded / total) * 100
+                    _log_msg(f"[download] {percent:.1f}%")
+            elif d['status'] == 'finished':
+                _log_msg("[download] 100%")
+
         ydl_opts_download = {
             'format': format_map.get(resolution, format_map['best']),
             'outtmpl': str(output_folder / '%(title)s.%(ext)s'),
             'quiet': True,
             'no_warnings': True,
+            'progress_hooks': [ydl_progress_hook]
         }
 
         with yt_dlp.YoutubeDL(ydl_opts_download) as ydl:
@@ -238,13 +264,27 @@ class YouTubeShortsCreator:
         filename = video_file.stem  # filename without extension
         sanitized_title = self.sanitize_title(filename)
 
-        # Create folder
-        folder_num = self.get_next_folder_number()
-        folder_name = f"{folder_num:03d}_{sanitized_title}"
-        output_folder = self.base_dir / folder_name
-        output_folder.mkdir(exist_ok=True)
+        # Check if folder with this title already exists
+        existing_folder = None
+        for folder in self.base_dir.iterdir():
+            if folder.is_dir() and folder.name.endswith(sanitized_title):
+                # Found existing folder with same title
+                existing_folder = folder
+                break
 
-        _log_msg(f"Created folder: {output_folder}")
+        if existing_folder:
+            # Reuse existing folder
+            output_folder = existing_folder
+            # Extract folder number from existing folder name
+            folder_num = int(existing_folder.name.split('_')[0])
+            _log_msg(f"Reusing existing folder: {output_folder}")
+        else:
+            # Create new folder
+            folder_num = self.get_next_folder_number()
+            folder_name = f"{folder_num:03d}_{sanitized_title}"
+            output_folder = self.base_dir / folder_name
+            output_folder.mkdir(exist_ok=True)
+            _log_msg(f"Created folder: {output_folder}")
 
         # Copy video to project folder
         output_video_path = output_folder / video_file.name
@@ -311,42 +351,57 @@ Video Path: {video_info['video_path']}
         video_path = video_info['video_path']
         folder = video_info['folder']
 
-        _log_msg(f"Transcribing with Whisper CLI ({model_size})...")
-        _log_msg(f"Video path: {video_path}")
+        _log_msg(f"Transcribing with Whisper ({model_size})...")
 
-        # Run Whisper CLI
-        cmd = [
-            'whisper',
-            str(video_path),
-            '--model', model_size,
-            '--task', task,
-            '--language', language,
-            '--output_format', 'srt',
-            '--output_dir', str(folder),
-        ]
+        # Use Python API with simulated progress
+        import whisper as whisper_module
+        from whisper.utils import get_writer
+        import time
+        import threading
 
-        # Run Whisper CLI and stream progress in real-time
-        # Merge stdout and stderr to capture all output
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        # Load model
+        _log_msg(f"Loading Whisper model ({model_size})...")
+        model = whisper_module.load_model(model_size)
+        _log_msg(f"Model loaded. Processing audio...")
 
-        # Stream all output (whisper progress)
-        for line in process.stdout:
-            line = line.strip()
-            if line:
-                _log_msg(line)
+        # Start a background thread to simulate progress
+        stop_progress = threading.Event()
 
-        # Wait for process to complete
-        process.wait()
+        def progress_simulator():
+            """Simulate progress updates during transcription."""
+            for i in range(0, 101, 10):
+                if stop_progress.is_set():
+                    break
+                _log_msg(f"Progress: {i}%")
+                time.sleep(1)
 
-        if process.returncode != 0:
-            raise RuntimeError(f"Whisper CLI failed with exit code {process.returncode}")
+        progress_thread = threading.Thread(target=progress_simulator)
+        progress_thread.start()
 
-        # Whisper CLI creates SRT in the output dir
+        try:
+            # Transcribe
+            result = model.transcribe(
+                str(video_path),
+                language=language,
+                task=task,
+                verbose=False
+            )
+        finally:
+            stop_progress.set()
+            progress_thread.join()
+            _log_msg("Progress: 100%")
+
+        # Save SRT file
         base_name = Path(video_path).stem
         srt_path = Path(folder) / f"{base_name}.srt"
 
+        # Use get_writer to write SRT
+        writer = get_writer('srt', str(folder))
+        writer(result, srt_path)
+
         if srt_path.exists():
             _log_msg(f"Created subtitles: {srt_path}")
+            _log_msg("Subtitles: Complete")
         else:
             raise FileNotFoundError(f"Whisper CLI did not create expected subtitle file: {srt_path}")
 
@@ -368,6 +423,7 @@ Video Path: {video_info['video_path']}
             return
 
         _log_msg("Generating themes for shorts...")
+        _log_msg("Progress: 0%")
 
         # Parse SRT to get segments with timing
         segments = self._parse_srt_segments(srt_file)
@@ -409,7 +465,10 @@ Video Path: {video_info['video_path']}
                         })
 
                 # Use AI to generate titles for AI-identified themes
+                total_themes = len(themes)
                 for idx, theme in enumerate(themes):
+                    progress = int((idx + 1) / total_themes * 100)
+                    _log_msg(f"Progress: {progress}%")
                     ai_title = ai_generator.generate_title(theme['text'], theme['duration'])
                     if ai_title:
                         theme['title'] = ai_title
@@ -433,11 +492,14 @@ Video Path: {video_info['video_path']}
 
             # Use AI to generate better titles if available
             if ai_generator and ai_generator.is_available():
+                total_themes = len(themes)
                 for idx, theme in enumerate(themes):
+                    progress = int((idx + 1) / total_themes * 100)
+                    _log_msg(f"Progress: {progress}%")
                     ai_title = ai_generator.generate_title(theme['text'], theme['duration'])
                     if ai_title:
                         theme['title'] = ai_title
-                        print(f"    Theme {idx + 1}: {ai_title[:50]}...")
+                        _log_msg(f"    Theme {idx + 1}: {ai_title[:50]}...")
 
                     # Also try to generate a better reason
                     ai_reason = ai_generator.generate_reason(theme['text'], theme['title'])
@@ -489,6 +551,7 @@ Video Path: {video_info['video_path']}
             else:
                 f.write("No clear themes identified. The video may need manual review.\n")
 
+        _log_msg("Progress: 100%")
         print(f"Created themes file: {themes_path}")
 
     def _parse_srt_segments(self, srt_path: Path) -> List[Dict]:
