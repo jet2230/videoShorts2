@@ -1198,14 +1198,30 @@
     <div class="header">
         <h1>🎬 Video Editor</h1>
         <div class="action-bar">
+            <button class="action-btn secondary" id="loadBtn" onclick="toggleLoadPresets()">📂 Load</button>
+            <button class="action-btn secondary" id="saveBtn" onclick="toggleSaveInput()">💾 Save</button>
             <button class="action-btn secondary" onclick="resetAll()">↺ Reset</button>
             <button class="action-btn secondary" onclick="previewChanges()">👁️ Preview</button>
-            <button class="action-btn primary" id="exportBtn" onclick="applyChanges()">💾 Export</button>
+            <button class="action-btn primary" id="exportBtn" onclick="applyChanges()">🎬 Export</button>
             <button class="back-btn" onclick="window.history.back()">← Back</button>
         </div>
     </div>
 
     <div class="notification" id="notification"></div>
+
+    <!-- Save Preset Box -->
+    <div id="savePresetBox" style="display: none; position: fixed; background: rgba(20, 20, 30, 0.98); border: 1px solid #444; border-radius: 8px; padding: 10px; z-index: 99999; min-width: 200px; box-shadow: 0 8px 32px rgba(0,0,0,0.5);">
+        <input type="text" id="presetNameInput" placeholder="Preset name..." style="width: 100%; padding: 8px; background: #333; border: 1px solid #555; border-radius: 4px; color: #fff; margin-bottom: 8px; box-sizing: border-box;">
+        <div style="display: flex; gap: 5px;">
+            <button onclick="savePreset()" style="flex: 1; padding: 8px; background: #00ff9d; border: none; border-radius: 4px; color: #000; font-weight: bold; cursor: pointer;">Save</button>
+            <button onclick="toggleSaveInput()" style="flex: 1; padding: 8px; background: #555; border: none; border-radius: 4px; color: #fff; cursor: pointer;">Cancel</button>
+        </div>
+    </div>
+
+    <!-- Load Presets Box -->
+    <div id="loadPresetsBox" style="display: none; position: fixed; background: rgba(20, 20, 30, 0.98); border: 1px solid #444; border-radius: 8px; padding: 10px; z-index: 99999; min-width: 300px; max-width: 400px; max-height: 400px; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.5);">
+        <div id="presetsList"></div>
+    </div>
 
     <!-- Export Progress Modal -->
     <div class="export-progress-modal" id="exportProgressModal">
@@ -1654,6 +1670,8 @@
         let effectMarkers = {}; // Stores {marker: element, tooltip: element} by effect name
         let effectPositions = {}; // Stores position (0-1) for each effect type
         let activeEffects = new Set(); // Currently active effects at playhead position
+        let effectMarkersData = []; // Stores effect markers data for export/save
+        let isResetting = false; // Flag to prevent re-showing indicator during reset
 
         // Load video
         if (videoPath) {
@@ -2490,86 +2508,8 @@
 
         // Clear all effect markers
         function clearAllEffects() {
-            if (Object.keys(effectMarkers).length === 0) {
-                console.log('No effects to clear');
-                return;
-            }
-
-            // Remove any existing popup first
-            const existingPopup = document.querySelector('.clear-all-confirm-popup');
-            if (existingPopup) {
-                existingPopup.remove();
-                return;
-            }
-
-            // Get button position for popup placement
-            const button = document.querySelector('.clear-all-btn');
-            const rect = button.getBoundingClientRect();
-
-            // Create inline confirmation popup
-            const popup = document.createElement('div');
-            popup.className = 'clear-all-confirm-popup';
-            popup.style.position = 'fixed';
-            popup.style.left = `${rect.left + rect.width / 2}px`;
-            popup.style.top = `${rect.bottom + 10}px`;
-            popup.style.transform = 'translateX(-50%)';
-            popup.innerHTML = `
-                <div class="message">Remove all effect markers?</div>
-                <div class="buttons">
-                    <button class="btn-confirm">Remove All</button>
-                    <button class="btn-cancel">Cancel</button>
-                </div>
-            `;
-
-            // Add button handlers
-            popup.querySelector('.btn-confirm').addEventListener('click', (e) => {
-                e.stopPropagation();
-                popup.remove();
-
-                // Remove all markers
-                for (const effectType of Object.keys(effectMarkers)) {
-                    removeEffectMarker(effectType);
-                }
-
-                // Uncheck all effect checkboxes
-                const checkboxes = document.querySelectorAll('input[data-effect]');
-                checkboxes.forEach(checkbox => {
-                    if (checkbox.checked) {
-                        checkbox.checked = false;
-                        const effectType = checkbox.getAttribute('data-effect');
-                        // Hide duration options
-                        const durationOptions = document.getElementById(`duration${effectType.charAt(0).toUpperCase() + effectType.slice(1)}`);
-                        if (durationOptions) {
-                            durationOptions.style.display = 'none';
-                        }
-                        // Hide preview button
-                        const previewBtn = checkbox.parentElement.querySelector('.effect-preview-btn');
-                        if (previewBtn) {
-                            previewBtn.style.display = 'none';
-                        }
-                    }
-                });
-
-                // Clear active effects and reset video
-                activeEffects.clear();
-                applyVideoEffects();
-                console.log('All effects cleared');
-            });
-
-            popup.querySelector('.btn-cancel').addEventListener('click', (e) => {
-                e.stopPropagation();
-                popup.remove();
-            });
-
-            // Add popup to body
-            document.body.appendChild(popup);
-
-            // Auto-close popup after 5 seconds
-            setTimeout(() => {
-                if (popup.parentElement) {
-                    popup.remove();
-                }
-            }, 5000);
+            // Just call resetAll - it does everything we need
+            resetAll();
         }
 
         // Get display name for effect type
@@ -2698,6 +2638,11 @@
         }
 
         function toggleFaceTrackingOptions() {
+            // Don't do anything if we're in the middle of a reset
+            if (isResetting) {
+                return;
+            }
+
             const enabled = document.getElementById('faceTracking').checked;
             const options = document.getElementById('faceTrackingOptions');
             const indicator = document.getElementById('faceTrackingIndicator');
@@ -3305,6 +3250,9 @@
         function resetAll() {
             if (!confirm('Reset all editing changes?')) return;
 
+            // Set flag to prevent toggleFaceTrackingOptions from re-showing indicator
+            isResetting = true;
+
             document.getElementById('startTime').value = '00:00:00';
             document.getElementById('endTime').value = formatTime(video.duration);
             document.getElementById('subtitleOffset').value = 0;
@@ -3328,12 +3276,35 @@
             document.getElementById('outroDurationValue').textContent = '1s';
             document.getElementById('outroEasing').value = 'ease-out';
 
-            // Reset face tracking
+            // Reset face tracking values
             document.getElementById('faceZoomLevel').value = 1.5;
             document.getElementById('faceZoomValue').textContent = '1.5x';
             document.getElementById('faceSmoothing').value = 'medium';
 
-            document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+            // Uncheck face tracking explicitly and hide its UI elements
+            const faceTrackingCheckbox = document.getElementById('faceTracking');
+            faceTrackingCheckbox.checked = false;
+            document.getElementById('faceTrackingOptions').style.display = 'none';
+            document.getElementById('faceTrackingIndicator').style.display = 'none';
+            video.dataset.faceTracking = 'false';
+
+            // Uncheck all other checkboxes
+            document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                if (cb.id !== 'faceTracking') {
+                    cb.checked = false;
+                }
+            });
+
+            // Hide all duration options dropdowns
+            ['durationMirror', 'durationGrayscale', 'durationSepia', 'durationBlur', 'durationZoom'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.style.display = 'none';
+            });
+
+            // Hide all preview buttons
+            document.querySelectorAll('.effect-preview-btn').forEach(btn => {
+                btn.style.display = 'none';
+            });
 
             audioFile = null;
             brollFiles = [];
@@ -3342,12 +3313,379 @@
             audioTrack.style.display = 'none';
             updateBrollList();
 
+            // Remove all effect markers from the DOM and clear all data
+            for (const effectType of Object.keys(effectMarkers)) {
+                removeEffectMarker(effectType);
+            }
+            effectMarkers = {};
+            effectPositions = {};
+            effectMarkersData = [];
+            activeEffects.clear();
+
+            // Clear all video effects - reset to original appearance
+            video.style.transform = '';
+            video.style.filter = '';
+            video.style.transformOrigin = '';
+            video.style.objectFit = '';
+
+            // Reset timeline
             updateTimeline();
             video.currentTime = 0;
-            resetVideoTransform();
 
-            // Hide face tracking options
-            document.getElementById('faceTrackingOptions').style.display = 'none';
+            // Clear flag after reset is complete
+            setTimeout(() => {
+                isResetting = false;
+            }, 100);
+        }
+
+        // Get current settings
+        function getCurrentSettings() {
+            // Build effect markers data with time ranges
+            effectMarkersData = [];
+            for (const [effectType, positionData] of Object.entries(effectPositions)) {
+                if (positionData && document.getElementById(`effect${effectType.charAt(0).toUpperCase() + effectType.slice(1)}`)?.checked) {
+                    const videoDuration = video.duration || 1;
+                    effectMarkersData.push({
+                        type: effectType,
+                        start_time: positionData.start * videoDuration,
+                        end_time: positionData.end * videoDuration
+                    });
+                }
+            }
+
+            return {
+                trim: {
+                    start: document.getElementById('startTime').value,
+                    end: document.getElementById('endTime').value,
+                    removeIntro: document.getElementById('trimIntro').checked,
+                    removeOutro: document.getElementById('trimOutro').checked
+                },
+                speed: document.getElementById('playbackSpeed').value,
+                reverse: document.getElementById('effectReverse').checked,
+                subtitles: {
+                    offset: document.getElementById('subtitleOffset').value,
+                    style: document.getElementById('subtitleStyle').value
+                },
+                audio: {
+                    volume: document.getElementById('audioVolume').value,
+                    originalVolume: document.getElementById('originalAudioVolume').value
+                },
+                intro: {
+                    effect: document.getElementById('introEffect').value,
+                    duration: document.getElementById('introDuration').value,
+                    easing: document.getElementById('introEasing').value
+                },
+                outro: {
+                    effect: document.getElementById('outroEffect').value,
+                    duration: document.getElementById('outroDuration').value,
+                    easing: document.getElementById('outroEasing').value
+                },
+                effects: {
+                    mirror: document.getElementById('effectMirror').checked,
+                    grayscale: document.getElementById('effectGrayscale').checked,
+                    sepia: document.getElementById('effectSepia').checked,
+                    blur: document.getElementById('effectBlur').checked,
+                    zoom: document.getElementById('effectZoom').checked,
+                    faceTracking: document.getElementById('faceTracking').checked,
+                    faceZoomLevel: document.getElementById('faceZoomLevel').value,
+                    faceSmoothing: document.getElementById('faceSmoothing').value
+                },
+                effectMarkers: effectMarkersData
+            };
+        }
+
+        // Apply settings
+        function applySettings(settings) {
+            // Apply trim settings
+            if (settings.trim) {
+                document.getElementById('startTime').value = settings.trim.start || '00:00:00';
+                document.getElementById('endTime').value = settings.trim.end || formatTime(video.duration);
+                document.getElementById('trimIntro').checked = settings.trim.removeIntro || false;
+                document.getElementById('trimOutro').checked = settings.trim.removeOutro || false;
+            }
+
+            // Apply speed
+            if (settings.speed) {
+                document.getElementById('playbackSpeed').value = settings.speed;
+            }
+
+            // Apply reverse
+            if (settings.reverse !== undefined) {
+                document.getElementById('effectReverse').checked = settings.reverse;
+            }
+
+            // Apply subtitles
+            if (settings.subtitles) {
+                document.getElementById('subtitleOffset').value = settings.subtitles.offset || 0;
+                document.getElementById('subtitleOffsetValue').textContent = (settings.subtitles.offset || 0) + 's';
+                document.getElementById('subtitleStyle').value = settings.subtitles.style || 'default';
+            }
+
+            // Apply audio
+            if (settings.audio) {
+                document.getElementById('audioVolume').value = settings.audio.volume || 100;
+                document.getElementById('audioVolumeValue').textContent = (settings.audio.volume || 100) + '%';
+                document.getElementById('originalAudioVolume').value = settings.audio.originalVolume || 50;
+                document.getElementById('originalAudioVolumeValue').textContent = (settings.audio.originalVolume || 50) + '%';
+            }
+
+            // Apply intro
+            if (settings.intro) {
+                document.getElementById('introEffect').value = settings.intro.effect || 'none';
+                document.getElementById('introDuration').value = settings.intro.duration || 1;
+                document.getElementById('introDurationValue').textContent = settings.intro.duration + 's';
+                document.getElementById('introEasing').value = settings.intro.easing || 'ease-out';
+            }
+
+            // Apply outro
+            if (settings.outro) {
+                document.getElementById('outroEffect').value = settings.outro.effect || 'none';
+                document.getElementById('outroDuration').value = settings.outro.duration || 1;
+                document.getElementById('outroDurationValue').textContent = settings.outro.duration + 's';
+                document.getElementById('outroEasing').value = settings.outro.easing || 'ease-out';
+            }
+
+            // Apply effects
+            if (settings.effects) {
+                document.getElementById('effectMirror').checked = settings.effects.mirror || false;
+                document.getElementById('effectGrayscale').checked = settings.effects.grayscale || false;
+                document.getElementById('effectSepia').checked = settings.effects.sepia || false;
+                document.getElementById('effectBlur').checked = settings.effects.blur || false;
+                document.getElementById('effectZoom').checked = settings.effects.zoom || false;
+                document.getElementById('faceTracking').checked = settings.effects.faceTracking || false;
+                document.getElementById('faceZoomLevel').value = settings.effects.faceZoomLevel || 1.5;
+                document.getElementById('faceZoomValue').textContent = settings.effects.faceZoomLevel + 'x';
+                document.getElementById('faceSmoothing').value = settings.effects.faceSmoothing || 'medium';
+
+                // Toggle face tracking options to properly initialize UI and state
+                toggleFaceTrackingOptions();
+            }
+
+            // Apply effect markers
+            if (settings.effectMarkers && Array.isArray(settings.effectMarkers)) {
+                // Clear existing markers first
+                effectMarkers = {};
+                effectPositions = {};
+                effectMarkersData = [];
+
+                const videoDuration = video.duration || 1;
+
+                // Restore each saved marker
+                settings.effectMarkers.forEach(markerData => {
+                    const effectType = markerData.type;
+
+                    // Convert seconds back to position (0-1)
+                    const startPosition = markerData.start_time / videoDuration;
+                    const endPosition = markerData.end_time / videoDuration;
+
+                    // Store position data
+                    effectPositions[effectType] = {
+                        start: startPosition,
+                        end: endPosition
+                    };
+
+                    // Check the effect checkbox
+                    const checkbox = document.getElementById(`effect${effectType.charAt(0).toUpperCase() + effectType.slice(1)}`);
+                    if (checkbox) {
+                        checkbox.checked = true;
+                    }
+
+                    // Add the marker to timeline
+                    addEffectMarker(effectType, startPosition);
+                });
+
+                effectMarkersData = settings.effectMarkers;
+                updateTimeline();
+            }
+
+            resetVideoTransform();
+        }
+
+        // Toggle save input box
+        function toggleSaveInput() {
+            const saveBox = document.getElementById('savePresetBox');
+            const loadBox = document.getElementById('loadPresetsBox');
+            const saveBtn = document.getElementById('saveBtn');
+
+            if (saveBox.style.display !== 'block') {
+                // Position the box below the button
+                const rect = saveBtn.getBoundingClientRect();
+                saveBox.style.position = 'fixed';
+                saveBox.style.top = (rect.bottom + 5) + 'px';
+                saveBox.style.left = rect.left + 'px';
+
+                saveBox.style.display = 'block';
+                loadBox.style.display = 'none';
+                document.getElementById('presetNameInput').focus();
+            } else {
+                saveBox.style.display = 'none';
+            }
+        }
+
+        // Toggle load presets box
+        function toggleLoadPresets() {
+            const loadBox = document.getElementById('loadPresetsBox');
+            const saveBox = document.getElementById('savePresetBox');
+            const loadBtn = document.getElementById('loadBtn');
+
+            if (loadBox.style.display !== 'block') {
+                // Position the box below the button
+                const rect = loadBtn.getBoundingClientRect();
+                loadBox.style.position = 'fixed';
+                loadBox.style.top = (rect.bottom + 5) + 'px';
+                loadBox.style.left = rect.left + 'px';
+
+                loadBox.style.display = 'block';
+                saveBox.style.display = 'none';
+                refreshPresetsList();
+            } else {
+                loadBox.style.display = 'none';
+            }
+        }
+
+        // Refresh the presets list
+        function refreshPresetsList() {
+            const key = `videoEditor_${videoPath}`;
+            const saved = localStorage.getItem(key);
+            const presetsList = document.getElementById('presetsList');
+
+            if (!saved) {
+                presetsList.innerHTML = '<p style="color: #888; text-align: center; padding: 20px;">No saved presets</p>';
+                return;
+            }
+
+            try {
+                const presets = JSON.parse(saved);
+
+                if (Object.keys(presets).length === 0) {
+                    presetsList.innerHTML = '<p style="color: #888; text-align: center; padding: 20px;">No saved presets</p>';
+                } else {
+                    presetsList.innerHTML = '';
+
+                    Object.entries(presets).forEach(([name, data]) => {
+                        const presetDiv = document.createElement('div');
+                        presetDiv.style.cssText = `
+                            background: rgba(255,255,255,0.03);
+                            border: 1px solid #444;
+                            border-radius: 6px;
+                            padding: 12px;
+                            margin-bottom: 8px;
+                        `;
+
+                        const headerDiv = document.createElement('div');
+                        headerDiv.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;';
+
+                        const nameEl = document.createElement('div');
+                        nameEl.style.cssText = 'font-weight: bold; font-size: 14px; color: #00ff9d;';
+                        nameEl.textContent = name;
+
+                        const buttonsDiv = document.createElement('div');
+                        buttonsDiv.style.cssText = 'display: flex; gap: 6px;';
+
+                        const loadBtn = document.createElement('button');
+                        loadBtn.textContent = 'Load';
+                        loadBtn.style.cssText = 'padding: 4px 12px; background: #00ff9d; border: none; border-radius: 4px; color: #000; font-size: 12px; cursor: pointer; font-weight: bold;';
+                        loadBtn.onclick = () => {
+                            applySettings(data.settings);
+                            toggleLoadPresets();
+                            showNotification(`Preset "${name}" loaded!`, 'success');
+                        };
+
+                        const deleteBtn = document.createElement('button');
+                        deleteBtn.textContent = '✕';
+                        deleteBtn.style.cssText = 'padding: 4px 8px; background: #ff4444; border: none; border-radius: 4px; color: #fff; font-size: 12px; cursor: pointer;';
+                        deleteBtn.onclick = () => {
+                            if (confirm(`Delete preset "${name}"?`)) {
+                                delete presets[name];
+                                localStorage.setItem(key, JSON.stringify(presets));
+                                refreshPresetsList();
+                                showNotification(`Preset "${name}" deleted`, 'info');
+                            }
+                        };
+
+                        buttonsDiv.appendChild(loadBtn);
+                        buttonsDiv.appendChild(deleteBtn);
+
+                        headerDiv.appendChild(nameEl);
+                        headerDiv.appendChild(buttonsDiv);
+
+                        const dateEl = document.createElement('div');
+                        dateEl.style.cssText = 'font-size: 11px; color: #666;';
+                        const savedDate = new Date(data.savedAt);
+                        dateEl.textContent = `Saved: ${savedDate.toLocaleString()}`;
+
+                        presetDiv.appendChild(headerDiv);
+                        presetDiv.appendChild(dateEl);
+                        presetsList.appendChild(presetDiv);
+                    });
+                }
+            } catch (error) {
+                presetsList.innerHTML = '<p style="color: #ff4444; text-align: center; padding: 20px;">Error loading presets</p>';
+            }
+        }
+
+        // Save preset with name from input
+        function savePreset() {
+            const presetName = document.getElementById('presetNameInput').value.trim();
+            if (!presetName) {
+                showNotification('Please enter a preset name', 'error');
+                return;
+            }
+
+            const settings = getCurrentSettings();
+            const key = `videoEditor_${videoPath}`;
+
+            // Get existing presets or create new object
+            let presets = {};
+            try {
+                const existing = localStorage.getItem(key);
+                if (existing) {
+                    presets = JSON.parse(existing);
+                }
+            } catch (e) {
+                presets = {};
+            }
+
+            // Add/update the preset
+            presets[presetName] = {
+                settings: settings,
+                savedAt: new Date().toISOString()
+            };
+
+            localStorage.setItem(key, JSON.stringify(presets));
+            showNotification(`Preset "${presetName}" saved!`, 'success');
+
+            // Refresh the presets list if it's visible
+            const loadBox = document.getElementById('loadPresetsBox');
+            if (loadBox.style.display !== 'none') {
+                refreshPresetsList();
+            }
+
+            // Clear input and hide box
+            document.getElementById('presetNameInput').value = '';
+            document.getElementById('savePresetBox').style.display = 'none';
+        }
+
+        // Handle Enter key in preset name input
+        document.addEventListener('DOMContentLoaded', () => {
+            const presetInput = document.getElementById('presetNameInput');
+            if (presetInput) {
+                presetInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        savePreset();
+                    }
+                });
+            }
+        });
+
+        // Save all settings to localStorage with a name
+        function saveSettings() {
+            toggleSaveInput();
+        }
+
+        // Load settings
+        function loadSettings() {
+            toggleLoadPresets();
         }
     </script>
 </body>
