@@ -1001,16 +1001,26 @@
                 document.body.appendChild(modal);
             }
 
-            const player = document.getElementById('video-modal-player');
-            player.src = videoUrl;
+            // Get player from within modal using querySelector
+            const player = modal.querySelector('#video-modal-player');
+            if (!player) {
+                showNotification('Error: Video player not found', 'error');
+                return;
+            }
 
+            player.src = videoUrl;
             modal.style.display = 'flex';
-            player.play();
+
+            try {
+                await player.play();
+            } catch (error) {
+                console.log('Autoplay prevented, user needs to click play');
+            }
         }
 
         function closeVideoModal() {
             const modal = document.getElementById('video-modal');
-            const player = document.getElementById('video-modal-player');
+            const player = modal ? modal.querySelector('#video-modal-player') : null;
 
             if (player) {
                 player.pause();
