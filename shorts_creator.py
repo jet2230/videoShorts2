@@ -135,9 +135,15 @@ class YouTubeShortsCreator:
 
         return max(numbers) + 1 if numbers else 1
 
-    def download_video(self, url: str, resolution: str = 'best') -> Dict[str, str]:
+    def download_video(self, url: str, resolution: str = 'best', progress_callback=None) -> Dict[str, str]:
         """Download YouTube video in specified quality."""
-        print(f"Downloading video from: {url} (resolution: {resolution})")
+        def _log_msg(msg):
+            if progress_callback:
+                progress_callback(msg)
+            else:
+                print(msg)
+
+        _log_msg(f"Downloading video from: {url} (resolution: {resolution})")
 
         # Get video info first
         ydl_opts_info = {
@@ -156,7 +162,7 @@ class YouTubeShortsCreator:
         output_folder = self.base_dir / folder_name
         output_folder.mkdir(exist_ok=True)
 
-        print(f"Created folder: {output_folder}")
+        _log_msg(f"Created folder: {output_folder}")
 
         # Map resolution to yt-dlp format string
         format_map = {
@@ -191,8 +197,14 @@ class YouTubeShortsCreator:
             'folder_number': folder_num
         }
 
-    def process_local_video(self, video_path: str) -> Dict[str, str]:
+    def process_local_video(self, video_path: str, progress_callback=None) -> Dict[str, str]:
         """Process a local video file by copying it to the project structure."""
+        def _log_msg(msg):
+            if progress_callback:
+                progress_callback(msg)
+            else:
+                print(msg)
+
         import shutil
 
         video_file = Path(video_path).resolve()
@@ -209,7 +221,7 @@ class YouTubeShortsCreator:
             import re
             if re.match(r'^\d{3}_', folder_name):
                 # Already in correct structure, use existing folder
-                print(f"Video already in correct folder structure: {parent_folder}")
+                _log_msg(f"Video already in correct folder structure: {parent_folder}")
                 folder_num = int(folder_name.split('_')[0])
                 filename = video_file.stem
                 return {
@@ -232,12 +244,12 @@ class YouTubeShortsCreator:
         output_folder = self.base_dir / folder_name
         output_folder.mkdir(exist_ok=True)
 
-        print(f"Created folder: {output_folder}")
+        _log_msg(f"Created folder: {output_folder}")
 
         # Copy video to project folder
         output_video_path = output_folder / video_file.name
         shutil.copy2(video_file, output_video_path)
-        print(f"Copied video to: {output_video_path}")
+        _log_msg(f"Copied video to: {output_video_path}")
 
         return {
             'folder': str(output_folder),
@@ -249,8 +261,14 @@ class YouTubeShortsCreator:
             'is_local': True
         }
 
-    def create_video_info(self, video_info: Dict[str, str]) -> None:
+    def create_video_info(self, video_info: Dict[str, str], progress_callback=None) -> None:
         """Create video info.txt file."""
+        def _log_msg(msg):
+            if progress_callback:
+                progress_callback(msg)
+            else:
+                print(msg)
+
         info_path = Path(video_info['folder']) / 'video info.txt'
 
         content = f"""Video Information
@@ -265,10 +283,16 @@ Video Path: {video_info['video_path']}
         with open(info_path, 'w', encoding='utf-8') as f:
             f.write(content)
 
-        print(f"Created video info file: {info_path}")
+        _log_msg(f"Created video info file: {info_path}")
 
-    def generate_subtitles(self, video_info: Dict[str, str], model_size: str = None) -> str:
+    def generate_subtitles(self, video_info: Dict[str, str], model_size: str = None, progress_callback=None) -> str:
         """Generate subtitles using Whisper CLI."""
+        def _log_msg(msg):
+            if progress_callback:
+                progress_callback(msg)
+            else:
+                print(msg)
+
         # Use settings if model_size not provided
         if model_size is None:
             model_size = settings.get('whisper', 'model')
@@ -287,7 +311,8 @@ Video Path: {video_info['video_path']}
         video_path = video_info['video_path']
         folder = video_info['folder']
 
-        print(f"Transcribing with Whisper CLI ({model_size})...")
+        _log_msg(f"Transcribing with Whisper CLI ({model_size})...")
+        _log_msg(f"Video path: {video_path}")
 
         # Run Whisper CLI
         cmd = [
@@ -300,33 +325,49 @@ Video Path: {video_info['video_path']}
             '--output_dir', str(folder),
         ]
 
-        # Run Whisper CLI - show stderr for progress, suppress stdout
-        result = subprocess.run(cmd)
+        # Run Whisper CLI and stream progress in real-time
+        # Merge stdout and stderr to capture all output
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
-        if result.returncode != 0:
-            raise RuntimeError(f"Whisper CLI failed with exit code {result.returncode}")
+        # Stream all output (whisper progress)
+        for line in process.stdout:
+            line = line.strip()
+            if line:
+                _log_msg(line)
+
+        # Wait for process to complete
+        process.wait()
+
+        if process.returncode != 0:
+            raise RuntimeError(f"Whisper CLI failed with exit code {process.returncode}")
 
         # Whisper CLI creates SRT in the output dir
         base_name = Path(video_path).stem
         srt_path = Path(folder) / f"{base_name}.srt"
 
         if srt_path.exists():
-            print(f"Created subtitles: {srt_path}")
+            _log_msg(f"Created subtitles: {srt_path}")
         else:
             raise FileNotFoundError(f"Whisper CLI did not create expected subtitle file: {srt_path}")
 
         return str(srt_path)
 
-    def generate_themes(self, video_info: Dict[str, str], ai_generator=None, model_size='base') -> None:
+    def generate_themes(self, video_info: Dict[str, str], ai_generator=None, model_size='base', progress_callback=None) -> None:
         """Generate themes for YouTube Shorts from subtitles."""
+        def _log_msg(msg):
+            if progress_callback:
+                progress_callback(msg)
+            else:
+                print(msg)
+
         # Read from SRT file for both transcript and timing
         srt_file = Path(video_info['folder']) / f"{Path(video_info['video_path']).stem}.srt"
 
         if not srt_file.exists():
-            print("No subtitle file found, skipping theme generation.")
+            _log_msg("No subtitle file found, skipping theme generation.")
             return
 
-        print("Generating themes for shorts...")
+        _log_msg("Generating themes for shorts...")
 
         # Parse SRT to get segments with timing
         segments = self._parse_srt_segments(srt_file)
@@ -340,7 +381,7 @@ Video Path: {video_info['video_path']}
         themes = []
 
         if ai_generator and ai_generator.is_available():
-            print(f"  Using AI ({ai_generator.model}) for theme identification...")
+            _log_msg(f"  Using AI ({ai_generator.model}) for theme identification...")
             ai_used = True
             ai_model = ai_generator.model
 
@@ -348,7 +389,7 @@ Video Path: {video_info['video_path']}
             ai_themes = ai_generator.identify_theme_boundaries(segments)
 
             if ai_themes:
-                print(f"    AI identified {len(ai_themes)} themes")
+                _log_msg(f"    AI identified {len(ai_themes)} themes")
                 # Convert AI themes to standard format
                 for ai_theme in ai_themes:
                     # Find segments within this time range
@@ -372,7 +413,7 @@ Video Path: {video_info['video_path']}
                     ai_title = ai_generator.generate_title(theme['text'], theme['duration'])
                     if ai_title:
                         theme['title'] = ai_title
-                        print(f"    Theme {idx + 1}: {ai_title[:50]}...")
+                        _log_msg(f"    Theme {idx + 1}: {ai_title[:50]}...")
                     else:
                         theme['title'] = self._generate_theme_title(theme['text'])
 
@@ -386,7 +427,7 @@ Video Path: {video_info['video_path']}
         # Fallback to pattern-based if AI didn't return themes
         if not themes:
             if ai_used:
-                print("    AI boundary detection failed, using pattern-based approach")
+                _log_msg("    AI boundary detection failed, using pattern-based approach")
 
             themes = self._identify_themes(segments, transcript)
 

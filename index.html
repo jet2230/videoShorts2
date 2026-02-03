@@ -573,9 +573,9 @@
         }
 
         .progress-bar {
-            height: 4px;
+            height: 20px;
             background: var(--bg-tertiary);
-            border-radius: 2px;
+            border-radius: 10px;
             overflow: hidden;
             margin-bottom: 8px;
         }
@@ -833,15 +833,25 @@
                     <input type="file" id="file-input" accept="video/*">
                 </div>
 
-                <button class="btn btn-primary" id="process-btn" style="width: 100%;">
+                <button class="btn btn-primary" id="process-btn" style="width: 100%; text-align: center;">
                     Process Video
                 </button>
 
                 <div class="progress-container" id="process-progress">
                     <div class="progress-bar">
-                        <div class="progress-fill"></div>
+                        <div class="progress-fill" id="main-progress-fill"></div>
                     </div>
                     <div class="progress-text" id="process-text">Processing...</div>
+                    <!-- Second progress bar for subtitle generation -->
+                    <div class="progress-bar" style="margin-top: 8px; height: 12px; opacity: 0.3;">
+                        <div class="progress-fill" id="subtitle-progress-fill"></div>
+                    </div>
+                    <div class="progress-text" id="subtitle-text" style="font-size: 12px; color: var(--text-secondary);"></div>
+                    <!-- Third progress bar for theme generation -->
+                    <div class="progress-bar" style="margin-top: 8px; height: 12px; opacity: 0.3;">
+                        <div class="progress-fill" id="theme-progress-fill"></div>
+                    </div>
+                    <div class="progress-text" id="theme-text" style="font-size: 12px; color: var(--text-secondary);"></div>
                     <div class="process-log" id="process-log"></div>
                     <div class="progress-cancel">
                         <button class="btn-cancel" id="cancel-process-btn">Cancel</button>
@@ -1558,12 +1568,23 @@
             }
 
             const progressContainer = document.getElementById('process-progress');
+            const progressBar = document.getElementById('main-progress-fill');
+            const subtitleProgressBar = document.getElementById('subtitle-progress-fill');
+            const themeProgressBar = document.getElementById('theme-progress-fill');
             const progressText = document.getElementById('process-text');
+            const subtitleText = document.getElementById('subtitle-text');
+            const themeText = document.getElementById('theme-text');
             const processLog = document.getElementById('process-log');
             const cancelBtn = document.getElementById('cancel-process-btn');
             progressContainer.classList.add('active');
             processLog.classList.add('active');
             processLog.textContent = '';
+            progressBar.style.width = '0%';
+            progressBar.style.animation = 'none';
+            subtitleProgressBar.style.width = '0%';
+            themeProgressBar.style.width = '0%';
+            subtitleProgressBar.parentElement.style.opacity = '0.3';
+            themeProgressBar.parentElement.style.opacity = '0.3';
             document.getElementById('process-btn').disabled = true;
             cancelBtn.style.display = 'inline-block';
 
@@ -1588,14 +1609,86 @@
                 const { task_id } = await response.json();
                 currentTaskId = task_id;
                 await monitorTask(task_id, (status) => {
-                    progressText.textContent = `Processing: ${status.type}...`;
                     if (status.log) {
                         processLog.textContent = status.log;
                         processLog.scrollTop = processLog.scrollHeight;
+
+                        // Detect current stage and update progress text
+                        const log = status.log.toLowerCase();
+
+                        // Download stage - look for [download] with percentage
+                        if (log.includes('[download]')) {
+                            // Find all download percentages and use the last one
+                            const downloadMatches = [...status.log.matchAll(/\[download\]\s+(\d+\.?\d*)%/gi)];
+                            if (downloadMatches.length > 0) {
+                                const lastMatch = downloadMatches[downloadMatches.length - 1];
+                                const percent = parseFloat(lastMatch[1]);
+                                progressBar.style.width = `${percent}%`;
+                                progressBar.style.animation = 'none';
+                                progressText.textContent = `⬇️ Downloading: ${percent}%`;
+                                // Hide other bars
+                                subtitleProgressBar.parentElement.style.opacity = '0.3';
+                                themeProgressBar.parentElement.style.opacity = '0.3';
+                            } else {
+                                progressText.textContent = '⬇️ Downloading...';
+                            }
+                        }
+                        // Whisper/subtitle stage
+                        else if (log.includes('whisper') || log.includes('transcrib') || log.includes('subtitle')) {
+                            // Show subtitle bar, hide theme bar
+                            subtitleProgressBar.parentElement.style.opacity = '1';
+                            themeProgressBar.parentElement.style.opacity = '0.3';
+
+                            // Find all whisper percentages and use the last one
+                            const whisperMatches = [...status.log.matchAll(/(\d+)%/gi)];
+                            if (whisperMatches.length > 0) {
+                                const lastMatch = whisperMatches[whisperMatches.length - 1];
+                                const percent = parseInt(lastMatch[1]);
+                                subtitleProgressBar.style.width = `${percent}%`;
+                                subtitleProgressBar.style.animation = 'none';
+                                progressText.textContent = `⬇️ Download: Complete | 🎤 Subtitles: ${percent}%`;
+                                subtitleText.textContent = `🎤 Processing: ${percent}%`;
+                            } else if (log.includes('loading')) {
+                                progressText.textContent = `⬇️ Download: Complete | 🎤 Loading Whisper...`;
+                                subtitleText.textContent = '🎤 Loading Whisper model...';
+                            } else {
+                                progressText.textContent = `⬇️ Download: Complete | 🎤 Generating subtitles...`;
+                                subtitleText.textContent = '🎤 Starting...';
+                            }
+                        }
+                        // Theme generation stage
+                        else if (log.includes('theme') || log.includes('generating')) {
+                            // Show theme bar, hide subtitle bar
+                            themeProgressBar.parentElement.style.opacity = '1';
+                            subtitleProgressBar.parentElement.style.opacity = '0.3';
+
+                            // Update theme progress if available
+                            if (log.includes('identified') || log.includes('ai identified')) {
+                                progressText.textContent = '✨ Identifying themes with AI...';
+                                subtitleText.textContent = 'AI analyzing...';
+                            } else {
+                                progressText.textContent = '✨ Generating themes...';
+                                subtitleText.textContent = 'Processing...';
+                            }
+                        }
+                        // Processing stage
+                        else if (log.includes('processing')) {
+                            progressText.textContent = '⚙️ Processing...';
+                        }
+                        // Default/fallback
+                        else {
+                            progressText.textContent = `Processing: ${status.type}...`;
+                        }
+                    } else {
+                        progressText.textContent = `Processing: ${status.type}...`;
                     }
                 });
 
                 showNotification('Video processed successfully!', 'success');
+
+                // Set progress to 100%
+                progressBar.style.width = '100%';
+                progressText.textContent = 'Complete!';
 
                 // Reset form
                 document.getElementById('url-input').value = '';

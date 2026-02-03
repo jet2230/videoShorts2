@@ -3122,15 +3122,8 @@
             const progressBar = document.getElementById('exportProgressBar');
             const progressText = document.getElementById('exportProgressText');
             modal.classList.add('visible');
-
-            // Animate progress bar
-            let progress = 0;
-            const progressInterval = setInterval(() => {
-                progress += Math.random() * 5;
-                if (progress > 90) progress = 90;
-                progressBar.style.width = `${progress}%`;
-                progressText.textContent = `Processing... ${Math.round(progress)}%`;
-            }, 500);
+            progressBar.style.width = '0%';
+            progressText.textContent = 'Starting...';
 
             try {
                 // Start the export
@@ -3150,15 +3143,13 @@
                 if (result.edit_id) {
                     editId = result.edit_id;
                     // Poll for status updates
-                    await pollEditStatus(result.edit_id, progressInterval, progressBar, progressText, modal);
+                    await pollEditStatus(result.edit_id, progressBar, progressText, modal);
                 } else {
-                    clearInterval(progressInterval);
                     modal.classList.remove('visible');
                     showNotification('Failed to start export', 'error');
                 }
 
             } catch (error) {
-                clearInterval(progressInterval);
                 modal.classList.remove('visible');
                 console.error('Processing error:', error);
                 showNotification('Failed to process video', 'error');
@@ -3169,15 +3160,50 @@
         }
 
         // Poll for edit status
-        async function pollEditStatus(id, progressInterval, progressBar, progressText, modal) {
+        async function pollEditStatus(id, progressBar, progressText, modal) {
             statusCheckInterval = setInterval(async () => {
                 try {
                     const response = await fetch(`/api/process-edit/${id}/status`);
                     const status = await response.json();
 
+                    // Parse progress from logs if available
+                    if (status.log) {
+                        // Find all matches and use the last one
+                        const progressMatches = status.log.matchAll(/Processed (\d+)\/(\d+) frames \((\d+)%\) \| ETA: (\d+)m (\d+)s \| Complete by: ([\d:]+)/g);
+                        let lastMatch = null;
+                        for (const match of progressMatches) {
+                            lastMatch = match;
+                        }
+
+                        if (lastMatch) {
+                            const currentFrames = parseInt(lastMatch[1]);
+                            const totalFrames = parseInt(lastMatch[2]);
+                            const percent = parseInt(lastMatch[3]);
+                            const etaMins = parseInt(lastMatch[4]);
+                            const etaSecs = parseInt(lastMatch[5]);
+                            const completionTime = lastMatch[6];
+
+                            progressBar.style.width = `${percent}%`;
+                            progressText.textContent = `Processing: ${currentFrames}/${totalFrames} frames (${percent}%) | ETA: ${etaMins}m ${etaSecs}s | Done: ${completionTime}`;
+                        } else {
+                            // Fallback to simple format - also find last match
+                            const simpleMatches = status.log.matchAll(/Processed (\d+)\/(\d+) frames \((\d+)%\)/g);
+                            let lastSimpleMatch = null;
+                            for (const match of simpleMatches) {
+                                lastSimpleMatch = match;
+                            }
+                            if (lastSimpleMatch) {
+                                const currentFrames = parseInt(lastSimpleMatch[1]);
+                                const totalFrames = parseInt(lastSimpleMatch[2]);
+                                const percent = parseInt(lastSimpleMatch[3]);
+                                progressBar.style.width = `${percent}%`;
+                                progressText.textContent = `Processing frames: ${currentFrames}/${totalFrames} (${percent}%)`;
+                            }
+                        }
+                    }
+
                     if (status.status === 'completed') {
                         clearInterval(statusCheckInterval);
-                        clearInterval(progressInterval);
                         progressBar.style.width = '100%';
                         progressText.textContent = 'Complete!';
 
@@ -3191,7 +3217,6 @@
                         updateExportButton();
                     } else if (status.status === 'failed') {
                         clearInterval(statusCheckInterval);
-                        clearInterval(progressInterval);
                         modal.classList.remove('visible');
                         showNotification('Error: ' + (status.error || 'Export failed'), 'error');
                         isExporting = false;
@@ -3199,7 +3224,6 @@
                         updateExportButton();
                     } else if (status.status === 'cancelled') {
                         clearInterval(statusCheckInterval);
-                        clearInterval(progressInterval);
                         modal.classList.remove('visible');
                         showNotification('Export cancelled', 'info');
                         isExporting = false;
@@ -3209,7 +3233,7 @@
                 } catch (error) {
                     console.error('Status check error:', error);
                 }
-            }, 1000);
+            }, 500);
         }
 
         // Cancel export

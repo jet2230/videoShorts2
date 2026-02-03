@@ -23,7 +23,7 @@ class VideoProcessor:
         self.height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-    def apply_effects(self, output_path: str, settings: dict, cancel_flag=None):
+    def apply_effects(self, output_path: str, settings: dict, cancel_flag=None, log_callback=None):
         """
         Apply time-based effects using ffmpeg segmentation.
         """
@@ -31,9 +31,17 @@ class VideoProcessor:
         import tempfile
         import os
 
+        def log(msg):
+            if log_callback:
+                log_callback(msg)
+            else:
+                print(msg)
+
         trim_settings = settings.get('trim', {})
         effect_markers = settings.get('effect_markers', [])
         global_effects = settings.get('effects', {})
+
+        log("Starting video processing...")
 
         # Parse trim settings
         start_time = '0'
@@ -51,16 +59,19 @@ class VideoProcessor:
         try:
             # If no effect markers, create intermediate file for global effects
             if not effect_markers:
+                print("Processing video (no timeline effects)...")
                 intermediate_output = output_path
                 if global_effects.get('faceTracking'):
                     # Use intermediate file for global effects processing
                     temp_dir_for_cleanup = tempfile.mkdtemp()
                     intermediate_output = os.path.join(temp_dir_for_cleanup, 'intermediate.mp4')
-                self._copy_video_with_trim(intermediate_output, start_time, end_time, settings, cancel_flag)
+                self._copy_video_with_trim(intermediate_output, start_time, end_time, settings, cancel_flag, log_callback)
+                log("Video trim/copy complete")
             else:
                 # Process timeline effect markers
                 # Sort markers by start time
                 sorted_markers = sorted(effect_markers, key=lambda m: m['start_time'])
+                print(f"Processing {len(sorted_markers)} timeline effect segments...")
 
                 # Create segments directory
                 segments_dir = tempfile.mkdtemp()
@@ -75,32 +86,36 @@ class VideoProcessor:
                     start = marker['start_time']
                     end = marker['end_time']
 
+                    print(f"  Creating segment {i+1}/{len(sorted_markers)}: {effect_type} ({start}-{end})")
+
                     # Add pre-effect segment (no effects)
                     if start > current_time + 0.1:  # Only if there's meaningful time gap
                         pre_end = start
                         pre_segment = os.path.join(segments_dir, f'pre_{i}.mp4')
-                        self._create_segment(current_time, pre_end, pre_segment, settings, cancel_flag)
+                        self._create_segment(current_time, pre_end, pre_segment, settings, cancel_flag, log_callback)
                         segment_files.append(pre_segment)
 
                     # Add effect segment
                     effect_segment = os.path.join(segments_dir, f'effect_{i}.mp4')
-                    self._create_effect_segment(start, end, effect_segment, effect_type, settings, cancel_flag)
+                    self._create_effect_segment(start, end, effect_segment, effect_type, settings, cancel_flag, log_callback)
                     segment_files.append(effect_segment)
 
                     current_time = end
 
                 # Add post-effects segment (no effects)
                 if current_time < video_duration - 0.1:
+                    log("  Creating final segment...")
                     post_segment = os.path.join(segments_dir, 'post_final.mp4')
-                    self._copy_video_with_trim(post_segment, self._format_time(current_time), end_time, settings, cancel_flag)
+                    self._copy_video_with_trim(post_segment, self._format_time(current_time), end_time, settings, cancel_flag, log_callback)
                     segment_files.append(post_segment)
 
                 # If face tracking is enabled, concatenate to a temp file outside segments_dir
                 # Otherwise, concatenate directly to intermediate output
+                log("Concatenating segments...")
                 if global_effects.get('faceTracking'):
                     # Concatenate to a temporary intermediate file for face tracking
                     temp_concat = os.path.join(segments_dir, 'temp_concat.mp4')
-                    self._concatenate_segments(segment_files, temp_concat, settings, cancel_flag)
+                    self._concatenate_segments(segment_files, temp_concat, settings, cancel_flag, log_callback)
 
                     # Move to a temp location outside segments_dir for face tracking
                     temp_dir_for_cleanup = tempfile.mkdtemp()
@@ -110,15 +125,18 @@ class VideoProcessor:
                 else:
                     # No face tracking, concatenate directly to output
                     intermediate_output = output_path
-                    self._concatenate_segments(segment_files, intermediate_output, settings, cancel_flag)
+                    self._concatenate_segments(segment_files, intermediate_output, settings, cancel_flag, log_callback)
+                log("Segment concatenation complete")
 
             # Apply global effects to the final output
             if global_effects.get('faceTracking'):
-                self._apply_face_tracking(intermediate_output, output_path, global_effects, cancel_flag)
+                self._apply_face_tracking(intermediate_output, output_path, global_effects, cancel_flag, log_callback)
             elif intermediate_output != output_path:
                 # Just move intermediate to final output if no global effects
                 import shutil
                 shutil.move(intermediate_output, output_path)
+
+            log("Video processing complete!")
 
         finally:
             # Clean up temp directories
@@ -157,7 +175,7 @@ class VideoProcessor:
 
         return stdout
 
-    def _copy_video_with_trim(self, output_path, start_time, end_time, settings, cancel_flag=None):
+    def _copy_video_with_trim(self, output_path, start_time, end_time, settings, cancel_flag=None, log_callback=None):
         """Copy video with optional trim, no effects."""
         ffmpeg_cmd = ['ffmpeg', '-i', str(self.video_path)]
 
@@ -182,11 +200,11 @@ class VideoProcessor:
         else:
             subprocess.run(ffmpeg_cmd, capture_output=True, check=True)
 
-    def _create_segment(self, start_sec, end_sec, output_path, settings, cancel_flag=None):
+    def _create_segment(self, start_sec, end_sec, output_path, settings, cancel_flag=None, log_callback=None):
         """Create a video segment with no effects."""
         self._copy_video_with_trim(output_path, self._format_time(start_sec), self._format_time(end_sec), settings, cancel_flag)
 
-    def _create_effect_segment(self, start_sec, end_sec, output_path, effect_type, settings, cancel_flag=None):
+    def _create_effect_segment(self, start_sec, end_sec, output_path, effect_type, settings, cancel_flag=None, log_callback=None):
         """Create a video segment with specific effect applied."""
         effect_filters = {
             'mirror': 'hwdir=1',
@@ -219,8 +237,10 @@ class VideoProcessor:
         else:
             subprocess.run(ffmpeg_cmd, capture_output=True, check=True)
 
-    def _concatenate_segments(self, segment_files, output_path, settings, cancel_flag=None):
+    def _concatenate_segments(self, segment_files, output_path, settings, cancel_flag=None, log_callback=None):
         """Concatenate video segments using ffmpeg concat demuxer."""
+        import os
+
         # Create concat file
         concat_file = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
 
@@ -249,11 +269,20 @@ class VideoProcessor:
         # Clean up concat file
         os.unlink(concat_file.name)
 
-    def _apply_face_tracking(self, input_path: str, output_path: str, effects: dict, cancel_flag=None):
+    def _apply_face_tracking(self, input_path: str, output_path: str, effects: dict, cancel_flag=None, log_callback=None):
         """Apply face tracking with zoom and pan."""
         import os
         import tempfile
         import shutil
+        import time
+
+        def log(msg):
+            if log_callback:
+                log_callback(msg)
+            else:
+                print(msg)
+
+        log(f"Starting face tracking processing...")
 
         # Load face cascade
         face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
@@ -264,6 +293,8 @@ class VideoProcessor:
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        log(f"Video info: {total_frames} frames at {fps}fps, resolution: {width}x{height}")
 
         # Get zoom level and smoothing
         zoom_level = float(effects.get('faceZoomLevel', 1.5))
@@ -299,6 +330,9 @@ class VideoProcessor:
         no_face_count = 0
 
         frame_count = 0
+        last_progress_print = 0
+        progress_interval = max(1, total_frames // 100)  # Print 100 times total
+        start_time = time.time()
 
         try:
             while True:
@@ -374,8 +408,28 @@ class VideoProcessor:
                 out.write(resized)
 
                 frame_count += 1
-                if frame_count % 30 == 0:
-                    print(f"Processed {frame_count}/{total_frames} frames")
+
+                # Print progress more frequently with time estimates
+                if frame_count - last_progress_print >= progress_interval:
+                    percent = int((frame_count / total_frames) * 100)
+                    elapsed = time.time() - start_time
+                    fps_rate = frame_count / elapsed if elapsed > 0 else 0
+                    remaining_frames = total_frames - frame_count
+                    eta_seconds = remaining_frames / fps_rate if fps_rate > 0 else 0
+                    eta_minutes = int(eta_seconds / 60)
+                    eta_secs = int(eta_seconds % 60)
+
+                    # Calculate completion time
+                    from datetime import datetime, timedelta
+                    completion_time = datetime.now() + timedelta(seconds=eta_seconds)
+                    completion_str = completion_time.strftime("%H:%M:%S")
+
+                    log(f"Processed {frame_count}/{total_frames} frames ({percent}%) | ETA: {eta_minutes}m {eta_secs}s | Complete by: {completion_str}")
+                    last_progress_print = frame_count
+
+            # Final progress update
+            elapsed = time.time() - start_time
+            log(f"Processed {total_frames}/{total_frames} frames (100%) | Total time: {int(elapsed)}s")
 
         finally:
             cap.release()

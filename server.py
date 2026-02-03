@@ -33,27 +33,82 @@ task_lock = threading.Lock()
 class OutputCapture:
     """Context manager to capture stdout and stderr."""
     def __init__(self):
-        self.outputs = []
+        self.buffer = []
         self.lock = threading.Lock()
 
     def write(self, text):
-        if text.strip():
+        # Capture all non-empty text
+        if text and text.strip():
             timestamp = datetime.now().strftime('%H:%M:%S')
             with self.lock:
-                self.outputs.append(f"{timestamp} - {text.strip()}")
+                self.buffer.append(f"{timestamp} - {text.rstrip()}")
 
     def flush(self):
         pass
 
     def get_output(self):
         with self.lock:
-            return '\n'.join(self.outputs)
+            return '\n'.join(self.buffer)
+
+
+def run_task_with_callback(task_id: str, func, *args, **kwargs):
+    """Run a function in a background thread with callback support."""
+    # Initialize log field
+    with task_lock:
+        if task_id in tasks:
+            tasks[task_id]['log'] = ''
+
+    # Create log callback for this task
+    def progress_callback(msg):
+        try:
+            msg_str = str(msg) if not isinstance(msg, str) else msg
+            with task_lock:
+                if task_id in tasks and 'log' in tasks[task_id]:
+                    current_log = tasks[task_id]['log']
+                    if not isinstance(current_log, str):
+                        current_log = str(current_log) if current_log else ''
+                    tasks[task_id]['log'] = current_log + msg_str + '\n'
+        except Exception as e:
+            print(f"Callback error: {e}")
+
+    # Create cancel flag checker
+    def check_cancelled():
+        with task_lock:
+            return tasks.get(task_id, {}).get('cancelled', False)
+
+    # Add callback and cancel checker to kwargs
+    kwargs['progress_callback'] = progress_callback
+    kwargs['cancel_check'] = check_cancelled
+
+    # Run using the original run_task function
+    run_task(task_id, func, *args, **kwargs)
 
 
 def run_task(task_id: str, func, *args, **kwargs):
     """Run a function in a background thread and update task status."""
-    # Set up output capture
-    capture = OutputCapture()
+    # Set up output capture to also send to callback
+    class OutputCaptureWithCallback:
+        def __init__(self, callback=None):
+            self.callback = callback
+
+        def write(self, text):
+            try:
+                if text is not None and text.strip():
+                    text_str = str(text) if not isinstance(text, str) else text
+                    # Send to callback if available
+                    if self.callback:
+                        self.callback(text_str.rstrip())
+            except:
+                pass  # Ignore write errors
+
+        def flush(self):
+            pass
+
+    # Get progress_callback from kwargs if available, but don't pop it
+    progress_callback = kwargs.get('progress_callback', None)
+
+    # Set up output capture with callback
+    capture = OutputCaptureWithCallback(progress_callback)
 
     # Redirect stdout and stderr
     original_stdout = sys.stdout
@@ -64,6 +119,8 @@ def run_task(task_id: str, func, *args, **kwargs):
     try:
         with task_lock:
             tasks[task_id]['status'] = 'running'
+            if 'log' not in tasks[task_id]:
+                tasks[task_id]['log'] = ''
 
         result = func(*args, **kwargs)
 
@@ -71,16 +128,30 @@ def run_task(task_id: str, func, *args, **kwargs):
             tasks[task_id]['status'] = 'completed'
             tasks[task_id]['result'] = result
     except Exception as e:
+        import traceback
         with task_lock:
-            tasks[task_id]['status'] = 'failed'
-            tasks[task_id]['error'] = str(e)
+            # Check if this is a cancellation
+            if 'Cancelled by user' in str(e):
+                tasks[task_id]['status'] = 'cancelled'
+                # Add clear cancellation message to log
+                current_log = tasks[task_id].get('log', '')
+                if not isinstance(current_log, str):
+                    current_log = ''
+                tasks[task_id]['log'] = current_log + f'\n✓ Process cancelled by user'
+            else:
+                tasks[task_id]['status'] = 'failed'
+                tasks[task_id]['error'] = str(e)
+                # Add error to log (but filter out whisper/yt-dlp termination errors from cancel)
+                error_msg = str(e)
+                if 'Terminated' not in error_msg and 'killed' not in error_msg.lower():
+                    current_log = tasks[task_id].get('log', '')
+                    if not isinstance(current_log, str):
+                        current_log = ''
+                    tasks[task_id]['log'] = current_log + f'\nERROR: {error_msg}'
     finally:
         # Restore original stdout/stderr
         sys.stdout = original_stdout
         sys.stderr = original_stderr
-        # Update task with logs
-        with task_lock:
-            tasks[task_id]['log'] = capture.get_output()
 
 
 @app.route('/')
@@ -308,12 +379,14 @@ def process_video():
         tasks[task_id] = {
             'type': 'process',
             'status': 'pending',
-            'url': url if url else local_file
+            'url': url if url else local_file,
+            'log': '',
+            'cancelled': False
         }
 
-    # Start background task
+    # Start background task - pass task_id directly
     thread = threading.Thread(
-        target=run_task,
+        target=run_task_with_callback,
         args=(task_id, _process_video, url, local_file, model, resolution)
     )
     thread.start()
@@ -321,7 +394,7 @@ def process_video():
     return jsonify({'task_id': task_id})
 
 
-def _process_video(url: str, local_file: str, model: str, resolution: str = 'best'):
+def _process_video(url: str, local_file: str, model: str, resolution: str = 'best', progress_callback=None, cancel_check=None):
     """Process video in background."""
     # Initialize AI generator
     ai_generator = None
@@ -333,14 +406,29 @@ def _process_video(url: str, local_file: str, model: str, resolution: str = 'bes
     except ImportError:
         pass
 
-    if url:
-        video_info = creator.download_video(url, resolution=resolution)
-    else:
-        video_info = creator.process_local_video(local_file)
+    # Check for cancellation
+    if cancel_check and cancel_check():
+        raise Exception('Cancelled by user')
 
-    creator.create_video_info(video_info)
-    creator.generate_subtitles(video_info, model_size=model)
-    creator.generate_themes(video_info, ai_generator=ai_generator, model_size=model)
+    if url:
+        video_info = creator.download_video(url, resolution=resolution, progress_callback=progress_callback)
+    else:
+        video_info = creator.process_local_video(local_file, progress_callback=progress_callback)
+
+    if cancel_check and cancel_check():
+        raise Exception('Cancelled by user')
+
+    creator.create_video_info(video_info, progress_callback=progress_callback)
+
+    if cancel_check and cancel_check():
+        raise Exception('Cancelled by user')
+
+    creator.generate_subtitles(video_info, model_size=model, progress_callback=progress_callback)
+
+    if cancel_check and cancel_check():
+        raise Exception('Cancelled by user')
+
+    creator.generate_themes(video_info, ai_generator=ai_generator, model_size=model, progress_callback=progress_callback)
 
     return {
         'folder': video_info['folder'],
@@ -367,11 +455,12 @@ def regenerate_themes():
         tasks[task_id] = {
             'type': 'regenerate',
             'status': 'pending',
-            'folder_number': folder_number
+            'folder_number': folder_number,
+            'log': ''
         }
 
     thread = threading.Thread(
-        target=run_task,
+        target=run_task_with_callback,
         args=(task_id, _regenerate_themes, folder_number, model)
     )
     thread.start()
@@ -379,7 +468,7 @@ def regenerate_themes():
     return jsonify({'task_id': task_id})
 
 
-def _regenerate_themes(folder_number: str, model: str):
+def _regenerate_themes(folder_number: str, model: str, progress_callback=None):
     """Regenerate themes in background."""
     base_dir = Path(settings.get('video', 'output_dir'))
     matching_folders = list(base_dir.glob(f"{folder_number.zfill(3)}_*"))
@@ -418,7 +507,7 @@ def _regenerate_themes(folder_number: str, model: str):
     except ImportError:
         pass
 
-    creator.generate_themes(video_info, ai_generator=ai_generator, model_size=model)
+    creator.generate_themes(video_info, ai_generator=ai_generator, model_size=model, progress_callback=progress_callback)
 
     return {
         'folder': str(folder),
@@ -488,17 +577,94 @@ def get_task_status(task_id: str):
 
 @app.route('/api/task/<task_id>/cancel', methods=['POST'])
 def cancel_task(task_id: str):
-    """Cancel a background task."""
+    """Cancel a background task by terminating subprocesses and cleaning up files."""
+    import subprocess
+    import signal
+    import shutil
+    import time
+
+    url = ''
     with task_lock:
         if task_id not in tasks:
             return jsonify({'error': 'Task not found'}), 404
 
         if tasks[task_id]['status'] == 'running':
-            # Note: We can't actually cancel running threads easily
-            # This just marks it as cancelled
+            # Set cancelled flag and get URL
+            tasks[task_id]['cancelled'] = True
             tasks[task_id]['status'] = 'cancelled'
+            url = tasks[task_id].get('url', '')
 
-        return jsonify({'success': True})
+    # Try to kill yt-dlp and whisper processes
+    try:
+        # Find and kill yt-dlp processes
+        result = subprocess.run(['pgrep', '-f', 'yt-dlp'], capture_output=True, text=True)
+        if result.returncode == 0:
+            pids = result.stdout.strip().split('\n')
+            for pid in pids:
+                if pid:
+                    try:
+                        os.kill(int(pid), signal.SIGTERM)
+                        print(f"Killed yt-dlp process {pid}")
+                    except ProcessLookupError:
+                        pass
+
+        # Find and kill whisper processes
+        result = subprocess.run(['pgrep', '-f', 'whisper'], capture_output=True, text=True)
+        if result.returncode == 0:
+            pids = result.stdout.strip().split('\n')
+            for pid in pids:
+                if pid:
+                    try:
+                        os.kill(int(pid), signal.SIGTERM)
+                        print(f"Killed whisper process {pid}")
+                    except ProcessLookupError:
+                        pass
+
+        # Also try pkill as fallback
+        subprocess.run(['pkill', '-f', 'yt-dlp'], capture_output=True)
+        subprocess.run(['pkill', '-f', 'whisper'], capture_output=True)
+
+    except Exception as e:
+        print(f"Error during cancellation: {e}")
+
+    # Wait a moment for processes to terminate
+    time.sleep(0.5)
+
+    # Clean up partial downloads
+    output_dir = Path(settings.get('video', 'output_dir'))
+    if url and output_dir.exists():
+        try:
+            # Look for folders that were recently created
+            folders = sorted(output_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True)
+            for folder in folders:
+                if folder.is_dir():
+                    # Check if folder has video file but no subtitles/themes yet (partial download)
+                    video_files = list(folder.glob('*.mp4')) + list(folder.glob('*.mkv')) + list(folder.glob('*.webm'))
+                    srt_files = list(folder.glob('*.srt'))
+                    vtt_files = list(folder.glob('*.vtt'))
+                    themes_file = folder / 'themes.md'
+
+                    # If has video but no subtitles/themes, it's a partial download
+                    if len(video_files) > 0 and len(srt_files) == 0 and len(vtt_files) == 0 and not themes_file.exists():
+                        # This looks like a partial download, remove it
+                        try:
+                            shutil.rmtree(folder)
+                            print(f"Cleaned up partial download: {folder}")
+
+                            # Update log to show cleanup
+                            with task_lock:
+                                if task_id in tasks and 'log' in tasks[task_id]:
+                                    current_log = tasks[task_id].get('log', '')
+                                    if not isinstance(current_log, str):
+                                        current_log = str(current_log) if current_log else ''
+                                    tasks[task_id]['log'] = current_log + f'\n✓ Removed partial files: {folder.name}'
+                            break  # Only remove the most recent one
+                        except Exception as e:
+                            print(f"Failed to cleanup {folder}: {e}")
+        except Exception as e:
+            print(f"Error during cleanup: {e}")
+
+    return jsonify({'success': True})
 
 
 # Track edit processes for cancellation
@@ -539,7 +705,8 @@ def process_video_edit():
         edit_processes[edit_id] = {
             'status': 'pending',
             'output_path': str(output_video),
-            'cancelled': False
+            'cancelled': False,
+            'log': ''
         }
 
     # Start background task
@@ -556,17 +723,26 @@ def run_edit_task(edit_id: str, input_video: str, output_video: str, edit_settin
     """Run video edit in background thread."""
     from video_processor import VideoProcessor
     import os
+    import time
+
+    # Function to log directly to status
+    def log_message(msg):
+        with task_lock:
+            if edit_id in edit_processes:
+                current_log = edit_processes[edit_id].get('log', '')
+                edit_processes[edit_id]['log'] = current_log + msg + '\n'
 
     try:
         with task_lock:
             edit_processes[edit_id]['status'] = 'running'
+            edit_processes[edit_id]['log'] = ''  # Initialize log
 
-        print(f"Processing video: {input_video}")
-        print(f"Settings: {edit_settings}")
+        log_message(f"Processing video: {input_video}")
+        log_message(f"Settings: {edit_settings}")
 
         # Process video with ffmpeg (preserves audio)
         processor = VideoProcessor(input_video)
-        processor.apply_effects(output_video, edit_settings, cancel_flag=lambda: edit_processes.get(edit_id, {}).get('cancelled', False))
+        processor.apply_effects(output_video, edit_settings, cancel_flag=lambda: edit_processes.get(edit_id, {}).get('cancelled', False), progress_callback=log_message)
 
         with task_lock:
             edit_processes[edit_id]['status'] = 'completed'
@@ -575,15 +751,15 @@ def run_edit_task(edit_id: str, input_video: str, output_video: str, edit_settin
     except Exception as e:
         import traceback
         error_details = traceback.format_exc()
-        print(f"Processing error: {error_details}")
+        log_message(f"Processing error: {error_details}")
 
         # Clean up partial output file on error or cancellation
         if os.path.exists(output_video):
             try:
                 os.remove(output_video)
-                print(f"Cleaned up partial output file: {output_video}")
+                log_message(f"Cleaned up partial output file: {output_video}")
             except Exception as cleanup_error:
-                print(f"Failed to clean up output file: {cleanup_error}")
+                log_message(f"Failed to clean up output file: {cleanup_error}")
 
         with task_lock:
             # Check if this was a cancellation
@@ -592,6 +768,9 @@ def run_edit_task(edit_id: str, input_video: str, output_video: str, edit_settin
             else:
                 edit_processes[edit_id]['status'] = 'failed'
                 edit_processes[edit_id]['error'] = str(e)
+    finally:
+        # Final log update is done by log_message so no need to do it here
+        pass
 
 
 @app.route('/api/process-edit/<edit_id>/cancel', methods=['POST'])
