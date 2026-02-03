@@ -998,9 +998,9 @@
         async function playFolderVideo(event, folderName, videoFile) {
             event.stopPropagation(); // Prevent folder selection
 
-            const videoUrl = `/videos/${folderName}/${videoFile}`;
+            // URL encode both folder name and filename to handle special characters
+            const videoUrl = `/videos/${encodeURIComponent(folderName)}/${encodeURIComponent(videoFile)}`;
             console.log('Playing video:', videoUrl);
-            console.log('Video URL:', videoUrl);
 
             // Create or get existing video modal
             let modal = document.getElementById('video-modal');
