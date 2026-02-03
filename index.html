@@ -1004,7 +1004,8 @@
                 closeBtn.onclick = closeVideoModal;
 
                 const player = document.createElement('video');
-                player.id = 'video-modal-player';
+                // Use data attribute to store reference
+                player.setAttribute('data-video-modal-player', 'true');
                 player.controls = true;
                 player.style.width = '100%';
                 player.style.maxHeight = '80vh';
@@ -1015,17 +1016,15 @@
                 document.body.appendChild(modal);
             }
 
-            // Wait for DOM to update before accessing player
+            // Wait for DOM to update
             await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
-            // Get player using document.getElementById since modal is now in DOM
-            const player = document.getElementById('video-modal-player');
+            // Get player using data attribute selector
+            const player = modal.querySelector('[data-video-modal-player="true"]');
 
             if (!player) {
                 showNotification('Error: Video player not found', 'error');
                 console.error('Player element not found');
-                console.log('Modal:', modal);
-                console.log('Modal children:', modal?.children);
                 return;
             }
 
@@ -1041,7 +1040,7 @@
 
         function closeVideoModal() {
             const modal = document.getElementById('video-modal');
-            const player = document.getElementById('video-modal-player');
+            const player = modal ? modal.querySelector('[data-video-modal-player="true"]') : null;
 
             if (player) {
                 player.pause();
