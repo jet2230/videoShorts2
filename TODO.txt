@@ -1,1 +1,2 @@
-1. create a gui based on the functionality of shorts_creator.py
+1. edit.html > process video > make progress bar sync with real processing data in real time i.e. log shows 'Processed ###/total frames'
+2. show checkbox to show log below the cancel button
