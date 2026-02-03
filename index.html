@@ -219,6 +219,30 @@
         .folder-number {
             font-weight: 600;
             color: var(--accent);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .play-video-btn {
+            background: rgba(255, 0, 80, 0.2);
+            border: 1px solid rgba(255, 0, 80, 0.5);
+            color: var(--accent);
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 12px;
+            line-height: 1;
+        }
+
+        .play-video-btn:hover {
+            background: rgba(255, 0, 80, 0.4);
+            transform: scale(1.1);
         }
 
         .folder-name {
@@ -610,6 +634,55 @@
             border: 1px solid var(--error);
         }
 
+        /* Video Modal */
+        #video-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 10000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .video-modal-content {
+            position: relative;
+            width: 100%;
+            max-width: 900px;
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        .video-modal-close {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(255, 68, 68, 0.2);
+            border: 1px solid var(--error);
+            color: var(--error);
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 20px;
+            line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .video-modal-close:hover {
+            background: rgba(255, 68, 68, 0.4);
+            transform: scale(1.1);
+        }
+
         /* Two column layout for themes */
         .two-column {
             display: grid;
@@ -876,9 +949,12 @@
                 }
 
                 container.innerHTML = folders.map(folder => `
-                    <div class="folder-item" data-folder="${folder.number}">
+                    <div class="folder-item" data-folder="${folder.number}" data-video="${folder.video_file}" data-folder-name="${folder.name}">
                         <div class="folder-header">
-                            <span class="folder-number">#${folder.number}</span>
+                            <span class="folder-number">
+                                #${folder.number}
+                                <button class="play-video-btn" onclick="playFolderVideo(event, '${folder.path}', '${folder.video_file}')" title="Play video">▶</button>
+                            </span>
                             <span class="folder-name">${folder.name}</span>
                         </div>
                         <div class="folder-meta">
@@ -891,7 +967,10 @@
 
                 // Add click handlers
                 container.querySelectorAll('.folder-item').forEach(item => {
-                    item.addEventListener('click', () => {
+                    item.addEventListener('click', (e) => {
+                        // Don't trigger if clicking the play button
+                        if (e.target.classList.contains('play-video-btn')) return;
+
                         document.querySelectorAll('.folder-item').forEach(i => i.classList.remove('selected'));
                         item.classList.add('selected');
                         selectFolder(item.dataset.folder);
@@ -899,6 +978,47 @@
                 });
             } catch (error) {
                 showNotification('Error loading folders: ' + error.message, 'error');
+            }
+        }
+
+        // Play folder video
+        async function playFolderVideo(event, folderPath, videoFile) {
+            event.stopPropagation(); // Prevent folder selection
+
+            const videoUrl = `/videos/${folderPath}/${videoFile}`;
+
+            // Create or get existing video modal
+            let modal = document.getElementById('video-modal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'video-modal';
+                modal.innerHTML = `
+                    <div class="video-modal-content">
+                        <button class="video-modal-close" onclick="closeVideoModal()">×</button>
+                        <video id="video-modal-player" controls style="width: 100%; max-height: 80vh;"></video>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+            }
+
+            const player = document.getElementById('video-modal-player');
+            player.src = videoUrl;
+
+            modal.style.display = 'flex';
+            player.play();
+        }
+
+        function closeVideoModal() {
+            const modal = document.getElementById('video-modal');
+            const player = document.getElementById('video-modal-player');
+
+            if (player) {
+                player.pause();
+                player.src = '';
+            }
+
+            if (modal) {
+                modal.style.display = 'none';
             }
         }
 
