@@ -1017,7 +1017,19 @@
                 const closeBtn = document.createElement('button');
                 closeBtn.className = 'video-modal-close';
                 closeBtn.textContent = '×';
-                closeBtn.onclick = closeVideoModal;
+                closeBtn.addEventListener('click', () => {
+                    const modal = document.getElementById('video-modal');
+                    const player = modal ? modal.querySelector('video') : null;
+
+                    if (player) {
+                        player.pause();
+                        player.src = '';
+                    }
+
+                    if (modal) {
+                        modal.style.display = 'none';
+                    }
+                });
 
                 const player = document.createElement('video');
                 player.controls = true;
