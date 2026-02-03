@@ -742,7 +742,7 @@ def run_edit_task(edit_id: str, input_video: str, output_video: str, edit_settin
 
         # Process video with ffmpeg (preserves audio)
         processor = VideoProcessor(input_video)
-        processor.apply_effects(output_video, edit_settings, cancel_flag=lambda: edit_processes.get(edit_id, {}).get('cancelled', False), progress_callback=log_message)
+        processor.apply_effects(output_video, edit_settings, cancel_flag=lambda: edit_processes.get(edit_id, {}).get('cancelled', False), log_callback=log_message)
 
         with task_lock:
             edit_processes[edit_id]['status'] = 'completed'

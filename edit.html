@@ -3268,10 +3268,37 @@
             notification.textContent = message;
             notification.className = `notification ${type} visible`;
 
-            // Hide after 3 seconds
-            setTimeout(() => {
-                notification.classList.remove('visible');
-            }, 3000);
+            // For error notifications, keep visible and add click to dismiss
+            if (type === 'error') {
+                notification.textContent = message + ' (Click X to dismiss)';
+                notification.style.cursor = 'default';
+                notification.style.userSelect = 'text';
+                // Add a close button
+                let closeBtn = notification.querySelector('.notification-close');
+                if (!closeBtn) {
+                    closeBtn = document.createElement('span');
+                    closeBtn.className = 'notification-close';
+                    closeBtn.textContent = ' ✕';
+                    closeBtn.style.cssText = 'margin-left: 10px; cursor: pointer; font-weight: bold; color: #ff4444;';
+                    notification.appendChild(closeBtn);
+                } else {
+                    closeBtn.style.display = 'inline';
+                }
+                closeBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    notification.classList.remove('visible');
+                };
+            } else {
+                // Hide after 3 seconds for non-error notifications
+                notification.style.cursor = '';
+                notification.style.userSelect = '';
+                const closeBtn = notification.querySelector('.notification-close');
+                if (closeBtn) closeBtn.style.display = 'none';
+                notification.onclick = null;
+                setTimeout(() => {
+                    notification.classList.remove('visible');
+                }, 3000);
+            }
         }
 
         // Reset all settings
