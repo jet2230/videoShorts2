@@ -989,20 +989,35 @@
 
             // Create or get existing video modal
             let modal = document.getElementById('video-modal');
+            let player;
+
             if (!modal) {
                 modal = document.createElement('div');
                 modal.id = 'video-modal';
-                modal.innerHTML = `
-                    <div class="video-modal-content">
-                        <button class="video-modal-close" onclick="closeVideoModal()">×</button>
-                        <video id="video-modal-player" controls style="width: 100%; max-height: 80vh;"></video>
-                    </div>
-                `;
+                modal.style.display = 'none'; // Hidden by default
+
+                const content = document.createElement('div');
+                content.className = 'video-modal-content';
+
+                const closeBtn = document.createElement('button');
+                closeBtn.className = 'video-modal-close';
+                closeBtn.textContent = '×';
+                closeBtn.onclick = closeVideoModal;
+
+                player = document.createElement('video');
+                player.id = 'video-modal-player';
+                player.controls = true;
+                player.style.width = '100%';
+                player.style.maxHeight = '80vh';
+
+                content.appendChild(closeBtn);
+                content.appendChild(player);
+                modal.appendChild(content);
                 document.body.appendChild(modal);
+            } else {
+                player = modal.querySelector('#video-modal-player');
             }
 
-            // Get player from within modal using querySelector
-            const player = modal.querySelector('#video-modal-player');
             if (!player) {
                 showNotification('Error: Video player not found', 'error');
                 return;
