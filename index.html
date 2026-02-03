@@ -989,7 +989,6 @@
 
             // Create or get existing video modal
             let modal = document.getElementById('video-modal');
-            let player;
 
             if (!modal) {
                 modal = document.createElement('div');
@@ -1004,7 +1003,7 @@
                 closeBtn.textContent = '×';
                 closeBtn.onclick = closeVideoModal;
 
-                player = document.createElement('video');
+                const player = document.createElement('video');
                 player.id = 'video-modal-player';
                 player.controls = true;
                 player.style.width = '100%';
@@ -1014,12 +1013,14 @@
                 content.appendChild(player);
                 modal.appendChild(content);
                 document.body.appendChild(modal);
-            } else {
-                player = modal.querySelector('#video-modal-player');
             }
+
+            // Get player using document.getElementById since modal is now in DOM
+            const player = document.getElementById('video-modal-player');
 
             if (!player) {
                 showNotification('Error: Video player not found', 'error');
+                console.error('Player element not found');
                 return;
             }
 
@@ -1035,7 +1036,7 @@
 
         function closeVideoModal() {
             const modal = document.getElementById('video-modal');
-            const player = modal ? modal.querySelector('#video-modal-player') : null;
+            const player = document.getElementById('video-modal-player');
 
             if (player) {
                 player.pause();
