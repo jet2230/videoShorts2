@@ -1000,11 +1000,13 @@
 
             const videoUrl = `/videos/${folderName}/${videoFile}`;
             console.log('Playing video:', videoUrl);
+            console.log('Video URL:', videoUrl);
 
             // Create or get existing video modal
             let modal = document.getElementById('video-modal');
 
             if (!modal) {
+                console.log('Creating new modal');
                 modal = document.createElement('div');
                 modal.id = 'video-modal';
                 modal.style.display = 'none'; // Hidden by default
@@ -1024,16 +1026,18 @@
                 content.appendChild(player);
                 modal.appendChild(content);
                 document.body.appendChild(modal);
+
+                console.log('Modal created, structure:', modal.innerHTML);
             }
 
             modal.style.display = 'flex';
 
-            // Get the video element - it's the second child of modal (after content div, close button, then video)
-            // Actually it's: modal > content > closeBtn + video
-            const content = modal.querySelector('.video-modal-content');
-            const player = content ? content.querySelector('video') : null;
+            // Just get the first video element in the modal
+            const player = modal.querySelector('video');
 
-            console.log('Player:', player);
+            console.log('Player found:', player);
+            console.log('Modal children:', modal?.children);
+            console.log('All videos in modal:', modal?.querySelectorAll('video'));
 
             if (!player) {
                 showNotification('Error: Video player not found', 'error');
@@ -1044,8 +1048,9 @@
 
             try {
                 await player.play();
+                console.log('Video playing successfully');
             } catch (error) {
-                console.log('Autoplay prevented, user needs to click play');
+                console.log('Autoplay prevented, user needs to click play:', error);
             }
         }
 
