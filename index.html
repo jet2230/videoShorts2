@@ -1056,8 +1056,7 @@
 
         function closeVideoModal() {
             const modal = document.getElementById('video-modal');
-            const content = modal ? modal.querySelector('.video-modal-content') : null;
-            const player = content ? content.querySelector('video') : null;
+            const player = modal ? modal.querySelector('video') : null;
 
             if (player) {
                 player.pause();
@@ -1068,6 +1067,9 @@
                 modal.style.display = 'none';
             }
         }
+
+        // Make closeVideoModal available globally for the onclick attribute
+        window.closeVideoModal = closeVideoModal;
 
         // Select folder and load themes
         async function selectFolder(folderNumber) {
