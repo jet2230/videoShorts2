@@ -81,6 +81,7 @@
             font-size: 13px;
             font-family: monospace;
             z-index: 10;
+            pointer-events: none;
         }
 
         /* Custom Video Controls */
@@ -345,27 +346,6 @@
             margin-bottom: 10px;
         }
 
-        .buffer-btn {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            background: rgba(255, 255, 255, 0.1);
-            color: #00ff9d;
-            font-size: 20px;
-            font-weight: bold;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s;
-        }
-
-        .buffer-btn:hover {
-            background: rgba(0, 255, 157, 0.2);
-            border-color: #00ff9d;
-        }
-
         /* Video buffer controls (on sides of video) */
         .video-buffer-btn {
             width: 36px;
@@ -382,6 +362,7 @@
             justify-content: center;
             transition: all 0.2s;
             flex-shrink: 0;
+            pointer-events: auto;
         }
 
         .video-buffer-btn:hover {
@@ -418,10 +399,6 @@
         .video-buffer-btn.video-buffer-right {
             position: static;
             transform: none;
-        }
-
-        .buffer-btn:active {
-            transform: scale(0.95);
         }
 
         .buffer-label {
@@ -789,9 +766,7 @@
 
             <div class="timeline-container">
                 <div class="timeline-header">
-                    <button class="buffer-btn" id="buffer-decrease" title="Decrease buffer by 1 min">−</button>
-                    <span class="buffer-label" id="buffer-display">Buffer: ±5 min</span>
-                    <button class="buffer-btn" id="buffer-increase" title="Increase buffer by 1 min">+</button>
+                    <span class="buffer-label" id="buffer-display">L: ±5min | R: ±5min</span>
                 </div>
                 <div class="timeline-track" id="timeline-track">
                     <div class="theme-box" id="theme-box">
@@ -1236,23 +1211,31 @@
             // Video buffer controls - adjust buffer on each side independently
 
             // Left side controls - adjust buffer before theme
-            document.getElementById('video-buffer-decrease-left').addEventListener('click', () => {
+            document.getElementById('video-buffer-decrease-left').addEventListener('click', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
                 bufferLeftSeconds = Math.max(0, bufferLeftSeconds - 60);
                 updateUI();
             });
 
-            document.getElementById('video-buffer-increase-left').addEventListener('click', () => {
+            document.getElementById('video-buffer-increase-left').addEventListener('click', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
                 bufferLeftSeconds += 60;
                 updateUI();
             });
 
             // Right side controls - adjust buffer after theme
-            document.getElementById('video-buffer-decrease-right').addEventListener('click', () => {
+            document.getElementById('video-buffer-decrease-right').addEventListener('click', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
                 bufferRightSeconds = Math.max(0, bufferRightSeconds - 60);
                 updateUI();
             });
 
-            document.getElementById('video-buffer-increase-right').addEventListener('click', () => {
+            document.getElementById('video-buffer-increase-right').addEventListener('click', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
                 bufferRightSeconds += 60;
                 updateUI();
             });
