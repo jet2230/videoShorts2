@@ -266,17 +266,18 @@
         /* Themes List */
         .themes-list {
             display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
             gap: 12px;
         }
 
         .theme-item {
             background: var(--bg-tertiary);
             border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 16px;
+            border-radius: 6px;
+            padding: 8px 10px;
             display: flex;
             align-items: flex-start;
-            gap: 12px;
+            gap: 8px;
             cursor: pointer;
             transition: border-color 0.2s, box-shadow 0.2s;
             user-select: none;
@@ -288,8 +289,8 @@
         }
 
         .theme-checkbox {
-            margin-top: 4px;
-            width: 18px;
+            margin-top: 2px;
+            width: 16px;
             height: 18px;
             accent-color: var(--accent);
             pointer-events: none;
@@ -302,37 +303,39 @@
         .theme-header {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 8px;
+            margin-bottom: 4px;
         }
 
         .theme-number {
             font-weight: 600;
             color: var(--accent);
+            font-size: 13px;
         }
 
         .theme-duration {
-            font-size: 12px;
+            font-size: 11px;
             color: var(--text-secondary);
         }
 
         .theme-title {
             font-weight: 600;
-            margin-bottom: 4px;
+            margin-bottom: 2px;
+            font-size: 14px;
         }
 
         .theme-time {
-            font-size: 12px;
+            font-size: 11px;
             color: var(--text-secondary);
         }
 
         .theme-created-badge {
             display: inline-flex;
             align-items: center;
-            gap: 4px;
-            padding: 4px 10px;
+            gap: 3px;
+            padding: 3px 8px;
             background: var(--success);
-            border-radius: 12px;
-            font-size: 11px;
+            border-radius: 10px;
+            font-size: 10px;
             font-weight: 600;
             color: white;
         }
@@ -344,16 +347,16 @@
         .theme-play-btn {
             display: inline-flex;
             align-items: center;
-            gap: 4px;
-            padding: 4px 10px;
+            gap: 3px;
+            padding: 3px 8px;
             background: var(--success);
             border: none;
-            border-radius: 12px;
-            font-size: 11px;
+            border-radius: 10px;
+            font-size: 10px;
             font-weight: 600;
             color: white;
             cursor: pointer;
-            margin-top: 8px;
+            margin-top: 4px;
             transition: background 0.2s;
         }
 
@@ -366,11 +369,31 @@
             font-size: 8px;
         }
 
+        .theme-adjust-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            background: #2b4a8a;
+            border: none;
+            border-radius: 10px;
+            font-size: 10px;
+            font-weight: 600;
+            color: white;
+            cursor: pointer;
+            margin-left: 8px;
+            transition: background 0.2s;
+        }
+
+        .theme-adjust-btn:hover {
+            background: #3a5fad;
+        }
+
         .theme-header-row {
             display: flex;
             flex-direction: column;
             align-items: flex-end;
-            gap: 6px;
+            gap: 4px;
         }
 
         /* Tooltip */
@@ -740,14 +763,8 @@
         /* Two column layout for themes */
         .two-column {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr;
             gap: 20px;
-        }
-
-        @media (max-width: 900px) {
-            .two-column {
-                grid-template-columns: 1fr;
-            }
         }
 
         .actions-bar {
@@ -1463,10 +1480,9 @@
                     <input type="checkbox" class="theme-checkbox" data-theme="${theme.number}">
                     <div class="theme-content">
                         <div class="theme-header">
-                            <span class="theme-number">Theme ${theme.number}</span>
+                            <span class="theme-number">Theme ${theme.number} <button class="theme-adjust-btn" data-theme-number="${theme.number}" data-folder="${selectedFolder}">Adjust</button> ${theme.short_created ? `<button class="theme-play-btn" data-video-path="${theme.short_info.path}">Play</button>` : ''}</span>
                             <div class="theme-header-row">
                                 ${theme.short_created ? '<span class="theme-created-badge">Short Created</span>' : `<span class="theme-duration">${theme.end}</span>`}
-                                ${theme.short_created ? `<button class="theme-play-btn" data-video-path="${theme.short_info.path}">Play</button>` : ''}
                             </div>
                         </div>
                         <div class="theme-title">${theme.title}</div>
@@ -1522,6 +1538,19 @@
                     videoPlayer.src = videoUrl;
                     videoModal.classList.add('show');
                     videoPlayer.play();
+                });
+            });
+
+            // Add click handlers for Adjust buttons
+            container.querySelectorAll('.theme-adjust-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    const themeNumber = btn.dataset.themeNumber;
+                    const folder = btn.dataset.folder;
+                    // Navigate to adjust.html with theme details
+                    window.location.href = `adjust.html?folder=${encodeURIComponent(folder)}&theme=${encodeURIComponent(themeNumber)}`;
                 });
             });
 
