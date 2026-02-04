@@ -4,58 +4,1166 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Adjust Theme - YouTube Shorts Creator</title>
-    <link rel="stylesheet" href="static/style.css">
     <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
         body {
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0a0a15 0%, #1a1a2e 100%);
             min-height: 100vh;
+            color: #fff;
             padding: 20px;
         }
 
-        .adjust-container {
-            background: rgba(20, 20, 30, 0.9);
-            border-radius: 12px;
-            padding: 40px;
-            text-align: center;
-            max-width: 500px;
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
         }
 
-        .adjust-container h1 {
-            font-size: 24px;
+        .back-link {
+            color: #00ff9d;
+            text-decoration: none;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
+        .panel {
+            background: rgba(30, 30, 45, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .panel h2 {
+            color: #00ff9d;
+            font-size: 16px;
+            margin-bottom: 16px;
+        }
+
+        /* Video containers */
+        .video-wrapper {
+            position: relative;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            aspect-ratio: 16/9;
+            margin-bottom: 16px;
+        }
+
+        .video-time-display {
+            position: absolute;
+            bottom: 50px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #fff;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: monospace;
+            z-index: 10;
+        }
+
+        .video-controls {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            z-index: 10;
+        }
+
+        .control-btn {
+            background: rgba(0, 0, 0, 0.7);
+            color: #fff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .control-btn:hover {
+            background: rgba(50, 50, 50, 0.9);
+        }
+
+        /* Theme clip preview - 9:16 aspect ratio for YouTube Shorts */
+        .preview-wrapper {
+            aspect-ratio: 9/16;
+            max-height: 500px;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        /* Preview video should crop to fill the 9:16 frame */
+        #preview-video {
+            object-fit: cover;
+        }
+
+        /* Subtitle overlay */
+        .subtitle-overlay {
+            position: absolute;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            width: 80%;
+            pointer-events: none;
+            z-index: 100;
+            display: none;
+        }
+
+        .subtitle-text {
+            display: inline-block;
+            padding: 6px 16px;
+            background: rgba(0, 0, 0, 0.8);
+            border-radius: 6px;
+            line-height: 1.4;
+        }
+
+        /* Shorts 9:16 crop overlay */
+        .shorts-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            z-index: 50;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .shorts-crop-area {
+            width: 56.25%;
+            height: 100%;
+            border: 3px solid rgba(0, 255, 157, 0.8);
+            background: rgba(0, 255, 157, 0.1);
+            position: relative;
+            box-shadow: 0 0 20px rgba(0, 255, 157, 0.3);
+        }
+
+        .shorts-crop-area::before {
+            content: '9:16';
+            position: absolute;
+            top: 8px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 255, 157, 0.9);
+            color: #000;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        /* Timeline */
+        .timeline-container {
+            margin-top: 16px;
+        }
+
+        .timeline-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .buffer-btn {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            background: rgba(255, 255, 255, 0.1);
+            color: #00ff9d;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .buffer-btn:hover {
+            background: rgba(0, 255, 157, 0.2);
+            border-color: #00ff9d;
+        }
+
+        .buffer-btn:active {
+            transform: scale(0.95);
+        }
+
+        .buffer-label {
+            font-size: 12px;
+            color: #aaa;
+        }
+
+        .timeline-track {
+            position: relative;
+            height: 60px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .theme-box {
+            position: absolute;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(0, 255, 157, 0.4), rgba(0, 191, 255, 0.4));
+            border: 2px solid #00ff9d;
+            border-radius: 6px;
+            cursor: ew-resize;
+        }
+
+        .theme-box-handle {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 16px;
+            background: rgba(0, 255, 157, 0.6);
+            cursor: col-resize;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .theme-box-handle.left {
+            left: 0;
+            border-radius: 4px 0 0 4px;
+        }
+
+        .theme-box-handle.right {
+            right: 0;
+            border-radius: 0 4px 4px 0;
+        }
+
+        .theme-box-handle::before {
+            content: '';
+            width: 4px;
+            height: 20px;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 2px;
+        }
+
+        .theme-box-content {
+            position: absolute;
+            top: 50%;
+            left: 20px;
+            right: 20px;
+            transform: translateY(-50%);
+            text-align: center;
+            font-size: 12px;
+            font-weight: 600;
+            color: #fff;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+        }
+
+        .time-markers {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 8px;
+            font-size: 11px;
+            color: #aaa;
+        }
+
+        /* Info display */
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            color: #aaa;
+            font-size: 13px;
+        }
+
+        .info-value {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .duration-value {
+            color: #00ff9d;
+            font-size: 18px;
+        }
+
+        /* Subtitle editor */
+        .subtitle-editor {
+            margin-top: 20px;
+        }
+
+        .subtitle-section {
             margin-bottom: 20px;
+        }
+
+        .subtitle-section h3 {
+            font-size: 14px;
+            color: #00ff9d;
+            margin-bottom: 12px;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .form-group {
+            flex: 1;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 12px;
+            color: #aaa;
+            margin-bottom: 6px;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            color: #fff;
+            font-size: 13px;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #00ff9d;
+        }
+
+        .form-group input[type="color"] {
+            height: 40px;
+            padding: 4px;
+        }
+
+        .subtitle-text-area {
+            width: 100%;
+            min-height: 150px;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            color: #fff;
+            font-size: 14px;
+            font-family: inherit;
+            resize: vertical;
+        }
+
+        .subtitle-text-area:focus {
+            outline: none;
+            border-color: #00ff9d;
+        }
+
+        .rich-text-toolbar {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+
+        .toolbar-btn {
+            padding: 8px 12px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            color: #fff;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .toolbar-btn:hover {
+            background: rgba(0, 255, 157, 0.2);
+            border-color: #00ff9d;
+        }
+
+        .toolbar-btn.active {
+            background: rgba(0, 255, 157, 0.3);
+            border-color: #00ff9d;
+        }
+
+        /* Buttons */
+        .buttons {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #00bfff, #00ff9d);
+            color: #000;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0, 255, 157, 0.3);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Loading and messages */
+        .loading {
+            text-align: center;
+            padding: 60px 20px;
+            color: #aaa;
+        }
+
+        .error {
+            background: rgba(255, 59, 48, 0.2);
+            border: 1px solid rgba(255, 59, 48, 0.5);
+            border-radius: 8px;
+            padding: 16px;
+            color: #ff6b6b;
+        }
+
+        .success {
+            background: rgba(0, 255, 157, 0.2);
+            border: 1px solid rgba(0, 255, 157, 0.5);
+            border-radius: 8px;
+            padding: 16px;
             color: #00ff9d;
         }
 
-        .adjust-container p {
-            color: #aaa;
-            margin-bottom: 30px;
-        }
-
-        .back-btn {
-            background: linear-gradient(135deg, #00bfff, #00ff9d);
-            border: none;
-            color: #000;
-            padding: 12px 24px;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-
-        .back-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(0, 255, 157, 0.3);
+        .hidden {
+            display: none !important;
         }
     </style>
 </head>
 <body>
-    <div class="adjust-container">
-        <h1>Adjust Theme</h1>
-        <p>This page will allow you to adjust theme details.<br>Coming soon...</p>
-        <a href="index.html" class="back-btn">Back to Main</a>
+    <div class="header">
+        <a href="index.html" class="back-link">
+            <span>←</span> Back to Main
+        </a>
+        <h1 style="margin: 0; font-size: 18px;">Adjust Theme</h1>
+        <div></div>
     </div>
+
+    <div id="loading" class="loading">Loading theme details...</div>
+    <div id="error" class="error hidden"></div>
+
+    <div id="content" class="container hidden">
+        <!-- Left Panel: Original Video + Timeline -->
+        <div class="panel">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h2 style="margin: 0;">Original Video</h2>
+                <div style="display: flex; gap: 16px;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="subtitles-toggle" checked style="width: 18px; height: 18px;">
+                        <span style="font-size: 13px; color: #aaa;">Show Subtitles</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="overlay-toggle" style="width: 18px; height: 18px;">
+                        <span style="font-size: 13px; color: #aaa;">Show 9:16 Crop Overlay</span>
+                    </label>
+                </div>
+            </div>
+            <div class="video-wrapper">
+                <video id="original-video">
+                    <track id="subtitle-track" kind="subtitles" srclang="en" label="English" default>
+                </video>
+                <div id="shorts-overlay" class="shorts-overlay hidden">
+                    <div class="shorts-crop-area"></div>
+                </div>
+                <div class="video-time-display" id="original-time-display">00:00 / 00:00</div>
+                <div class="video-controls">
+                    <button class="control-btn" id="original-play-btn">▶ Play</button>
+                </div>
+            </div>
+
+            <div class="timeline-container">
+                <div class="timeline-header">
+                    <button class="buffer-btn" id="buffer-decrease" title="Decrease buffer by 1 min">−</button>
+                    <span class="buffer-label" id="buffer-display">Buffer: ±5 min</span>
+                    <button class="buffer-btn" id="buffer-increase" title="Increase buffer by 1 min">+</button>
+                </div>
+                <div class="timeline-track" id="timeline-track">
+                    <div class="theme-box" id="theme-box">
+                        <div class="theme-box-handle left" id="handle-left"></div>
+                        <div class="theme-box-content" id="theme-box-content">00:30 - 01:30</div>
+                        <div class="theme-box-handle right" id="handle-right"></div>
+                    </div>
+                </div>
+                <div class="time-markers">
+                    <span id="time-start-marker">00:00</span>
+                    <span id="time-end-marker">00:00</span>
+                </div>
+            </div>
+
+            <div style="margin-top: 20px;">
+                <div class="info-row">
+                    <span class="info-label">Theme</span>
+                    <span class="info-value" id="theme-number">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Start Time</span>
+                    <span class="info-value" id="display-start">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">End Time</span>
+                    <span class="info-value" id="display-end">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Duration</span>
+                    <span class="info-value duration-value" id="display-duration">-</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Theme Clip Preview + Subtitle Editor -->
+        <div class="panel">
+            <h2>Theme Clip Preview (9:16 Shorts)</h2>
+            <div class="video-wrapper preview-wrapper">
+                <video id="preview-video" controls loop playsinline>
+                    <track id="preview-subtitle-track" kind="subtitles" srclang="en" label="English" default>
+                </video>
+                <div class="subtitle-overlay" id="subtitle-overlay">
+                    <span class="subtitle-text" id="subtitle-preview-text">Preview subtitles</span>
+                </div>
+            </div>
+
+            <div class="subtitle-editor">
+                <div class="subtitle-section">
+                    <h3>Subtitle Text</h3>
+                    <div class="rich-text-toolbar">
+                        <button class="toolbar-btn" data-style="bold" onclick="toggleStyle('bold')"><b>Bold</b></button>
+                        <button class="toolbar-btn" data-style="italic" onclick="toggleStyle('italic')"><i>Italic</i></button>
+                        <button class="toolbar-btn" data-style="color" onclick="applyColor('#ff0000')">🔴 Red</button>
+                        <button class="toolbar-btn" data-style="color" onclick="applyColor('#00ff00')">🟢 Green</button>
+                        <button class="toolbar-btn" data-style="color" onclick="applyColor('#00ffff')">🔵 Cyan</button>
+                        <button class="toolbar-btn" data-style="color" onclick="applyColor('#ffff00')">🟡 Yellow</button>
+                        <button class="toolbar-btn" data-style="size" onclick="applySize(1.2)">A+</button>
+                        <button class="toolbar-btn" data-style="size" onclick="applySize(0.8)">a-</button>
+                    </div>
+                    <textarea class="subtitle-text-area" id="subtitle-text" placeholder="Edit subtitle text here..."></textarea>
+                </div>
+
+                <div class="subtitle-section">
+                    <h3>Global Subtitle Settings</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Font Family</label>
+                            <select id="subtitle-font">
+                                <option value="Arial">Arial</option>
+                                <option value="Calibri">Calibri</option>
+                                <option value="Times New Roman">Times New Roman</option>
+                                <option value="Courier New">Courier New</option>
+                                <option value="Georgia">Georgia</option>
+                                <option value="Verdana">Verdana</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Font Size (px)</label>
+                            <input type="number" id="subtitle-size" value="24" min="12" max="72">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Text Color</label>
+                            <input type="color" id="subtitle-color" value="#ffffff">
+                        </div>
+                        <div class="form-group">
+                            <label>Background Color</label>
+                            <input type="color" id="subtitle-bg" value="#000000">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Position</label>
+                            <select id="subtitle-position">
+                                <option value="bottom">Bottom</option>
+                                <option value="middle">Middle</option>
+                                <option value="top">Top</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Background Opacity</label>
+                            <input type="range" id="subtitle-bg-opacity" min="0" max="100" value="70">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="buttons">
+                <button class="btn btn-secondary" id="preview-btn">▶ Preview Theme Clip</button>
+                <button class="btn btn-primary" id="save-btn">Save Changes</button>
+            </div>
+
+            <div id="message" style="margin-top: 16px;"></div>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let themeData = null;
+        let fullVideoDuration = 0;  // Full video duration
+        let bufferedDuration = 0;   // Buffered range duration (for timeline)
+        let videoPath = '';
+        let startSeconds = 0;
+        let endSeconds = 0;
+        let bufferSeconds = 300; // 5 minutes buffer
+        let bufferStart = 0;    // Current buffer start time in full video
+        let bufferEnd = 0;      // Current buffer end time in full video
+        let isDragging = null;
+        let dragStartX = 0;
+        let dragStartValue = 0;
+        let isInitialLoad = true;  // Flag to prevent range update during initial load
+
+        // DOM Elements
+        const originalVideo = document.getElementById('original-video');
+        const previewVideo = document.getElementById('preview-video');
+        const themeBox = document.getElementById('theme-box');
+        const handleLeft = document.getElementById('handle-left');
+        const handleRight = document.getElementById('handle-right');
+        const timelineTrack = document.getElementById('timeline-track');
+        const themeBoxContent = document.getElementById('theme-box-content');
+
+        // Parse URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const folderNumber = urlParams.get('folder');
+        const themeNumber = parseInt(urlParams.get('theme'));
+
+        // Format time
+        function formatTime(seconds) {
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = Math.floor(seconds % 60);
+            return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        }
+
+        // Parse time string to seconds
+        function parseTime(timeStr) {
+            const parts = timeStr.split(':');
+            if (parts.length !== 3) return 0;
+            return parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseFloat(parts[2]);
+        }
+
+        // Load theme details
+        async function loadTheme() {
+            try {
+                const response = await fetch(`/api/folder/${folderNumber}/themes`);
+                if (!response.ok) throw new Error('Failed to load theme');
+
+                const data = await response.json();
+                themeData = data.themes.find(t => t.number === themeNumber);
+
+                if (!themeData) throw new Error('Theme not found');
+
+                // Set initial values
+                startSeconds = parseTime(themeData.start);
+                endSeconds = parseTime(themeData.end);
+
+                // Construct video path from folder
+                videoPath = `videos/${data.folder}/${encodeURIComponent(data.title)}.mp4`;
+
+                // Update info display
+                document.getElementById('theme-number').textContent = `Theme ${themeData.number}`;
+                document.getElementById('subtitle-text').value = themeData.text || '';
+
+                // Load VTT subtitles
+                const subtitleTrack = document.getElementById('subtitle-track');
+                subtitleTrack.src = `/api/subtitles/${folderNumber}.vtt`;
+                originalVideo.textTracks.addEventListener('addtrack', (event) => {
+                    const track = event.track;
+                    track.mode = 'showing';
+                });
+
+                // Promise wrapper for video loading
+                const loadVideo = (video, src) => {
+                    return new Promise((resolve, reject) => {
+                        video.addEventListener('loadedmetadata', () => {
+                            fullVideoDuration = video.duration;
+                            resolve();
+                        }, { once: true });
+
+                        video.addEventListener('error', (e) => {
+                            reject(new Error('Failed to load video'));
+                        }, { once: true });
+
+                        video.src = src;
+                    });
+                };
+
+                // Load original video first to get full duration
+                await loadVideo(originalVideo, videoPath);
+
+                // Calculate buffer range
+                bufferStart = Math.max(0, startSeconds - bufferSeconds);
+                bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferSeconds);
+                bufferedDuration = bufferEnd - bufferStart;
+
+                // Load preview with theme clip range
+                previewVideo.src = `${videoPath}#t=${startSeconds},${endSeconds}`;
+
+                // Wait for preview to load
+                await loadVideo(previewVideo, previewVideo.src);
+
+                // Set original video to start at buffer position
+                originalVideo.currentTime = bufferStart;
+
+                // Show content
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('content').classList.remove('hidden');
+
+                // Initial UI update
+                updateUI();
+                setupDragHandlers();
+
+                // Setup custom video controls (this also sets currentTime to bufferStart)
+                setupOriginalVideoControls();
+
+            } catch (error) {
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('error').textContent = error.message;
+                document.getElementById('error').classList.remove('hidden');
+            }
+        }
+
+        // Update original video playback range (buffered range)
+        function updateOriginalVideoRange() {
+            if (!videoPath || !fullVideoDuration || !startSeconds || !endSeconds) return;
+
+            bufferStart = Math.max(0, startSeconds - bufferSeconds);
+            bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferSeconds);
+            bufferedDuration = bufferEnd - bufferStart;
+
+            // Set video to buffer start position
+            if (originalVideo.currentTime < bufferStart || originalVideo.currentTime > bufferEnd) {
+                originalVideo.currentTime = bufferStart;
+            }
+        }
+
+        // Update preview video with clipped range
+        function updatePreviewVideo() {
+            if (!videoPath || !startSeconds || !endSeconds) return;
+
+            // Use media fragment to clip the video to the theme range
+            previewVideo.src = `${videoPath}#t=${startSeconds},${endSeconds}`;
+            // Set to loop the clip
+            previewVideo.loop = true;
+            previewVideo.muted = false; // Unmute so user can hear audio
+
+            // Load VTT subtitles for preview with offset
+            const previewSubtitleTrack = document.getElementById('preview-subtitle-track');
+            if (previewSubtitleTrack) {
+                // Remove old track if exists
+                if (previewSubtitleTrack.src) {
+                    previewSubtitleTrack.src = '';
+                }
+                // Load with offset to sync with clipped video
+                previewSubtitleTrack.src = `/api/subtitles/${folderNumber}.vtt?offset=${startSeconds}`;
+                // Force mode to showing
+                previewVideo.addEventListener('loadedmetadata', () => {
+                    if (previewVideo.textTracks.length > 0) {
+                        previewVideo.textTracks[0].mode = 'showing';
+                    }
+                }, { once: true });
+            }
+
+            // Try to autoplay
+            previewVideo.play().catch(() => {
+                // Auto-play was prevented (browser policy), video is ready to play
+            });
+        }
+
+        // Update UI
+        function updateUI() {
+            if (!fullVideoDuration || !bufferedDuration) return;
+
+            const clipDuration = endSeconds - startSeconds;
+
+            // Update theme box position relative to buffered timeline
+            const leftPercent = ((startSeconds - bufferStart) / bufferedDuration) * 100;
+            const widthPercent = (clipDuration / bufferedDuration) * 100;
+
+            themeBox.style.left = `${leftPercent}%`;
+            themeBox.style.width = `${widthPercent}%`;
+            themeBoxContent.textContent = `${formatTime(startSeconds)} - ${formatTime(endSeconds)}`;
+
+            // Update timeline markers to show buffered range
+            document.getElementById('time-start-marker').textContent = formatTime(bufferStart);
+            document.getElementById('time-end-marker').textContent = formatTime(bufferEnd);
+
+            // Update info display
+            document.getElementById('display-start').textContent = formatTime(startSeconds);
+            document.getElementById('display-end').textContent = formatTime(endSeconds);
+            document.getElementById('display-duration').textContent = formatTime(clipDuration);
+
+            // Update buffer display
+            const bufferMin = Math.round(bufferSeconds / 60);
+            document.getElementById('buffer-display').textContent = `Buffer: ±${bufferMin} min`;
+
+            // Update subtitle preview
+            updateSubtitlePreview();
+
+            // Update preview video when range changes
+            updatePreviewVideo();
+
+            // Update original video to show only buffered range (but not during drag or initial load)
+            if (!isDragging && !isInitialLoad) {
+                updateOriginalVideoRange();
+            }
+        }
+
+        // Setup drag handlers
+        function setupDragHandlers() {
+            handleLeft.addEventListener('mousedown', (e) => {
+                isDragging = 'left';
+                dragStartX = e.clientX;
+                dragStartValue = startSeconds;
+                e.preventDefault();
+            });
+
+            handleRight.addEventListener('mousedown', (e) => {
+                isDragging = 'right';
+                dragStartX = e.clientX;
+                dragStartValue = endSeconds;
+                e.preventDefault();
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+
+                const deltaX = e.clientX - dragStartX;
+                const bufferDuration = (Math.min(fullVideoDuration, endSeconds + bufferSeconds) - Math.max(0, startSeconds - bufferSeconds));
+                const deltaTime = (deltaX / timelineTrack.offsetWidth) * bufferDuration;
+
+                if (isDragging === 'left') {
+                    let newStart = dragStartValue + deltaTime;
+                    newStart = Math.max(0, Math.min(newStart, endSeconds - 20));
+                    startSeconds = newStart;
+                } else if (isDragging === 'right') {
+                    let newEnd = dragStartValue + deltaTime;
+                    newEnd = Math.max(startSeconds + 20, Math.min(newEnd, fullVideoDuration));
+                    endSeconds = newEnd;
+                }
+
+                updateUI();
+            });
+
+            document.addEventListener('mouseup', () => {
+                isDragging = null;
+            });
+        }
+
+        // Setup custom controls for original video
+        function setupOriginalVideoControls() {
+            const playBtn = document.getElementById('original-play-btn');
+            const timeDisplay = document.getElementById('original-time-display');
+
+            // Play/Pause button
+            playBtn.addEventListener('click', () => {
+                if (originalVideo.paused) {
+                    originalVideo.play();
+                    playBtn.textContent = '⏸ Pause';
+                } else {
+                    originalVideo.pause();
+                    playBtn.textContent = '▶ Play';
+                }
+            });
+
+            // Update time display and enforce buffer range
+            originalVideo.addEventListener('timeupdate', () => {
+                // Keep playback within buffer range
+                if (originalVideo.currentTime > bufferEnd) {
+                    originalVideo.currentTime = bufferEnd;
+                    originalVideo.pause();
+                    playBtn.textContent = '▶ Play';
+                } else if (originalVideo.currentTime < bufferStart) {
+                    originalVideo.currentTime = bufferStart;
+                }
+
+                // Display time relative to buffer start
+                const relativeTime = originalVideo.currentTime - bufferStart;
+                timeDisplay.textContent = `${formatTime(relativeTime)} / ${formatTime(bufferedDuration)}`;
+            });
+
+            // Update play button when video ends
+            originalVideo.addEventListener('ended', () => {
+                playBtn.textContent = '▶ Play';
+            });
+
+            // Listen for seeked event to know when position is set
+            originalVideo.addEventListener('seeked', () => {
+                // Confirm we're at the right position
+                if (Math.abs(originalVideo.currentTime - bufferStart) < 0.5) {
+                    // Successfully seeked to buffer start
+                }
+            });
+
+            // Set initial position - use requestAnimationFrame to ensure video is ready
+            const seekToBuffer = () => {
+                originalVideo.currentTime = bufferStart;
+            };
+
+            // Try multiple times to ensure it sets
+            requestAnimationFrame(() => {
+                seekToBuffer();
+                // Allow initial load to complete after seeking
+                setTimeout(() => {
+                    isInitialLoad = false;
+                }, 1000);
+            });
+            setTimeout(seekToBuffer, 100);
+            setTimeout(seekToBuffer, 500);
+
+            // Initial time display
+            timeDisplay.textContent = `00:00:00 / ${formatTime(bufferedDuration)}`;
+        }
+
+        // Update subtitle preview
+        function updateSubtitlePreview() {
+            let text = document.getElementById('subtitle-text').value;
+            const fontSize = document.getElementById('subtitle-size').value;
+            const fontFamily = document.getElementById('subtitle-font').value;
+            const color = document.getElementById('subtitle-color').value;
+            const bgColor = document.getElementById('subtitle-bg').value;
+            const bgOpacity = document.getElementById('subtitle-bg-opacity').value / 100;
+            const position = document.getElementById('subtitle-position').value;
+
+            const overlay = document.getElementById('subtitle-overlay');
+            const textEl = document.getElementById('subtitle-preview-text');
+
+            // Parse markdown-style formatting to HTML
+            text = text
+                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+            // Only show overlay if there's text
+            if (text.trim()) {
+                textEl.innerHTML = text;
+                textEl.style.fontSize = `${fontSize}px`;
+                textEl.style.fontFamily = fontFamily;
+                textEl.style.color = color;
+                textEl.style.backgroundColor = `rgba(${hexToRgb(bgColor)}, ${bgOpacity})`;
+                overlay.style.display = 'block';
+            } else {
+                overlay.style.display = 'none';
+            }
+
+            // Position overlay
+            if (position === 'bottom') {
+                overlay.style.bottom = '80px';
+                overlay.style.top = 'auto';
+                overlay.style.transform = 'translateX(-50%)';
+            } else if (position === 'top') {
+                overlay.style.top = '20px';
+                overlay.style.bottom = 'auto';
+                overlay.style.transform = 'translateX(-50%)';
+            } else {
+                overlay.style.top = '50%';
+                overlay.style.bottom = 'auto';
+                overlay.style.transform = 'translate(-50%, -50%)';
+            }
+        }
+
+        // Helper: hex to rgb
+        function hexToRgb(hex) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : '0, 0, 0';
+        }
+
+        // Rich text toolbar functions
+        function toggleStyle(style) {
+            const textarea = document.getElementById('subtitle-text');
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const text = textarea.value;
+
+            if (start === end) return;
+
+            const selected = text.substring(start, end);
+            let wrapped = '';
+
+            if (style === 'bold') {
+                wrapped = `**${selected}**`;
+            } else if (style === 'italic') {
+                wrapped = `*${selected}*`;
+            }
+
+            textarea.value = text.substring(0, start) + wrapped + text.substring(end);
+            updateSubtitlePreview();
+        }
+
+        function applyColor(color) {
+            const textarea = document.getElementById('subtitle-text');
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const text = textarea.value;
+
+            if (start === end) return;
+
+            const selected = text.substring(start, end);
+            textarea.value = text.substring(0, start) + `<span style="color:${color}">${selected}</span>` + text.substring(end);
+            updateSubtitlePreview();
+        }
+
+        function applySize(multiplier) {
+            const textarea = document.getElementById('subtitle-text');
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const text = textarea.value;
+
+            if (start === end) return;
+
+            const selected = text.substring(start, end);
+            textarea.value = text.substring(0, start) + `<span style="font-size:${multiplier}em">${selected}</span>` + text.substring(end);
+            updateSubtitlePreview();
+        }
+
+        // Event listeners for subtitle settings
+        document.getElementById('subtitle-text').addEventListener('input', updateSubtitlePreview);
+        document.getElementById('subtitle-font').addEventListener('change', updateSubtitlePreview);
+        document.getElementById('subtitle-size').addEventListener('input', updateSubtitlePreview);
+        document.getElementById('subtitle-color').addEventListener('input', updateSubtitlePreview);
+        document.getElementById('subtitle-bg').addEventListener('input', updateSubtitlePreview);
+        document.getElementById('subtitle-bg-opacity').addEventListener('input', updateSubtitlePreview);
+        document.getElementById('subtitle-position').addEventListener('change', updateSubtitlePreview);
+
+        // Preview button
+        document.getElementById('preview-btn').addEventListener('click', () => {
+            previewVideo.currentTime = startSeconds;
+            previewVideo.play();
+
+            const checkEnd = () => {
+                if (previewVideo.currentTime >= endSeconds) {
+                    previewVideo.pause();
+                    previewVideo.removeEventListener('timeupdate', checkEnd);
+                }
+            };
+            previewVideo.addEventListener('timeupdate', checkEnd);
+        });
+
+        // Save button
+        document.getElementById('save-btn').addEventListener('click', async () => {
+            const messageDiv = document.getElementById('message');
+            messageDiv.textContent = 'Saving...';
+            messageDiv.className = '';
+
+            try {
+                const duration = endSeconds - startSeconds;
+                if (duration < 20) {
+                    throw new Error('Duration must be at least 20 seconds for YouTube Shorts');
+                }
+
+                const updates = {
+                    folder: folderNumber,
+                    theme: themeNumber,
+                    title: themeData.title,
+                    start: formatTime(startSeconds),
+                    end: formatTime(endSeconds)
+                };
+
+                const response = await fetch('/api/update-theme', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updates)
+                });
+
+                if (!response.ok) throw new Error('Failed to save changes');
+
+                messageDiv.textContent = '✓ Theme updated successfully!';
+                messageDiv.className = 'success';
+
+                setTimeout(() => {
+                    window.close();
+                }, 1500);
+
+            } catch (error) {
+                messageDiv.textContent = '✗ ' + error.message;
+                messageDiv.className = 'error';
+            }
+        });
+
+        // Subtitles toggle
+        document.getElementById('subtitles-toggle').addEventListener('change', (e) => {
+            const track = originalVideo.textTracks[0];
+            if (track) {
+                track.mode = e.target.checked ? 'showing' : 'hidden';
+            }
+        });
+
+        // Buffer controls
+        document.getElementById('buffer-increase').addEventListener('click', () => {
+            bufferSeconds += 60; // Increase by 1 minute
+            updateUI();
+        });
+
+        document.getElementById('buffer-decrease').addEventListener('click', () => {
+            bufferSeconds = Math.max(0, bufferSeconds - 60); // Decrease by 1 minute, minimum 0
+            updateUI();
+        });
+
+        // Overlay toggle
+        document.getElementById('overlay-toggle').addEventListener('change', (e) => {
+            const overlay = document.getElementById('shorts-overlay');
+            if (e.target.checked) {
+                overlay.classList.remove('hidden');
+            } else {
+                overlay.classList.add('hidden');
+            }
+        });
+
+        // Initialize
+        if (folderNumber && themeNumber) {
+            loadTheme();
+        } else {
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('error').textContent = 'Missing folder or theme number';
+            document.getElementById('error').classList.remove('hidden');
+        }
+    </script>
 </body>
 </html>

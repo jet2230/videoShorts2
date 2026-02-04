@@ -184,6 +184,12 @@ def edit_page():
     return send_from_directory('.', 'edit.html')
 
 
+@app.route('/adjust.html')
+def adjust_page():
+    """Serve the adjust theme page."""
+    return send_from_directory('.', 'adjust.html')
+
+
 @app.route('/videos/<path:filepath>')
 def serve_video(filepath):
     """Serve video files from the videos directory."""
@@ -341,6 +347,177 @@ def get_themes(folder_number: str):
         'title': video_title,
         'themes': themes
     })
+
+
+@app.route('/api/update-theme', methods=['POST'])
+def update_theme():
+    """Update theme details in themes.md file."""
+    data = request.json
+    folder_number = data.get('folder')
+    theme_number = int(data.get('theme'))
+    new_title = data.get('title')
+    new_start = data.get('start')
+    new_end = data.get('end')
+
+    if not all([folder_number, theme_number, new_title, new_start, new_end]):
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    # Find the folder
+    base_dir = Path(settings.get('video', 'output_dir'))
+    folder = None
+    for f in base_dir.iterdir():
+        if f.is_dir() and f.name.startswith(f"{folder_number}_"):
+            folder = f
+            break
+
+    if not folder:
+        return jsonify({'error': 'Folder not found'}), 404
+
+    # Parse the themes file
+    themes_file = folder / 'themes.md'
+    if not themes_file.exists():
+        return jsonify({'error': 'Themes file not found'}), 404
+
+    themes = creator.parse_themes_file(themes_file)
+
+    # Find and update the theme
+    theme_found = False
+    for theme in themes:
+        if theme['number'] == theme_number:
+            theme['title'] = new_title
+            theme['start'] = new_start
+            theme['end'] = new_end
+            theme_found = True
+            break
+
+    if not theme_found:
+        return jsonify({'error': 'Theme not found'}), 404
+
+    # Reconstruct the themes.md file
+    with open(themes_file, 'w', encoding='utf-8') as f:
+        f.write(f"# Themes for YouTube Shorts\n\n")
+        f.write(f"**Video:** {folder.name.split('_', 1)[1] if '_' in folder.name else folder.name}\n\n")
+        f.write(f"**Number of Themes:** {len(themes)}\n\n")
+        f.write(f"---\n\n")
+
+        if themes:
+            # Summary table
+            f.write(f"## Theme Summary\n\n")
+            f.write(f"| # | Theme | Duration | Time Range |\n")
+            f.write(f"|---|-------|----------|------------|\n")
+            for i, theme in enumerate(themes, 1):
+                f.write(f"| {i} | {theme['title']} | {theme['duration']} | {theme['start']} - {theme['end']} |\n")
+            f.write(f"\n---\n\n")
+
+            # Detailed descriptions
+            f.write(f"## Detailed Theme Descriptions\n\n")
+            for i, theme in enumerate(themes, 1):
+                f.write(f"### Theme {i}: {theme['title']}\n\n")
+                f.write(f"**Time Range:** {theme['start']} - {theme['end']} ({theme['duration']})\n\n")
+                f.write(f"**Why this works:** {theme['reason']}\n\n")
+                f.write(f"**Transcript Preview:**\n```\n{theme['text']}\n```\n\n")
+                f.write(f"---\n\n")
+
+    return jsonify({'success': True, 'message': 'Theme updated successfully'})
+
+
+@app.route('/api/subtitles/<folder_number>.vtt', methods=['GET'])
+def get_vtt_subtitles(folder_number: str):
+    """Convert SRT to VTT and return as WebVTT format for browser native subtitles."""
+    import re
+
+    base_dir = Path(settings.get('video', 'output_dir'))
+    folder = None
+
+    for f in base_dir.iterdir():
+        if f.is_dir() and f.name.startswith(f"{folder_number}_"):
+            folder = f
+            break
+
+    if not folder:
+        return "Folder not found", 404
+
+    # Find SRT file
+    srt_files = list(folder.glob('*.srt'))
+    if not srt_files:
+        return "SRT file not found", 404
+
+    srt_file = srt_files[0]
+
+    # Check for offset parameter (for clip preview)
+    offset = request.args.get('offset', default='0')
+    try:
+        offset_seconds = float(offset)
+    except:
+        offset_seconds = 0.0
+
+    # Read SRT and convert to VTT
+    with open(srt_file, 'r', encoding='utf-8') as f:
+        srt_content = f.read()
+
+    # Convert SRT to VTT
+    vtt_content = "WEBVTT\n\n"
+
+    lines = srt_content.split('\n')
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+
+        # Skip sequence numbers and empty lines
+        if line.isdigit() or not line:
+            i += 1
+            continue
+
+        # Look for timestamp lines (format: 00:00:00,000 --> 00:00:05,000)
+        if '-->' in line:
+            # Convert SRT timestamp to VTT format (commas to periods)
+            timestamp = line.replace(',', '.')
+
+            # Apply offset if specified
+            if offset_seconds != 0:
+                # Parse the timestamp
+                match = re.match(r'(\d+):(\d+):([\d.]+)\s*-->\s*(\d+):(\d+):([\d.]+)', timestamp)
+                if match:
+                    h1, m1, s1, h2, m2, s2 = match.groups()
+                    start_sec = int(h1) * 3600 + int(m1) * 60 + float(s1)
+                    end_sec = int(h2) * 3600 + int(m2) * 60 + float(s2)
+
+                    # Apply offset
+                    start_sec -= offset_seconds
+                    end_sec -= offset_seconds
+
+                    # Only include if still visible after offset
+                    if end_sec > 0:
+                        start_sec = max(0, start_sec)
+                        # Convert back to timestamp format
+                        def sec_to_vtt(s):
+                            h = int(s // 3600)
+                            m = int((s % 3600) // 60)
+                            sec = s % 60
+                            return f"{h:02d}:{m:02d}:{sec:06.3f}"
+
+                        timestamp = f"{sec_to_vtt(start_sec)} --> {sec_to_vtt(end_sec)}"
+                    else:
+                        # Skip this subtitle, it's before the clip start
+                        i += 1
+                        continue
+
+            vtt_content += timestamp + '\n'
+
+            # Add subtitle text lines until next empty line or sequence number
+            i += 1
+            while i < len(lines):
+                text_line = lines[i].strip()
+                if not text_line or text_line.isdigit():
+                    break
+                vtt_content += text_line + '\n'
+                i += 1
+
+            vtt_content += '\n'
+        else:
+            i += 1
+
+    return vtt_content, 200, {'Content-Type': 'text/vtt; charset=utf-8'}
 
 
 @app.route('/api/shorts', methods=['GET'])

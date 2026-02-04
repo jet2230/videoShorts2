@@ -1549,8 +1549,8 @@
 
                     const themeNumber = btn.dataset.themeNumber;
                     const folder = btn.dataset.folder;
-                    // Navigate to adjust.html with theme details
-                    window.location.href = `adjust.html?folder=${encodeURIComponent(folder)}&theme=${encodeURIComponent(themeNumber)}`;
+                    // Open adjust.html in new tab with theme details
+                    window.open(`/adjust.html?folder=${encodeURIComponent(folder)}&theme=${encodeURIComponent(themeNumber)}`, '_blank');
                 });
             });
 
