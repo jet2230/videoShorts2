@@ -70,38 +70,131 @@
             margin-bottom: 16px;
         }
 
-        .video-time-display {
+        .buffer-info {
             position: absolute;
-            bottom: 50px;
-            right: 10px;
+            top: 10px;
+            left: 10px;
             background: rgba(0, 0, 0, 0.7);
             color: #fff;
-            padding: 4px 8px;
+            padding: 6px 10px;
             border-radius: 4px;
             font-size: 13px;
             font-family: monospace;
             z-index: 10;
         }
 
-        .video-controls {
+        /* Custom Video Controls */
+        .video-controls-overlay {
             position: absolute;
-            bottom: 10px;
-            left: 10px;
-            z-index: 10;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+            padding: 10px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 20;
         }
 
-        .control-btn {
-            background: rgba(0, 0, 0, 0.7);
-            color: #fff;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
+        .video-wrapper:hover .video-controls-overlay {
+            opacity: 1;
+        }
+
+        .controls-progress {
+            width: 100%;
+            margin-bottom: 8px;
+        }
+
+        .seekbar {
+            width: 100%;
+            height: 6px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
+            outline: none;
             cursor: pointer;
-            font-size: 14px;
         }
 
-        .control-btn:hover {
-            background: rgba(50, 50, 50, 0.9);
+        .seekbar::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            background: #4CAF50;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .seekbar::-moz-range-thumb {
+            width: 14px;
+            height: 14px;
+            background: #4CAF50;
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+        }
+
+        .controls-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .control-icon {
+            background: none;
+            border: none;
+            color: #fff;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 4px 8px;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+        }
+
+        .control-icon:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .time-display {
+            color: #fff;
+            font-size: 13px;
+            font-family: monospace;
+            flex-grow: 1;
+        }
+
+        .volume-slider {
+            width: 80px;
+            height: 4px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 2px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 12px;
+            height: 12px;
+            background: #fff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .volume-slider::-moz-range-thumb {
+            width: 12px;
+            height: 12px;
+            background: #fff;
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
         }
 
         /* Theme clip preview - 9:16 aspect ratio for YouTube Shorts */
@@ -517,9 +610,18 @@
                 <div id="shorts-overlay" class="shorts-overlay hidden">
                     <div class="shorts-crop-area"></div>
                 </div>
-                <div class="video-time-display" id="original-time-display">00:00 / 00:00</div>
-                <div class="video-controls">
-                    <button class="control-btn" id="original-play-btn">▶ Play</button>
+                <div class="buffer-info" id="buffer-info">Buffer range: 00:00:00 - 00:00:00</div>
+
+                <!-- Custom Video Controls -->
+                <div class="video-controls-overlay">
+                    <div class="controls-progress">
+                        <input type="range" id="seekbar" class="seekbar" min="0" max="100" value="0" step="0.1">
+                    </div>
+                    <div class="controls-row">
+                        <button id="play-pause-btn" class="control-icon">▶</button>
+                        <span id="time-display" class="time-display">00:00 / 00:00</span>
+                        <input type="range" id="volume-slider" class="volume-slider" min="0" max="1" value="1" step="0.1">
+                    </div>
                 </div>
             </div>
 
@@ -654,18 +756,21 @@
         let startSeconds = 0;
         let endSeconds = 0;
         let bufferSeconds = 300; // 5 minutes buffer
-        let bufferStart = 0;    // Current buffer start time in full video
-        let bufferEnd = 0;      // Current buffer end time in full video
         let isDragging = null;
         let dragStartX = 0;
         let dragStartValue = 0;
-        let isInitialLoad = true;  // Flag to prevent range update during initial load
 
         // DOM Elements
         const originalVideo = document.getElementById('original-video');
         const previewVideo = document.getElementById('preview-video');
         const themeBox = document.getElementById('theme-box');
         const handleLeft = document.getElementById('handle-left');
+
+        // Custom video control elements
+        const seekbar = document.getElementById('seekbar');
+        const playPauseBtn = document.getElementById('play-pause-btn');
+        const timeDisplay = document.getElementById('time-display');
+        const volumeSlider = document.getElementById('volume-slider');
         const handleRight = document.getElementById('handle-right');
         const timelineTrack = document.getElementById('timeline-track');
         const themeBoxContent = document.getElementById('theme-box-content');
@@ -740,8 +845,8 @@
                 await loadVideo(originalVideo, videoPath);
 
                 // Calculate buffer range
-                bufferStart = Math.max(0, startSeconds - bufferSeconds);
-                bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferSeconds);
+                const bufferStart = Math.max(0, startSeconds - bufferSeconds);
+                const bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferSeconds);
                 bufferedDuration = bufferEnd - bufferStart;
 
                 // Load preview with theme clip range
@@ -750,8 +855,18 @@
                 // Wait for preview to load
                 await loadVideo(previewVideo, previewVideo.src);
 
-                // Set original video to start at buffer position
-                originalVideo.currentTime = bufferStart;
+                // Load original video with buffered range - this makes seekbar show buffer duration
+                originalVideo.src = `${videoPath}#t=${bufferStart},${bufferEnd}`;
+
+                // Wait for original video to reload with range
+                await new Promise(resolve => {
+                    originalVideo.addEventListener('loadedmetadata', () => {
+                        // Update buffer info display
+                        document.getElementById('buffer-info').textContent =
+                            `Buffer range: ${formatTime(bufferStart)} - ${formatTime(bufferEnd)} (${formatTime(bufferedDuration)})`;
+                        resolve();
+                    }, { once: true });
+                });
 
                 // Show content
                 document.getElementById('loading').classList.add('hidden');
@@ -761,8 +876,8 @@
                 updateUI();
                 setupDragHandlers();
 
-                // Setup custom video controls (this also sets currentTime to bufferStart)
-                setupOriginalVideoControls();
+                // Setup custom video controls
+                setupVideoControls();
 
             } catch (error) {
                 document.getElementById('loading').classList.add('hidden');
@@ -775,11 +890,11 @@
         function updateOriginalVideoRange() {
             if (!videoPath || !fullVideoDuration || !startSeconds || !endSeconds) return;
 
-            bufferStart = Math.max(0, startSeconds - bufferSeconds);
-            bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferSeconds);
+            const bufferStart = Math.max(0, startSeconds - bufferSeconds);
+            const bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferSeconds);
             bufferedDuration = bufferEnd - bufferStart;
 
-            // Set video to buffer start position
+            // Set video to buffer start position if outside range
             if (originalVideo.currentTime < bufferStart || originalVideo.currentTime > bufferEnd) {
                 originalVideo.currentTime = bufferStart;
             }
@@ -820,9 +935,12 @@
 
         // Update UI
         function updateUI() {
-            if (!fullVideoDuration || !bufferedDuration) return;
+            if (!fullVideoDuration) return;
 
             const clipDuration = endSeconds - startSeconds;
+            const bufferStart = Math.max(0, startSeconds - bufferSeconds);
+            const bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferSeconds);
+            bufferedDuration = bufferEnd - bufferStart;
 
             // Update theme box position relative to buffered timeline
             const leftPercent = ((startSeconds - bufferStart) / bufferedDuration) * 100;
@@ -845,14 +963,18 @@
             const bufferMin = Math.round(bufferSeconds / 60);
             document.getElementById('buffer-display').textContent = `Buffer: ±${bufferMin} min`;
 
+            // Update buffer info on video
+            document.getElementById('buffer-info').textContent =
+                `Buffer range: ${formatTime(bufferStart)} - ${formatTime(bufferEnd)} (${formatTime(bufferedDuration)})`;
+
             // Update subtitle preview
             updateSubtitlePreview();
 
             // Update preview video when range changes
             updatePreviewVideo();
 
-            // Update original video to show only buffered range (but not during drag or initial load)
-            if (!isDragging && !isInitialLoad) {
+            // Update original video to show only buffered range (but not during drag)
+            if (!isDragging) {
                 updateOriginalVideoRange();
             }
         }
@@ -898,69 +1020,70 @@
             });
         }
 
-        // Setup custom controls for original video
-        function setupOriginalVideoControls() {
-            const playBtn = document.getElementById('original-play-btn');
-            const timeDisplay = document.getElementById('original-time-display');
+        // Setup custom video controls
+        function setupVideoControls() {
+            // Set initial volume
+            originalVideo.volume = volumeSlider.value;
 
             // Play/Pause button
-            playBtn.addEventListener('click', () => {
+            playPauseBtn.addEventListener('click', () => {
                 if (originalVideo.paused) {
                     originalVideo.play();
-                    playBtn.textContent = '⏸ Pause';
+                    playPauseBtn.textContent = '⏸';
                 } else {
                     originalVideo.pause();
-                    playBtn.textContent = '▶ Play';
+                    playPauseBtn.textContent = '▶';
                 }
             });
 
-            // Update time display and enforce buffer range
+            // Update play/pause button when video state changes
+            originalVideo.addEventListener('play', () => {
+                playPauseBtn.textContent = '⏸';
+            });
+
+            originalVideo.addEventListener('pause', () => {
+                playPauseBtn.textContent = '▶';
+            });
+
+            // Update seekbar as video plays
             originalVideo.addEventListener('timeupdate', () => {
-                // Keep playback within buffer range
-                if (originalVideo.currentTime > bufferEnd) {
+                // Calculate position within buffer range
+                const bufferStart = Math.max(0, startSeconds - bufferSeconds);
+                const bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferSeconds);
+
+                // Keep video within buffer range
+                if (originalVideo.currentTime < bufferStart) {
+                    originalVideo.currentTime = bufferStart;
+                } else if (originalVideo.currentTime > bufferEnd) {
                     originalVideo.currentTime = bufferEnd;
                     originalVideo.pause();
-                    playBtn.textContent = '▶ Play';
-                } else if (originalVideo.currentTime < bufferStart) {
-                    originalVideo.currentTime = bufferStart;
                 }
 
-                // Display time relative to buffer start
-                const relativeTime = originalVideo.currentTime - bufferStart;
-                timeDisplay.textContent = `${formatTime(relativeTime)} / ${formatTime(bufferedDuration)}`;
+                // Update seekbar (0-100% of buffer)
+                const positionInBuffer = originalVideo.currentTime - bufferStart;
+                const percent = (positionInBuffer / bufferedDuration) * 100;
+                seekbar.value = percent;
+
+                // Update time display (showing time relative to buffer start)
+                timeDisplay.textContent = `${formatTime(positionInBuffer)} / ${formatTime(bufferedDuration)}`;
             });
 
-            // Update play button when video ends
-            originalVideo.addEventListener('ended', () => {
-                playBtn.textContent = '▶ Play';
+            // Seek when user drags seekbar
+            seekbar.addEventListener('input', () => {
+                const bufferStart = Math.max(0, startSeconds - bufferSeconds);
+                const percent = seekbar.value;
+                const positionInBuffer = (percent / 100) * bufferedDuration;
+                originalVideo.currentTime = bufferStart + positionInBuffer;
             });
 
-            // Listen for seeked event to know when position is set
-            originalVideo.addEventListener('seeked', () => {
-                // Confirm we're at the right position
-                if (Math.abs(originalVideo.currentTime - bufferStart) < 0.5) {
-                    // Successfully seeked to buffer start
-                }
+            // Volume control
+            volumeSlider.addEventListener('input', () => {
+                originalVideo.volume = volumeSlider.value;
             });
 
-            // Set initial position - use requestAnimationFrame to ensure video is ready
-            const seekToBuffer = () => {
-                originalVideo.currentTime = bufferStart;
-            };
-
-            // Try multiple times to ensure it sets
-            requestAnimationFrame(() => {
-                seekToBuffer();
-                // Allow initial load to complete after seeking
-                setTimeout(() => {
-                    isInitialLoad = false;
-                }, 1000);
-            });
-            setTimeout(seekToBuffer, 100);
-            setTimeout(seekToBuffer, 500);
-
-            // Initial time display
-            timeDisplay.textContent = `00:00:00 / ${formatTime(bufferedDuration)}`;
+            // Set initial seekbar range
+            seekbar.max = 100;
+            seekbar.value = 0;
         }
 
         // Update subtitle preview

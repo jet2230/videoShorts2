@@ -206,7 +206,7 @@ def serve_video(filepath):
         return jsonify({'error': f'File not found: {filepath}'}), 404
 
     # Use send_file with conditional support for range requests
-    return send_file(str(video_path), mimetype='video/mp4')
+    return send_file(str(video_path), mimetype='video/mp4', conditional=True)
 
 
 @app.route('/api/settings', methods=['GET'])

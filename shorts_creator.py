@@ -214,6 +214,33 @@ class YouTubeShortsCreator:
         video_files = list(output_folder.glob("*.mp4"))
         video_path = video_files[0] if video_files else None
 
+        # Optimize video for seeking (faststart)
+        if video_path:
+            _log_msg("Optimizing video for streaming (faststart)...")
+            try:
+                optimized_path = output_folder / f"{video_path.stem}_temp.mp4"
+                result = subprocess.run([
+                    'ffmpeg', '-i', str(video_path),
+                    '-c', 'copy',  # Copy streams without re-encoding (fast)
+                    '-movflags', 'faststart',
+                    str(optimized_path)
+                ], capture_output=True, text=True)
+
+                if result.returncode == 0:
+                    # Replace original with optimized
+                    video_path.unlink()
+                    optimized_path.rename(video_path)
+                    _log_msg("Video optimization complete")
+                else:
+                    _log_msg(f"Warning: Optimization failed - {result.stderr}")
+                    # Clean up temp file if it exists
+                    if optimized_path.exists():
+                        optimized_path.unlink()
+            except FileNotFoundError:
+                _log_msg("Warning: ffmpeg not found, skipping optimization")
+            except Exception as e:
+                _log_msg(f"Warning: Optimization failed - {e}")
+
         return {
             'folder': str(output_folder),
             'title': title,
@@ -290,6 +317,32 @@ class YouTubeShortsCreator:
         output_video_path = output_folder / video_file.name
         shutil.copy2(video_file, output_video_path)
         _log_msg(f"Copied video to: {output_video_path}")
+
+        # Optimize video for seeking (faststart)
+        _log_msg("Optimizing video for streaming (faststart)...")
+        try:
+            optimized_path = output_folder / f"{output_video_path.stem}_temp.mp4"
+            result = subprocess.run([
+                'ffmpeg', '-i', str(output_video_path),
+                '-c', 'copy',  # Copy streams without re-encoding (fast)
+                '-movflags', 'faststart',
+                str(optimized_path)
+            ], capture_output=True, text=True)
+
+            if result.returncode == 0:
+                # Replace original with optimized
+                output_video_path.unlink()
+                optimized_path.rename(output_video_path)
+                _log_msg("Video optimization complete")
+            else:
+                _log_msg(f"Warning: Optimization failed - {result.stderr}")
+                # Clean up temp file if it exists
+                if optimized_path.exists():
+                    optimized_path.unlink()
+        except FileNotFoundError:
+            _log_msg("Warning: ffmpeg not found, skipping optimization")
+        except Exception as e:
+            _log_msg(f"Warning: Optimization failed - {e}")
 
         return {
             'folder': str(output_folder),
