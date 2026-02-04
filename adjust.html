@@ -103,6 +103,7 @@
         .controls-progress {
             width: 100%;
             margin-bottom: 8px;
+            position: relative;
         }
 
         .seekbar {
@@ -114,6 +115,48 @@
             border-radius: 3px;
             outline: none;
             cursor: pointer;
+        }
+
+        /* Seekbar with theme range marked in red */
+        .seekbar.theme-marked {
+            background: linear-gradient(to right,
+                rgba(255, 255, 255, 0.3) var(--theme-start),
+                rgba(244, 67, 54, 0.85) var(--theme-start),
+                rgba(244, 67, 54, 0.85) var(--theme-end),
+                rgba(255, 255, 255, 0.3) var(--theme-end)
+            );
+        }
+
+        /* Theme marker flag */
+        .theme-marker {
+            position: absolute;
+            top: -30px;
+            left: 0;
+            transform: translateX(-50%);
+            pointer-events: none;
+            transition: left 0.2s;
+        }
+
+        .theme-marker-flag {
+            position: relative;
+            background: rgba(244, 67, 54, 0.9);
+            color: #fff;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            white-space: nowrap;
+            font-weight: 500;
+        }
+
+        .theme-marker-flag::after {
+            content: '';
+            position: absolute;
+            bottom: -6px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            border-top: 6px solid rgba(244, 67, 54, 0.9);
         }
 
         .seekbar::-webkit-slider-thumb {
@@ -158,6 +201,22 @@
 
         .control-icon:hover {
             background: rgba(255, 255, 255, 0.2);
+        }
+
+        .control-jump {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            font-size: 12px;
+            cursor: pointer;
+            padding: 6px 12px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .control-jump:hover {
+            background: rgba(76, 175, 80, 0.3);
+            border-color: #4CAF50;
         }
 
         .time-display {
@@ -328,37 +387,43 @@
             background: linear-gradient(135deg, rgba(0, 255, 157, 0.4), rgba(0, 191, 255, 0.4));
             border: 2px solid #00ff9d;
             border-radius: 6px;
-            cursor: ew-resize;
+            cursor: default;
+            transition: border-color 0.2s;
+        }
+
+        .theme-box.highlight-left {
+            border-left: 4px solid #ff9800;
+        }
+
+        .theme-box.highlight-right {
+            border-right: 4px solid #ff9800;
         }
 
         .theme-box-handle {
             position: absolute;
-            top: 0;
-            bottom: 0;
-            width: 16px;
-            background: rgba(0, 255, 157, 0.6);
-            cursor: col-resize;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 12px;
+            height: 12px;
+            background: #00ff9d;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            cursor: ew-resize;
+            z-index: 10;
+            transition: background 0.2s, border-color 0.2s;
+        }
+
+        .theme-box-handle:hover {
+            background: #ff9800 !important;
+            border-color: #fff !important;
         }
 
         .theme-box-handle.left {
-            left: 0;
-            border-radius: 4px 0 0 4px;
+            left: -8px; /* Position outside left edge */
         }
 
         .theme-box-handle.right {
-            right: 0;
-            border-radius: 0 4px 4px 0;
-        }
-
-        .theme-box-handle::before {
-            content: '';
-            width: 4px;
-            height: 20px;
-            background: rgba(255, 255, 255, 0.8);
-            border-radius: 2px;
+            right: -8px; /* Position outside right edge */
         }
 
         .theme-box-content {
@@ -573,6 +638,28 @@
         .hidden {
             display: none !important;
         }
+
+        /* Custom tooltip for directory location */
+        .custom-tooltip {
+            position: relative;
+            display: inline-block;
+        }
+
+        .custom-tooltip:hover::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%) translateY(-5px);
+            background: rgba(0, 0, 0, 0.9);
+            color: #fff;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            z-index: 1000;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
@@ -580,7 +667,10 @@
         <a href="index.html" class="back-link">
             <span>←</span> Back to Main
         </a>
-        <h1 style="margin: 0; font-size: 18px;">Adjust Theme</h1>
+        <div style="flex-grow: 1; text-align: center;">
+            <h1 style="margin: 0; font-size: 18px;" id="header-title">Adjust Theme</h1>
+            <p style="margin: 0; font-size: 13px; color: #aaa;" id="header-theme-name"></p>
+        </div>
         <div></div>
     </div>
 
@@ -616,9 +706,14 @@
                 <div class="video-controls-overlay">
                     <div class="controls-progress">
                         <input type="range" id="seekbar" class="seekbar" min="0" max="100" value="0" step="0.1">
+                        <div id="theme-marker" class="theme-marker">
+                            <div class="theme-marker-flag">Theme length: <span id="theme-duration-text">00:00</span></div>
+                        </div>
                     </div>
                     <div class="controls-row">
                         <button id="play-pause-btn" class="control-icon">▶</button>
+                        <button id="jump-start-btn" class="control-jump" title="Jump to theme start">⏮ Start</button>
+                        <button id="jump-end-btn" class="control-jump" title="Jump to theme end">End ⏭</button>
                         <span id="time-display" class="time-display">00:00 / 00:00</span>
                         <input type="range" id="volume-slider" class="volume-slider" min="0" max="1" value="1" step="0.1">
                     </div>
@@ -650,6 +745,10 @@
                     <span class="info-value" id="theme-number">-</span>
                 </div>
                 <div class="info-row">
+                    <span class="info-label">Theme Name</span>
+                    <span class="info-value" id="theme-name" style="color: #00ff9d;">-</span>
+                </div>
+                <div class="info-row">
                     <span class="info-label">Start Time</span>
                     <span class="info-value" id="display-start">-</span>
                 </div>
@@ -660,6 +759,10 @@
                 <div class="info-row">
                     <span class="info-label">Duration</span>
                     <span class="info-value duration-value" id="display-duration">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Directory location</span>
+                    <span class="info-value custom-tooltip" id="folder-location">📁</span>
                 </div>
             </div>
         </div>
@@ -759,21 +862,26 @@
         let isDragging = null;
         let dragStartX = 0;
         let dragStartValue = 0;
+        let dragStartValueEnd = 0;
 
         // DOM Elements
         const originalVideo = document.getElementById('original-video');
         const previewVideo = document.getElementById('preview-video');
         const themeBox = document.getElementById('theme-box');
         const handleLeft = document.getElementById('handle-left');
+        const handleRight = document.getElementById('handle-right');
+        const timelineTrack = document.getElementById('timeline-track');
+        const themeBoxContent = document.getElementById('theme-box-content');
 
         // Custom video control elements
         const seekbar = document.getElementById('seekbar');
         const playPauseBtn = document.getElementById('play-pause-btn');
+        const jumpStartBtn = document.getElementById('jump-start-btn');
+        const jumpEndBtn = document.getElementById('jump-end-btn');
         const timeDisplay = document.getElementById('time-display');
         const volumeSlider = document.getElementById('volume-slider');
-        const handleRight = document.getElementById('handle-right');
-        const timelineTrack = document.getElementById('timeline-track');
-        const themeBoxContent = document.getElementById('theme-box-content');
+        const themeMarker = document.getElementById('theme-marker');
+        const themeDurationText = document.getElementById('theme-duration-text');
 
         // Parse URL parameters
         const urlParams = new URLSearchParams(window.location.search);
@@ -815,6 +923,14 @@
 
                 // Update info display
                 document.getElementById('theme-number').textContent = `Theme ${themeData.number}`;
+                document.getElementById('theme-name').textContent = themeData.title || '';
+                const fullPath = `videos/${data.folder}`;
+                document.getElementById('folder-location').setAttribute('data-tooltip', fullPath);
+
+                // Update header with theme info
+                document.getElementById('header-title').textContent = `Adjust Theme ${themeData.number}`;
+                document.getElementById('header-theme-name').textContent = themeData.title || '';
+
                 document.getElementById('subtitle-text').value = themeData.text || '';
 
                 // Load VTT subtitles
@@ -864,6 +980,10 @@
                         // Update buffer info display
                         document.getElementById('buffer-info').textContent =
                             `Buffer range: ${formatTime(bufferStart)} - ${formatTime(bufferEnd)} (${formatTime(bufferedDuration)})`;
+
+                        // Set video position to theme start time
+                        originalVideo.currentTime = startSeconds;
+
                         resolve();
                     }, { once: true });
                 });
@@ -927,10 +1047,10 @@
                 }, { once: true });
             }
 
-            // Try to autoplay
-            previewVideo.play().catch(() => {
-                // Auto-play was prevented (browser policy), video is ready to play
-            });
+            // Don't autoplay - user will manually play when needed
+            // previewVideo.play().catch(() => {
+            //     // Auto-play was prevented (browser policy), video is ready to play
+            // });
         }
 
         // Update UI
@@ -981,18 +1101,39 @@
 
         // Setup drag handlers
         function setupDragHandlers() {
+            // Left handle - adjust start time
             handleLeft.addEventListener('mousedown', (e) => {
                 isDragging = 'left';
                 dragStartX = e.clientX;
                 dragStartValue = startSeconds;
                 e.preventDefault();
+                e.stopPropagation();
             });
 
+            // Right handle - adjust end time
             handleRight.addEventListener('mousedown', (e) => {
                 isDragging = 'right';
                 dragStartX = e.clientX;
                 dragStartValue = endSeconds;
                 e.preventDefault();
+                e.stopPropagation();
+            });
+
+            // Hover effects - highlight theme box edges
+            handleLeft.addEventListener('mouseenter', () => {
+                themeBox.classList.add('highlight-left');
+            });
+
+            handleLeft.addEventListener('mouseleave', () => {
+                themeBox.classList.remove('highlight-left');
+            });
+
+            handleRight.addEventListener('mouseenter', () => {
+                themeBox.classList.add('highlight-right');
+            });
+
+            handleRight.addEventListener('mouseleave', () => {
+                themeBox.classList.remove('highlight-right');
             });
 
             document.addEventListener('mousemove', (e) => {
@@ -1016,6 +1157,10 @@
             });
 
             document.addEventListener('mouseup', () => {
+                if (isDragging) {
+                    // Drag ended - seek original video to new theme start position
+                    originalVideo.currentTime = startSeconds;
+                }
                 isDragging = null;
             });
         }
@@ -1076,14 +1221,74 @@
                 originalVideo.currentTime = bufferStart + positionInBuffer;
             });
 
+            // Jump to theme start
+            jumpStartBtn.addEventListener('click', () => {
+                originalVideo.currentTime = startSeconds;
+            });
+
+            // Jump to theme end
+            jumpEndBtn.addEventListener('click', () => {
+                originalVideo.currentTime = endSeconds;
+            });
+
             // Volume control
             volumeSlider.addEventListener('input', () => {
                 originalVideo.volume = volumeSlider.value;
             });
 
-            // Set initial seekbar range
+            // Click on video to play/pause
+            originalVideo.addEventListener('click', () => {
+                if (originalVideo.paused) {
+                    originalVideo.play();
+                } else {
+                    originalVideo.pause();
+                }
+            });
+
+            // Update seekbar theme markers
+            const updateSeekbarTheme = () => {
+                const bufferStart = Math.max(0, startSeconds - bufferSeconds);
+                const bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferSeconds);
+
+                // Calculate theme position within buffer (as percentage)
+                const themeStartPercent = ((startSeconds - bufferStart) / bufferedDuration) * 100;
+                const themeEndPercent = ((endSeconds - bufferStart) / bufferedDuration) * 100;
+
+                // Set CSS custom properties for gradient
+                seekbar.style.setProperty('--theme-start', `${themeStartPercent}%`);
+                seekbar.style.setProperty('--theme-end', `${themeEndPercent}%`);
+                seekbar.classList.add('theme-marked');
+
+                // Position marker at center of theme range
+                const themeCenterPercent = (themeStartPercent + themeEndPercent) / 2;
+                themeMarker.style.left = `${themeCenterPercent}%`;
+
+                // Update theme duration text
+                const themeDuration = endSeconds - startSeconds;
+                themeDurationText.textContent = formatTime(themeDuration);
+            };
+
+            // Set initial seekbar and time display
             seekbar.max = 100;
-            seekbar.value = 0;
+
+            // Calculate initial position in buffer (theme start position)
+            const bufferStart = Math.max(0, startSeconds - bufferSeconds);
+            const bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferSeconds);
+            const positionInBuffer = originalVideo.currentTime - bufferStart;
+            const seekbarPercent = (positionInBuffer / bufferedDuration) * 100;
+
+            seekbar.value = seekbarPercent;
+            timeDisplay.textContent = `${formatTime(positionInBuffer)} / ${formatTime(bufferedDuration)}`;
+
+            // Apply theme markers to seekbar
+            updateSeekbarTheme();
+
+            // Update theme markers when theme range changes
+            const originalUpdateUI = updateUI;
+            updateUI = function() {
+                originalUpdateUI();
+                updateSeekbarTheme();
+            };
         }
 
         // Update subtitle preview
