@@ -1145,6 +1145,7 @@
 
         // Setup drag handlers
         function setupDragHandlers() {
+            console.log('setupDragHandlers called');
             // Left handle - adjust start time
             handleLeft.addEventListener('mousedown', (e) => {
                 isDragging = 'left';
@@ -1211,34 +1212,62 @@
             // Video buffer controls - adjust buffer on each side independently
 
             // Left side controls - adjust buffer before theme
-            document.getElementById('video-buffer-decrease-left').addEventListener('click', (e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                bufferLeftSeconds = Math.max(0, bufferLeftSeconds - 60);
-                updateUI();
+            const leftDecreaseBtn = document.getElementById('video-buffer-decrease-left');
+            const leftIncreaseBtn = document.getElementById('video-buffer-increase-left');
+            const rightDecreaseBtn = document.getElementById('video-buffer-decrease-right');
+            const rightIncreaseBtn = document.getElementById('video-buffer-increase-right');
+
+            console.log('Setting up buffer controls:', {
+                leftDecrease: !!leftDecreaseBtn,
+                leftIncrease: !!leftIncreaseBtn,
+                rightDecrease: !!rightDecreaseBtn,
+                rightIncrease: !!rightIncreaseBtn
             });
 
-            document.getElementById('video-buffer-increase-left').addEventListener('click', (e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                bufferLeftSeconds += 60;
-                updateUI();
-            });
+            if (leftDecreaseBtn) {
+                leftDecreaseBtn.addEventListener('click', (e) => {
+                    console.log('Left decrease clicked');
+                    e.stopPropagation();
+                    e.preventDefault();
+                    bufferLeftSeconds = Math.max(0, bufferLeftSeconds - 60);
+                    console.log('bufferLeftSeconds:', bufferLeftSeconds);
+                    updateUI();
+                });
+            }
+
+            if (leftIncreaseBtn) {
+                leftIncreaseBtn.addEventListener('click', (e) => {
+                    console.log('Left increase clicked');
+                    e.stopPropagation();
+                    e.preventDefault();
+                    bufferLeftSeconds += 60;
+                    console.log('bufferLeftSeconds:', bufferLeftSeconds);
+                    updateUI();
+                });
+            }
 
             // Right side controls - adjust buffer after theme
-            document.getElementById('video-buffer-decrease-right').addEventListener('click', (e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                bufferRightSeconds = Math.max(0, bufferRightSeconds - 60);
-                updateUI();
-            });
+            if (rightDecreaseBtn) {
+                rightDecreaseBtn.addEventListener('click', (e) => {
+                    console.log('Right decrease clicked');
+                    e.stopPropagation();
+                    e.preventDefault();
+                    bufferRightSeconds = Math.max(0, bufferRightSeconds - 60);
+                    console.log('bufferRightSeconds:', bufferRightSeconds);
+                    updateUI();
+                });
+            }
 
-            document.getElementById('video-buffer-increase-right').addEventListener('click', (e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                bufferRightSeconds += 60;
-                updateUI();
-            });
+            if (rightIncreaseBtn) {
+                rightIncreaseBtn.addEventListener('click', (e) => {
+                    console.log('Right increase clicked');
+                    e.stopPropagation();
+                    e.preventDefault();
+                    bufferRightSeconds += 60;
+                    console.log('bufferRightSeconds:', bufferRightSeconds);
+                    updateUI();
+                });
+            }
         }
 
         // Setup custom video controls
