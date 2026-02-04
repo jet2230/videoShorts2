@@ -1105,6 +1105,8 @@
             const bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferRightSeconds);
             bufferedDuration = bufferEnd - bufferStart;
 
+            console.log('updateUI called:', { bufferLeftSeconds, bufferRightSeconds, bufferStart, bufferEnd, bufferedDuration });
+
             // Update theme box position relative to buffered timeline
             const leftPercent = ((startSeconds - bufferStart) / bufferedDuration) * 100;
             const widthPercent = (clipDuration / bufferedDuration) * 100;
@@ -1125,7 +1127,9 @@
             // Update buffer display with separate left/right values
             const bufferLeftMin = Math.round(bufferLeftSeconds / 60);
             const bufferRightMin = Math.round(bufferRightSeconds / 60);
-            document.getElementById('buffer-display').textContent = `L: ±${bufferLeftMin}min | R: ±${bufferRightMin}min`;
+            const bufferDisplayEl = document.getElementById('buffer-display');
+            bufferDisplayEl.textContent = `L: ±${bufferLeftMin}min | R: ±${bufferRightMin}min`;
+            console.log('Buffer display updated to:', bufferDisplayEl.textContent);
 
             // Update buffer info on video
             document.getElementById('buffer-info').textContent =
