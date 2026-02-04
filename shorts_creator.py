@@ -1092,7 +1092,7 @@ Video Path: {video_info['video_path']}
 
         return output_path
 
-    def create_short(self, video_path: Path, theme: Dict, output_dir: Path, srt_path: Path) -> str:
+    def create_short(self, video_path: Path, theme: Dict, output_dir: Path, srt_path: Path, progress_callback=None) -> str:
         """Create a short video clip using ffmpeg with 9:16 aspect ratio and burnt-in subtitles."""
         output_file = output_dir / f"theme_{theme['number']:03d}_{theme['title'][:30].replace(' ', '_')}.mp4"
 
@@ -1150,49 +1150,112 @@ Video Path: {video_info['video_path']}
         ]
 
         try:
-            result = subprocess.run(
+            # Run ffmpeg and capture progress in real-time from stderr
+            process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                check=True
+                stdin=subprocess.DEVNULL,
+                universal_newlines=True,
+                bufsize=1  # Line buffered
             )
-            print(f"    ✓ Created successfully")
-            return str(output_file)
-        except subprocess.CalledProcessError as e:
-            print(f"    ✗ Failed: {e.stderr.decode()}")
+
+            last_progress = 0
+            import time
+
+            while True:
+                # Check if process is done
+                if process.poll() is not None:
+                    break
+
+                # Read stderr line with timeout
+                line = process.stderr.readline()
+                if not line:
+                    time.sleep(0.05)
+                    continue
+
+                line = line.strip()
+                # Parse ffmpeg progress from stderr: frame=  123 fps= 45 ... time=00:00:05.12
+                if 'time=' in line and 'frame=' in line:
+                    try:
+                        # Extract time= value
+                        time_match = line.split('time=')[1].split()[0]
+                        # Parse time format HH:MM:SS.milliseconds
+                        parts = time_match.split(':')
+                        if len(parts) == 3:
+                            hours = int(parts[0])
+                            minutes = int(parts[1])
+                            seconds_parts = parts[2].split('.')
+                            seconds = int(seconds_parts[0])
+                            current_time = hours * 3600 + minutes * 60 + seconds
+
+                            # Calculate percentage
+                            if duration > 0:
+                                percent = min(100, int((current_time / duration) * 100))
+                                # Send progress on every 5% change
+                                if percent >= last_progress + 5 or percent == 100:
+                                    last_progress = percent
+                                    # Call the callback directly if available, otherwise print
+                                    if progress_callback:
+                                        progress_callback(f"Progress: {percent}%")
+                                    else:
+                                        print(f"Progress: {percent}%")
+                    except (ValueError, IndexError):
+                        pass
+
+            # Wait for process to complete
+            return_code = process.wait()
+            if return_code == 0:
+                print(f"    ✓ Created successfully")
+                return str(output_file)
+            else:
+                stderr = process.stderr.read()
+                print(f"    ✗ Failed with code {return_code}")
+                return None
+
+        except Exception as e:
+            print(f"    ✗ Failed: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
-    def create_shorts(self, folder_number: str, theme_numbers: str = None) -> None:
+    def create_shorts(self, folder_number: str, theme_numbers: str = None, progress_callback=None, cancel_check=None) -> None:
         """Create short video clips based on themes."""
-        print("=" * 60)
-        print("YouTube Shorts Creator - Creating Shorts")
-        print("=" * 60)
+        def _log_msg(msg):
+            if progress_callback:
+                progress_callback(msg)
+            else:
+                print(f"[NO_CALLBACK] {msg}")
+
+        _log_msg("=" * 60)
+        _log_msg("Creating shorts...")
+        _log_msg("Progress: 0%")
 
         # Find the video folder
         folder = self.get_video_folder_by_number(folder_number)
         if not folder:
-            print(f"Error: Video folder '{folder_number}_' not found")
+            _log_msg(f"Error: Video folder '{folder_number}_' not found")
             return
 
-        print(f"Video folder: {folder.name}")
+        _log_msg(f"Video folder: {folder.name}")
 
         # Get the video file
         video_path = self.get_video_file(folder)
         if not video_path:
-            print(f"Error: No video file found in {folder}")
+            _log_msg(f"Error: No video file found in {folder}")
             return
 
-        print(f"Video file: {video_path.name}")
+        _log_msg(f"Video file: {video_path.name}")
 
         # Parse themes file
         themes_file = folder / 'themes.md'
         if not themes_file.exists():
-            print(f"Error: themes.md not found in {folder}")
-            print("Please run the script on this video first to generate themes.")
+            _log_msg(f"Error: themes.md not found in {folder}")
+            _log_msg("Please run the script on this video first to generate themes.")
             return
 
         themes = self.parse_themes_file(themes_file)
-        print(f"Found {len(themes)} themes")
+        _log_msg(f"Found {len(themes)} themes")
 
         # Determine which themes to create
         if theme_numbers == 'all':
@@ -1204,20 +1267,21 @@ Video Path: {video_info['video_path']}
                 selected_themes = [t for t in themes if t['number'] in requested_nums]
 
                 if not selected_themes:
-                    print(f"Error: No matching themes found for numbers: {theme_numbers}")
+                    _log_msg(f"Error: No matching themes found for numbers: {theme_numbers}")
                     return
 
                 # Check for requested themes that don't exist
                 found_nums = {t['number'] for t in selected_themes}
                 missing_nums = set(requested_nums) - found_nums
                 if missing_nums:
-                    print(f"Warning: Theme(s) {sorted(missing_nums)} not found")
+                    _log_msg(f"Warning: Theme(s) {sorted(missing_nums)} not found")
             except ValueError:
-                print(f"Error: Invalid theme numbers format: {theme_numbers}")
-                print("Use comma-separated numbers (e.g., '1,2,5') or 'all'")
+                _log_msg(f"Error: Invalid theme numbers format: {theme_numbers}")
+                _log_msg("Use comma-separated numbers (e.g., '1,2,5') or 'all'")
                 return
 
-        print(f"Creating {len(selected_themes)} short(s)...")
+        total_themes = len(selected_themes)
+        _log_msg(f"Creating {total_themes} short(s)...")
 
         # Find the SRT subtitle file
         srt_path = None
@@ -1228,10 +1292,10 @@ Video Path: {video_info['video_path']}
                 break
 
         if not srt_path:
-            print("Error: No SRT subtitle file found. Cannot create shorts with burnt-in subtitles.")
+            _log_msg("Error: No SRT subtitle file found. Cannot create shorts with burnt-in subtitles.")
             return
 
-        print(f"Using subtitles: {srt_path.name}")
+        _log_msg(f"Using subtitles: {srt_path.name}")
 
         # Create output directory for shorts
         shorts_dir = folder / 'shorts'
@@ -1239,15 +1303,52 @@ Video Path: {video_info['video_path']}
 
         # Create each short
         successful = 0
-        for theme in selected_themes:
-            print(f"\nTheme {theme['number']}: {theme['title']}")
-            result = self.create_short(video_path, theme, shorts_dir, srt_path)
+        for idx, theme in enumerate(selected_themes):
+            # Check for cancellation
+            if cancel_check and cancel_check():
+                _log_msg("Task cancelled by user")
+                return
+
+            theme_num = theme['number']
+            theme_title = theme['title'][:50]
+
+            _log_msg(f"Short {idx + 1}/{total_themes}: Theme {theme_num} - {theme_title}...")
+
+            # Create wrapper callback that adds overall progress
+            def make_progress_callback(current_idx, total):
+                def callback(msg):
+                    if progress_callback:
+                        # Check if message contains progress percentage
+                        import re
+                        match = re.search(r'Progress:\s*(\d+)%', msg)
+                        if match:
+                            short_progress = int(match.group(1))
+                            # Calculate overall progress:
+                            # (completed shorts * 100) + (current short progress)
+                            overall_progress = int(((current_idx * 100) + short_progress) / total)
+                            # Clamp to 100
+                            overall_progress = min(100, overall_progress)
+                            # Show both which short and overall progress
+                            result = f"Progress: {overall_progress}% ({current_idx + 1}/{total} done)"
+                            # Don't print here - it gets captured and causes issues!
+                            progress_callback(result)
+                        else:
+                            # Forward other messages as-is
+                            progress_callback(msg)
+                return callback
+
+            result = self.create_short(
+                video_path, theme, shorts_dir, srt_path,
+                progress_callback=make_progress_callback(idx, total_themes)
+            )
             if result:
                 successful += 1
+                _log_msg(f"  ✓ Short created successfully")
+            else:
+                _log_msg(f"  ✗ Failed to create short")
 
-        print("\n" + "=" * 60)
-        print(f"Created {successful}/{len(selected_themes)} shorts in: {shorts_dir}")
-        print("=" * 60)
+        _log_msg("Progress: 100% (complete)")
+        _log_msg(f"Created {successful}/{total_themes} shorts in: {shorts_dir}")
 
 
 def main():

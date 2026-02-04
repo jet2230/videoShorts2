@@ -62,6 +62,7 @@ def run_task_with_callback(task_id: str, func, *args, **kwargs):
     def progress_callback(msg):
         try:
             msg_str = str(msg) if not isinstance(msg, str) else msg
+            # Don't print here - OutputCaptureWithCallback will capture stdout and cause recursion!
             with task_lock:
                 if task_id in tasks and 'log' in tasks[task_id]:
                     current_log = tasks[task_id]['log']
@@ -69,7 +70,8 @@ def run_task_with_callback(task_id: str, func, *args, **kwargs):
                         current_log = str(current_log) if current_log else ''
                     tasks[task_id]['log'] = current_log + msg_str + '\n'
         except Exception as e:
-            print(f"Callback error: {e}")
+            # Write directly to original stdout to avoid recursion
+            sys.__stdout__.write(f"Callback error: {e}\n")
 
     # Create cancel flag checker
     def check_cancelled():
@@ -80,6 +82,8 @@ def run_task_with_callback(task_id: str, func, *args, **kwargs):
     kwargs['progress_callback'] = progress_callback
     kwargs['cancel_check'] = check_cancelled
 
+    print(f"[DEBUG] run_task_with_callback: task_id={task_id}, progress_callback set, calling run_task")
+
     # Run using the original run_task function
     run_task(task_id, func, *args, **kwargs)
 
@@ -88,31 +92,45 @@ def run_task(task_id: str, func, *args, **kwargs):
     """Run a function in a background thread and update task status."""
     # Set up output capture to also send to callback
     class OutputCaptureWithCallback:
-        def __init__(self, callback=None):
+        def __init__(self, callback=None, original_stdout=None):
             self.callback = callback
+            self.original_stdout = original_stdout
 
         def write(self, text):
             try:
+                # Call callback FIRST for real-time updates
                 if text is not None and text.strip():
                     text_str = str(text) if not isinstance(text, str) else text
-                    # Send to callback if available
                     if self.callback:
                         self.callback(text_str.rstrip())
+
+                # Then forward to original stdout (log file)
+                if self.original_stdout:
+                    self.original_stdout.write(text)
             except:
                 pass  # Ignore write errors
 
         def flush(self):
-            pass
+            try:
+                if self.callback:
+                    # Force callback to flush any pending data
+                    pass
+                if self.original_stdout:
+                    self.original_stdout.flush()
+            except:
+                pass
 
     # Get progress_callback from kwargs if available, but don't pop it
     progress_callback = kwargs.get('progress_callback', None)
+    print(f"[DEBUG] run_task: task_id={task_id}, progress_callback={progress_callback is not None}")
 
-    # Set up output capture with callback
-    capture = OutputCaptureWithCallback(progress_callback)
-
-    # Redirect stdout and stderr
+    # Redirect stdout and stderr FIRST (save originals)
     original_stdout = sys.stdout
     original_stderr = sys.stderr
+
+    # Set up output capture with callback and original stdout
+    capture = OutputCaptureWithCallback(progress_callback, original_stdout)
+
     sys.stdout = capture
     sys.stderr = capture
 
@@ -384,10 +402,11 @@ def process_video():
             'cancelled': False
         }
 
-    # Start background task - pass task_id directly
+    # Start background task - pass task_id directly (daemon=True to allow Ctrl+C)
     thread = threading.Thread(
         target=run_task_with_callback,
-        args=(task_id, _process_video, url, local_file, model, resolution)
+        args=(task_id, _process_video, url, local_file, model, resolution),
+        daemon=True
     )
     thread.start()
 
@@ -461,7 +480,8 @@ def regenerate_themes():
 
     thread = threading.Thread(
         target=run_task_with_callback,
-        args=(task_id, _regenerate_themes, folder_number, model)
+        args=(task_id, _regenerate_themes, folder_number, model),
+        daemon=True
     )
     thread.start()
 
@@ -541,18 +561,24 @@ def create_shorts():
         }
 
     thread = threading.Thread(
-        target=run_task,
-        args=(task_id, _create_shorts, folder_number, themes)
+        target=run_task_with_callback,
+        args=(task_id, _create_shorts, folder_number, themes),
+        daemon=True
     )
     thread.start()
 
     return jsonify({'task_id': task_id})
 
 
-def _create_shorts(folder_number: str, themes: List):
+def _create_shorts(folder_number: str, themes: List, progress_callback=None, cancel_check=None):
     """Create shorts in background."""
+    print(f"[DEBUG] _create_shorts: progress_callback={progress_callback is not None}, cancel_check={cancel_check is not None}")
+    # Check for cancellation at start
+    if cancel_check and cancel_check():
+        raise Exception('Cancelled by user')
+
     theme_str = 'all' if themes == 'all' else ','.join(map(str, themes))
-    creator.create_shorts(folder_number, theme_str)
+    creator.create_shorts(folder_number, theme_str, progress_callback=progress_callback, cancel_check=cancel_check)
 
     base_dir = Path(settings.get('video', 'output_dir'))
     folder = creator.get_video_folder_by_number(folder_number)
@@ -583,6 +609,7 @@ def cancel_task(task_id: str):
     import shutil
     import time
 
+    print(f"[CANCEL] Cancel requested for task: {task_id}")
     url = ''
     with task_lock:
         if task_id not in tasks:
@@ -594,7 +621,7 @@ def cancel_task(task_id: str):
             tasks[task_id]['status'] = 'cancelled'
             url = tasks[task_id].get('url', '')
 
-    # Try to kill yt-dlp and whisper processes
+    # Try to kill yt-dlp, whisper, and ffmpeg processes
     try:
         # Find and kill yt-dlp processes
         result = subprocess.run(['pgrep', '-f', 'yt-dlp'], capture_output=True, text=True)
@@ -623,6 +650,7 @@ def cancel_task(task_id: str):
         # Also try pkill as fallback
         subprocess.run(['pkill', '-f', 'yt-dlp'], capture_output=True)
         subprocess.run(['pkill', '-f', 'whisper'], capture_output=True)
+        subprocess.run(['pkill', '-f', 'ffmpeg'], capture_output=True)
 
     except Exception as e:
         print(f"Error during cancellation: {e}")
@@ -663,6 +691,62 @@ def cancel_task(task_id: str):
                             print(f"Failed to cleanup {folder}: {e}")
         except Exception as e:
             print(f"Error during cleanup: {e}")
+
+    # Clean up partial shorts for create_shorts tasks
+    print(f"[CANCEL] Checking cleanup for task {task_id}")
+    with task_lock:
+        task_type = tasks.get(task_id, {}).get('type', 'unknown')
+        print(f"[CANCEL] Task type: {task_type}")
+        if task_id in tasks and tasks[task_id].get('type') == 'create_shorts':
+            folder_number = tasks[task_id].get('folder_number', '')
+            print(f"[CANCEL] Folder number: {folder_number}")
+            if folder_number:
+                folder = creator.get_video_folder_by_number(folder_number)
+                if folder:
+                    shorts_dir = folder / 'shorts'
+                    if shorts_dir.exists():
+                        try:
+                            print(f"[CANCEL] Cleaning up shorts directory: {shorts_dir}")
+
+                            # List all files first for debugging
+                            all_files = list(shorts_dir.glob('*'))
+                            print(f"[CANCEL] Found {len(all_files)} files in shorts directory")
+                            for f in all_files:
+                                print(f"[CANCEL]   - {f.name}")
+
+                            # Remove ALL mp4 files (both complete and partial)
+                            mp4_count = 0
+                            for video_file in shorts_dir.glob('*.mp4'):
+                                try:
+                                    video_file.unlink()
+                                    mp4_count += 1
+                                    print(f"[CANCEL] Removed short: {video_file.name}")
+                                except Exception as e:
+                                    print(f"[CANCEL] Failed to remove {video_file}: {e}")
+
+                            # Remove ALL trimmed SRT files (theme_XXX.srt)
+                            srt_count = 0
+                            for srt_file in shorts_dir.glob('*.srt'):
+                                try:
+                                    srt_file.unlink()
+                                    srt_count += 1
+                                    print(f"[CANCEL] Removed SRT: {srt_file.name}")
+                                except Exception as e:
+                                    print(f"[CANCEL] Failed to remove {srt_file}: {e}")
+
+                            print(f"[CANCEL] Removed {mp4_count} MP4 files and {srt_count} SRT files")
+
+                            # Update log to show cleanup
+                            if task_id in tasks and 'log' in tasks[task_id]:
+                                current_log = tasks[task_id].get('log', '')
+                                if not isinstance(current_log, str):
+                                    current_log = str(current_log) if current_log else ''
+                                tasks[task_id]['log'] = current_log + f'\n✓ Cleaned up {mp4_count} short(s) and {srt_count} subtitle file(s)'
+
+                        except Exception as e:
+                            print(f"[CANCEL] Error cleaning up shorts: {e}")
+                            import traceback
+                            traceback.print_exc()
 
     return jsonify({'success': True})
 
@@ -709,10 +793,11 @@ def process_video_edit():
             'log': ''
         }
 
-    # Start background task
+    # Start background task (daemon=True to allow Ctrl+C)
     thread = threading.Thread(
         target=run_edit_task,
-        args=(edit_id, str(input_video), str(output_video), edit_settings)
+        args=(edit_id, str(input_video), str(output_video), edit_settings),
+        daemon=True
     )
     thread.start()
 
@@ -798,6 +883,8 @@ def get_edit_status(edit_id: str):
 
 
 if __name__ == '__main__':
+    import signal
+
     print("=" * 60)
     print("YouTube Shorts Creator - Web Server")
     print("=" * 60)
@@ -805,4 +892,20 @@ if __name__ == '__main__':
     print(f"Video directory: {settings.get('video', 'output_dir')}")
     print("=" * 60)
 
-    app.run(host='127.0.0.1', port=5000, debug=True)
+    # Signal handler for graceful shutdown
+    def signal_handler(sig, frame):
+        print("\n\033[93mShutdown requested. Cleaning up...\033[0m")
+        # Cancel all running tasks
+        with task_lock:
+            for task_id, task in tasks.items():
+                if task.get('status') == 'running':
+                    task['cancelled'] = True
+        print("\033[92mServer shut down cleanly.\033[0m")
+        import sys
+        sys.exit(0)
+
+    # Register signal handlers
+    signal.signal(signal.SIGINT, signal_handler)  # Ctrl+C
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    app.run(host='127.0.0.1', port=5000, debug=True, use_reloader=False)

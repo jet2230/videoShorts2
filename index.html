@@ -1071,7 +1071,6 @@
 
             // URL encode both folder name and filename to handle special characters
             const videoUrl = `/videos/${encodeURIComponent(folderName)}/${encodeURIComponent(videoFile)}`;
-            console.log('Playing video:', videoUrl);
 
             // Use the existing video modal from the HTML
             const modal = document.getElementById('video-modal');
@@ -1087,9 +1086,7 @@
 
             try {
                 await player.play();
-                console.log('Video playing successfully');
             } catch (error) {
-                console.log('Autoplay prevented, user needs to click play:', error);
             }
         }
 
@@ -1462,7 +1459,7 @@
 
             const container = document.getElementById('themes-list');
             container.innerHTML = data.themes.map(theme => `
-                <label class="theme-item">
+                <label class="theme-item" data-theme="${theme.number}">
                     <input type="checkbox" class="theme-checkbox" data-theme="${theme.number}">
                     <div class="theme-content">
                         <div class="theme-header">
@@ -1474,6 +1471,12 @@
                         </div>
                         <div class="theme-title">${theme.title}</div>
                         <div class="theme-time">${theme.start} - ${theme.end}</div>
+                        <div class="theme-progress-bar" id="theme-progress-${theme.number}" style="display: none; margin-top: 8px;">
+                            <div class="progress-bar" style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
+                                <div class="progress-fill" style="height: 100%; width: 0%; background: linear-gradient(90deg, #00ff9d, #00bfff); transition: width 0.3s ease;"></div>
+                            </div>
+                            <div class="theme-progress-text" style="font-size: 10px; color: #00ff9d; margin-top: 2px;"></div>
+                        </div>
                     </div>
                 </label>
             `).join('');
@@ -1731,6 +1734,87 @@
                                 progressText.textContent = '⬇️ Downloading...';
                             }
                         }
+                        // Creating shorts stage
+                        else if (log.includes('short') || log.includes('creating shorts')) {
+                            // Check for which theme is being processed
+                            const shortMatch = log.match(/Short\s+(\d+)\/\d+:\s+Theme\s+(\d+)/);
+                            if (shortMatch) {
+                                const currentShort = parseInt(shortMatch[1]);
+                                const totalShorts = parseInt(shortMatch[2]);
+                                const themeNum = shortMatch[3];
+                                const progress = Math.round(((currentShort - 1) / totalShorts) * 100);
+
+                                // Show and update this theme's progress bar
+                                const themeProgressBar = document.getElementById(`theme-progress-${themeNum}`);
+                                if (themeProgressBar) {
+                                    const progressBar = themeProgressBar.querySelector('.progress-fill');
+                                    const progressText = themeProgressBar.querySelector('.theme-progress-text');
+
+                                    themeProgressBar.style.display = 'block';
+                                    if (progressBar) {
+                                        progressBar.style.width = `${progress}%`;
+                                    }
+                                    if (progressText) {
+                                        progressText.textContent = `Creating short... ${progress}%`;
+                                    }
+
+                                    // Mark as in-progress by adding a class
+                                    themeProgressBar.classList.add('processing');
+                                }
+                            }
+
+                            // Update overall task progress text
+                            const progressMatches = status.log.matchAll(/Progress:\s*(\d+)%/g);
+                            if (progressMatches.length > 0) {
+                                const lastMatch = progressMatches[progressMatches.length - 1];
+                                const fullLine = lastMatch[0];  // Full match including "(X/Y done)"
+                                const percent = parseInt(lastMatch[1]);
+                                // Extract the "(X/Y done)" part if present
+                                const donePart = fullLine.match(/\((\d+\/\d+)\s+done\)/);
+                                if (donePart) {
+                                    taskProgressText.textContent = `Creating shorts... ${percent}% (${donePart[1]} done)`;
+                                } else {
+                                    taskProgressText.textContent = `Creating shorts... ${percent}%`;
+                                }
+                            }
+
+                            // Check for theme completion
+                            if (log.includes('✓ Short created successfully') || log.includes('✗ Failed to create short')) {
+                                // Find which theme just completed
+                                const shortMatch = log.match(/Short\s+(\d+)\/\d+:\s+Theme\s+(\d+)/);
+                                if (shortMatch) {
+                                    const themeNum = shortMatch[3];
+                                    const themeProgressBar = document.getElementById(`theme-progress-${themeNum}`);
+                                    if (themeProgressBar) {
+                                        const progressBar = themeProgressBar.querySelector('.progress-fill');
+                                        const progressText = themeProgressBar.querySelector('.theme-progress-text');
+
+                                        themeProgressBar.classList.remove('processing');
+                                        if (progressBar && progressText) {
+                                            if (log.includes('✓ Short created successfully')) {
+                                                progressBar.style.width = '100%';
+                                                progressBar.style.background = 'linear-gradient(90deg, #00ff9d, #00ff9d)';
+                                                progressText.textContent = '✓ Short created!';
+                                                progressText.style.color = '#00ff9d';
+                                            } else {
+                                                progressBar.style.width = '100%';
+                                                progressBar.style.background = 'linear-gradient(90deg, #ff6b6b, #ff4444)';
+                                                progressText.textContent = '✗ Failed';
+                                                progressText.style.color = '#ff6b6b';
+                                            }
+                                        }
+                                    }
+
+                                    // Hide the progress bar after a delay
+                                    setTimeout(() => {
+                                        if (themeProgressBar) {
+                                            themeProgressBar.style.display = 'none';
+                                            themeProgressBar.classList.remove('processing');
+                                        }
+                                    }, 2000);
+                                }
+                            }
+                        }
                         // Processing stage
                         else if (log.includes('processing')) {
                             progressText.textContent = '⚙️ Processing...';
@@ -1743,6 +1827,124 @@
                         progressText.textContent = 'Processing: ' + (status.type || 'unknown') + '...';
                     }
                 });
+
+                const result = await monitorTask(task_id, (status) => {
+                    if (status.log) {
+                        processLog.textContent = status.log;
+                        processLog.scrollTop = processLog.scrollHeight;
+
+                        // Detect current stage and update progress text
+                        const log = status.log.toLowerCase();
+
+                        // Theme generation stage (check FIRST - has priority for "Progress:" during generation)
+                        if (log.includes('theme') || log.includes('generating')) {
+                            // Keep main download bar at 100% and full opacity
+                            progressBar.style.width = '100%';
+                            if (progressBar.parentElement) {
+                                progressBar.parentElement.style.opacity = '1';
+                            }
+
+                            // Keep subtitle bar at 100% (complete) and show theme bar
+                            if (subtitleProgressContainer) {
+                                subtitleProgressContainer.style.opacity = '1';
+                                subtitleProgressBar.style.width = '100%';
+                            }
+                            subtitleText.textContent = '✅ Subtitles complete';
+                            if (themeProgressBar && themeProgressBar.parentElement) {
+                                themeProgressBar.parentElement.style.opacity = '1';
+                            }
+
+                            // Find all progress percentages and use the last one
+                            const themeMatches = [...status.log.matchAll(/Progress:\s*(\d+)%/gi)];
+                            // Find the last theme title
+                            const titleMatches = [...status.log.matchAll(/Theme\s+\d+:\s*(.+?)(?:\.\.\.|$)/gim)];
+                            if (themeMatches.length > 0) {
+                                const lastMatch = themeMatches[themeMatches.length - 1];
+                                const percent = parseInt(lastMatch[1]);
+                                themeProgressBar.style.width = `${percent}%`;
+                                themeProgressBar.style.animation = 'none';
+                                // Show theme title if available
+                                if (titleMatches.length > 0) {
+                                    const lastTitle = titleMatches[titleMatches.length - 1];
+                                    const titleText = lastTitle[1].trim();
+                                    progressText.textContent = `⬇️ Download: Complete | 🎤 Subtitles: Complete | ✨ Themes: ${percent}%`;
+                                    themeText.textContent = `✨ ${titleText}`;
+                                } else {
+                                    progressText.textContent = `⬇️ Download: Complete | 🎤 Subtitles: Complete | ✨ Themes: ${percent}%`;
+                                }
+                            }
+                        }
+                        // Whisper/subtitle stage (checks for "Progress:" when not generating themes)
+                        else if (log.includes('progress:') || log.includes('whisper') || log.includes('transcrib') || log.includes('subtitle')) {
+                            // Keep main download bar at 100% and full opacity
+                            progressBar.style.width = '100%';
+                            if (progressBar.parentElement) {
+                                progressBar.parentElement.style.opacity = '1';
+                            }
+
+                            // Find all progress percentages and use the last one
+                            const whisperMatches = [...status.log.matchAll(/Progress:\s*(\d+)%/gi)];
+                            if (whisperMatches.length > 0) {
+                                const lastMatch = whisperMatches[whisperMatches.length - 1];
+                                const percent = parseInt(lastMatch[1]);
+                                subtitleProgressBar.style.width = `${percent}%`;
+                                subtitleProgressBar.style.animation = 'none';
+                                progressText.textContent = `⬇️ Download: Complete | 🎤 Subtitles: ${percent}%`;
+                                subtitleText.textContent = `🎤 Generating subtitles... ${percent}%`;
+                            }
+
+                            // Show subtitle progress bar
+                            if (subtitleProgressContainer) {
+                                subtitleProgressContainer.style.opacity = '1';
+                            }
+                            if (themeProgressBar && themeProgressBar.parentElement) {
+                                themeProgressBar.parentElement.style.opacity = '0.3';
+                            }
+                        }
+                        // Download stage - comes AFTER theme and whisper checks
+                        else if (log.includes('[download]')) {
+                            // Find all download percentages and use the last one
+                            const downloadMatches = [...status.log.matchAll(/\[download\]\s+(\d+\.?\d*)%/gi)];
+                            if (downloadMatches.length > 0) {
+                                const lastMatch = downloadMatches[downloadMatches.length - 1];
+                                const percent = parseFloat(lastMatch[1]);
+                                progressBar.style.width = `${percent}%`;
+                                progressBar.style.animation = 'none';
+                                progressText.textContent = `⬇️ Downloading: ${percent}%`;
+                                // Hide other bars
+                                if (subtitleProgressContainer) {
+                                    subtitleProgressContainer.style.opacity = '0.3';
+                                }
+                                if (themeProgressBar && themeProgressBar.parentElement) {
+                                    themeProgressBar.parentElement.style.opacity = '0.3';
+                                }
+                            } else {
+                                progressText.textContent = '⬇️ Downloading...';
+                            }
+                        }
+                        // Processing stage
+                        else if (log.includes('processing')) {
+                            progressText.textContent = '⚙️ Processing...';
+                        }
+                        // Default/fallback
+                        else {
+                            progressText.textContent = 'Processing: ' + (status.type || 'unknown') + '...';
+                        }
+                    } else {
+                        progressText.textContent = 'Processing: ' + (status.type || 'unknown') + '...';
+                    }
+                });
+
+                // Handle cancelled tasks
+                if (result && result.cancelled) {
+                    showNotification('Cancelled Successfully', 'success', 5000);
+                    progressContainer.classList.remove('active');
+                    processLog.classList.remove('active');
+                    document.getElementById('process-btn').disabled = false;
+                    cancelBtn.style.display = 'none';
+                    currentTaskId = null;
+                    return;
+                }
 
                 showNotification('Video processed successfully!', 'success');
 
@@ -1847,7 +2049,13 @@
                 const { task_id } = await response.json();
                 currentTaskId = task_id;
 
-                await monitorTask(task_id);
+                const result = await monitorTask(task_id);
+
+                // Handle cancelled tasks
+                if (result && result.cancelled) {
+                    showNotification('Cancelled Successfully', 'success', 5000);
+                    return;
+                }
 
                 // Reload themes
                 selectFolder(selectedFolder);
@@ -1879,6 +2087,9 @@
             taskProgressText.textContent = 'Creating shorts...';
             cancelTaskBtn.style.display = 'inline-block';
 
+            // Scroll to progress bar
+            taskProgress.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
             // Disable buttons
             document.getElementById('select-all-btn').disabled = true;
             document.getElementById('deselect-all-btn').disabled = true;
@@ -1900,7 +2111,50 @@
                 const { task_id } = await response.json();
                 currentTaskId = task_id;
 
-                await monitorTask(task_id);
+                const result = await monitorTask(task_id, (status) => {
+                    if (status.log) {
+                        // Get current theme being processed
+                        const themeMatches = [...status.log.matchAll(/Short\s+\d+\/\d+:\s+Theme\s+\d+\s+-\s+(.+?)\.\.\./g)];
+                        const currentTheme = themeMatches.length > 0 ? themeMatches[themeMatches.length - 1][1].trim() : '';
+
+                        // Update overall task progress text and bar - capture the full line to get "(X/Y done)"
+                        const progressLineMatches = [...status.log.matchAll(/Progress:\s*\d+%\s*(?:\((\d+\/\d+)\s+done\))?/g)];
+                        if (progressLineMatches.length > 0) {
+                            const lastLine = progressLineMatches[progressLineMatches.length - 1][0];
+                            const percentMatch = lastLine.match(/Progress:\s*(\d+)%/);
+                            const doneMatch = lastLine.match(/\((\d+\/\d+)\s+done\)/);
+                            const percent = percentMatch ? parseInt(percentMatch[1]) : 0;
+
+                            if (currentTheme) {
+                                if (doneMatch) {
+                                    taskProgressText.textContent = `Creating: ${currentTheme} (${percent}%, ${doneMatch[1]} done)`;
+                                } else {
+                                    taskProgressText.textContent = `Creating: ${currentTheme} (${percent}%)`;
+                                }
+                            } else {
+                                if (doneMatch) {
+                                    taskProgressText.textContent = `Creating shorts... ${percent}% (${doneMatch[1]} done)`;
+                                } else {
+                                    taskProgressText.textContent = `Creating shorts... ${percent}%`;
+                                }
+                            }
+
+                            // Also update the visual progress bar at the bottom
+                            const taskProgressBar = taskProgress.querySelector('.progress-fill');
+                            if (taskProgressBar) {
+                                taskProgressBar.style.width = `${percent}%`;
+                                taskProgressBar.style.animation = 'none';
+                                taskProgressBar.style.background = 'var(--accent)';
+                            }
+                        }
+                    }
+                });
+
+                // Handle cancelled tasks
+                if (result && result.cancelled) {
+                    showNotification('Cancelled Successfully', 'success', 5000);
+                    return;
+                }
 
                 // Reload folder list and themes to show green badges
                 loadFolders();
@@ -1918,7 +2172,9 @@
 
         // Cancel task (for regenerate/create operations)
         document.getElementById('cancel-task-btn').addEventListener('click', async () => {
-            if (!currentTaskId) return;
+            if (!currentTaskId) {
+                return;
+            }
 
             try {
                 const response = await fetch(`${API_BASE}/task/${currentTaskId}/cancel`, {
@@ -1926,11 +2182,13 @@
                 });
 
                 if (response.ok) {
-                    showNotification('Task cancelled', 'success');
+                    showNotification('Cancelled Successfully', 'success', 5000);
                     document.getElementById('task-progress').style.display = 'none';
                     document.getElementById('cancel-task-btn').style.display = 'none';
                     currentTaskId = null;
                     updateCreateButton();
+                } else {
+                    showNotification('Error cancelling: Server returned ' + response.status, 'error');
                 }
             } catch (error) {
                 showNotification('Error cancelling: ' + error.message, 'error');
@@ -1957,7 +2215,8 @@
                             reject(new Error((task.error || 'Task failed') + logInfo));
                         } else if (task.status === 'cancelled') {
                             clearInterval(interval);
-                            reject(new Error('Task was cancelled'));
+                            // Resolve with a special cancelled marker
+                            resolve({ cancelled: true });
                         }
                     } catch (error) {
                         clearInterval(interval);
@@ -1968,7 +2227,7 @@
         }
 
         // Show notification
-        function showNotification(message, type = 'success') {
+        function showNotification(message, type = 'success', customTimeout = null) {
             const notification = document.getElementById('notification');
             notification.textContent = message;
             notification.className = `notification ${type} show`;
@@ -1976,9 +2235,36 @@
             // Scroll to notification
             notification.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-            setTimeout(() => {
-                notification.classList.remove('show');
-            }, 3000);
+            // For error notifications, keep visible and add click to dismiss
+            if (type === 'error') {
+                notification.style.cursor = 'default';
+                notification.style.userSelect = 'text';
+                // Add a close button
+                let closeBtn = notification.querySelector('.notification-close');
+                if (!closeBtn) {
+                    closeBtn = document.createElement('span');
+                    closeBtn.className = 'notification-close';
+                    closeBtn.textContent = ' ✕';
+                    closeBtn.style.cssText = 'margin-left: 10px; cursor: pointer; font-weight: bold; color: #ff4444;';
+                    notification.appendChild(closeBtn);
+                } else {
+                    closeBtn.style.display = 'inline';
+                }
+                closeBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    notification.classList.remove('show');
+                };
+            } else {
+                // Hide after 3 seconds (or custom timeout) for non-error notifications
+                notification.style.cursor = '';
+                notification.style.userSelect = '';
+                const closeBtn = notification.querySelector('.notification-close');
+                if (closeBtn) closeBtn.style.display = 'none';
+                const timeout = customTimeout !== null ? customTimeout : 3000;
+                setTimeout(() => {
+                    notification.classList.remove('show');
+                }, timeout);
+            }
         }
 
         // Video modal controls
