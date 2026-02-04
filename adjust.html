@@ -94,10 +94,12 @@
             opacity: 0;
             transition: opacity 0.3s;
             z-index: 20;
+            pointer-events: none;
         }
 
         .video-wrapper:hover .video-controls-overlay {
             opacity: 1;
+            pointer-events: auto;
         }
 
         .controls-progress {
@@ -362,6 +364,60 @@
         .buffer-btn:hover {
             background: rgba(0, 255, 157, 0.2);
             border-color: #00ff9d;
+        }
+
+        /* Video buffer controls (on sides of video) */
+        .video-buffer-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            background: rgba(255, 255, 255, 0.1);
+            color: #00ff9d;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .video-buffer-btn:hover {
+            background: rgba(0, 255, 157, 0.2);
+            border-color: #00ff9d;
+        }
+
+        /* Buffer button containers */
+        .video-buffer-controls-left,
+        .video-buffer-controls-right {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 30;
+        }
+
+        .video-buffer-controls-left {
+            left: 10px;
+        }
+
+        .video-buffer-controls-right {
+            right: 10px;
+        }
+
+        /* Position buffer buttons inside video on edges */
+        .video-buffer-btn.video-buffer-left {
+            position: static;
+            transform: none;
+        }
+
+        .video-buffer-btn.video-buffer-right {
+            position: static;
+            transform: none;
         }
 
         .buffer-btn:active {
@@ -693,6 +749,7 @@
                     </label>
                 </div>
             </div>
+
             <div class="video-wrapper">
                 <video id="original-video">
                     <track id="subtitle-track" kind="subtitles" srclang="en" label="English" default>
@@ -717,6 +774,16 @@
                         <span id="time-display" class="time-display">00:00 / 00:00</span>
                         <input type="range" id="volume-slider" class="volume-slider" min="0" max="1" value="1" step="0.1">
                     </div>
+                </div>
+
+                <!-- Video buffer controls inside video -->
+                <div class="video-buffer-controls-left">
+                    <button id="video-buffer-decrease-left" class="video-buffer-btn" title="Reduce buffer by 1 min">−</button>
+                    <button id="video-buffer-increase-left" class="video-buffer-btn" title="Increase buffer by 1 min">+</button>
+                </div>
+                <div class="video-buffer-controls-right">
+                    <button id="video-buffer-decrease-right" class="video-buffer-btn" title="Reduce buffer by 1 min">−</button>
+                    <button id="video-buffer-increase-right" class="video-buffer-btn" title="Increase buffer by 1 min">+</button>
                 </div>
             </div>
 
@@ -858,7 +925,8 @@
         let videoPath = '';
         let startSeconds = 0;
         let endSeconds = 0;
-        let bufferSeconds = 300; // 5 minutes buffer
+        let bufferLeftSeconds = 300; // 5 minutes buffer before theme
+        let bufferRightSeconds = 300; // 5 minutes buffer after theme
         let isDragging = null;
         let dragStartX = 0;
         let dragStartValue = 0;
@@ -961,8 +1029,8 @@
                 await loadVideo(originalVideo, videoPath);
 
                 // Calculate buffer range
-                const bufferStart = Math.max(0, startSeconds - bufferSeconds);
-                const bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferSeconds);
+                const bufferStart = Math.max(0, startSeconds - bufferLeftSeconds);
+                const bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferRightSeconds);
                 bufferedDuration = bufferEnd - bufferStart;
 
                 // Load preview with theme clip range
@@ -1010,8 +1078,8 @@
         function updateOriginalVideoRange() {
             if (!videoPath || !fullVideoDuration || !startSeconds || !endSeconds) return;
 
-            const bufferStart = Math.max(0, startSeconds - bufferSeconds);
-            const bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferSeconds);
+            const bufferStart = Math.max(0, startSeconds - bufferLeftSeconds);
+            const bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferRightSeconds);
             bufferedDuration = bufferEnd - bufferStart;
 
             // Set video to buffer start position if outside range
@@ -1058,8 +1126,8 @@
             if (!fullVideoDuration) return;
 
             const clipDuration = endSeconds - startSeconds;
-            const bufferStart = Math.max(0, startSeconds - bufferSeconds);
-            const bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferSeconds);
+            const bufferStart = Math.max(0, startSeconds - bufferLeftSeconds);
+            const bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferRightSeconds);
             bufferedDuration = bufferEnd - bufferStart;
 
             // Update theme box position relative to buffered timeline
@@ -1079,9 +1147,10 @@
             document.getElementById('display-end').textContent = formatTime(endSeconds);
             document.getElementById('display-duration').textContent = formatTime(clipDuration);
 
-            // Update buffer display
-            const bufferMin = Math.round(bufferSeconds / 60);
-            document.getElementById('buffer-display').textContent = `Buffer: ±${bufferMin} min`;
+            // Update buffer display with separate left/right values
+            const bufferLeftMin = Math.round(bufferLeftSeconds / 60);
+            const bufferRightMin = Math.round(bufferRightSeconds / 60);
+            document.getElementById('buffer-display').textContent = `L: ±${bufferLeftMin}min | R: ±${bufferRightMin}min`;
 
             // Update buffer info on video
             document.getElementById('buffer-info').textContent =
@@ -1140,7 +1209,7 @@
                 if (!isDragging) return;
 
                 const deltaX = e.clientX - dragStartX;
-                const bufferDuration = (Math.min(fullVideoDuration, endSeconds + bufferSeconds) - Math.max(0, startSeconds - bufferSeconds));
+                const bufferDuration = (Math.min(fullVideoDuration, endSeconds + bufferRightSeconds) - Math.max(0, startSeconds - bufferLeftSeconds));
                 const deltaTime = (deltaX / timelineTrack.offsetWidth) * bufferDuration;
 
                 if (isDragging === 'left') {
@@ -1162,6 +1231,30 @@
                     originalVideo.currentTime = startSeconds;
                 }
                 isDragging = null;
+            });
+
+            // Video buffer controls - adjust buffer on each side independently
+
+            // Left side controls - adjust buffer before theme
+            document.getElementById('video-buffer-decrease-left').addEventListener('click', () => {
+                bufferLeftSeconds = Math.max(0, bufferLeftSeconds - 60);
+                updateUI();
+            });
+
+            document.getElementById('video-buffer-increase-left').addEventListener('click', () => {
+                bufferLeftSeconds += 60;
+                updateUI();
+            });
+
+            // Right side controls - adjust buffer after theme
+            document.getElementById('video-buffer-decrease-right').addEventListener('click', () => {
+                bufferRightSeconds = Math.max(0, bufferRightSeconds - 60);
+                updateUI();
+            });
+
+            document.getElementById('video-buffer-increase-right').addEventListener('click', () => {
+                bufferRightSeconds += 60;
+                updateUI();
             });
         }
 
@@ -1193,8 +1286,8 @@
             // Update seekbar as video plays
             originalVideo.addEventListener('timeupdate', () => {
                 // Calculate position within buffer range
-                const bufferStart = Math.max(0, startSeconds - bufferSeconds);
-                const bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferSeconds);
+                const bufferStart = Math.max(0, startSeconds - bufferLeftSeconds);
+                const bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferRightSeconds);
 
                 // Keep video within buffer range
                 if (originalVideo.currentTime < bufferStart) {
@@ -1215,7 +1308,7 @@
 
             // Seek when user drags seekbar
             seekbar.addEventListener('input', () => {
-                const bufferStart = Math.max(0, startSeconds - bufferSeconds);
+                const bufferStart = Math.max(0, startSeconds - bufferLeftSeconds);
                 const percent = seekbar.value;
                 const positionInBuffer = (percent / 100) * bufferedDuration;
                 originalVideo.currentTime = bufferStart + positionInBuffer;
@@ -1247,8 +1340,8 @@
 
             // Update seekbar theme markers
             const updateSeekbarTheme = () => {
-                const bufferStart = Math.max(0, startSeconds - bufferSeconds);
-                const bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferSeconds);
+                const bufferStart = Math.max(0, startSeconds - bufferLeftSeconds);
+                const bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferRightSeconds);
 
                 // Calculate theme position within buffer (as percentage)
                 const themeStartPercent = ((startSeconds - bufferStart) / bufferedDuration) * 100;
@@ -1272,8 +1365,8 @@
             seekbar.max = 100;
 
             // Calculate initial position in buffer (theme start position)
-            const bufferStart = Math.max(0, startSeconds - bufferSeconds);
-            const bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferSeconds);
+            const bufferStart = Math.max(0, startSeconds - bufferLeftSeconds);
+            const bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferRightSeconds);
             const positionInBuffer = originalVideo.currentTime - bufferStart;
             const seekbarPercent = (positionInBuffer / bufferedDuration) * 100;
 
@@ -1461,17 +1554,6 @@
             if (track) {
                 track.mode = e.target.checked ? 'showing' : 'hidden';
             }
-        });
-
-        // Buffer controls
-        document.getElementById('buffer-increase').addEventListener('click', () => {
-            bufferSeconds += 60; // Increase by 1 minute
-            updateUI();
-        });
-
-        document.getElementById('buffer-decrease').addEventListener('click', () => {
-            bufferSeconds = Math.max(0, bufferSeconds - 60); // Decrease by 1 minute, minimum 0
-            updateUI();
         });
 
         // Overlay toggle
