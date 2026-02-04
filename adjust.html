@@ -1105,8 +1105,6 @@
             const bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferRightSeconds);
             bufferedDuration = bufferEnd - bufferStart;
 
-            console.log('updateUI called:', { bufferLeftSeconds, bufferRightSeconds, bufferStart, bufferEnd, bufferedDuration });
-
             // Update theme box position relative to buffered timeline
             const leftPercent = ((startSeconds - bufferStart) / bufferedDuration) * 100;
             const widthPercent = (clipDuration / bufferedDuration) * 100;
@@ -1127,9 +1125,7 @@
             // Update buffer display with separate left/right values
             const bufferLeftMin = Math.round(bufferLeftSeconds / 60);
             const bufferRightMin = Math.round(bufferRightSeconds / 60);
-            const bufferDisplayEl = document.getElementById('buffer-display');
-            bufferDisplayEl.textContent = `L: ±${bufferLeftMin}min | R: ±${bufferRightMin}min`;
-            console.log('Buffer display updated to:', bufferDisplayEl.textContent);
+            document.getElementById('buffer-display').textContent = `L: ±${bufferLeftMin}min | R: ±${bufferRightMin}min`;
 
             // Update buffer info on video
             document.getElementById('buffer-info').textContent =
@@ -1149,7 +1145,6 @@
 
         // Setup drag handlers
         function setupDragHandlers() {
-            console.log('setupDragHandlers called');
             // Left handle - adjust start time
             handleLeft.addEventListener('mousedown', (e) => {
                 isDragging = 'left';
@@ -1221,57 +1216,34 @@
             const rightDecreaseBtn = document.getElementById('video-buffer-decrease-right');
             const rightIncreaseBtn = document.getElementById('video-buffer-increase-right');
 
-            console.log('Setting up buffer controls:', {
-                leftDecrease: !!leftDecreaseBtn,
-                leftIncrease: !!leftIncreaseBtn,
-                rightDecrease: !!rightDecreaseBtn,
-                rightIncrease: !!rightIncreaseBtn
+            leftDecreaseBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                bufferLeftSeconds = Math.max(0, bufferLeftSeconds - 60);
+                updateUI();
             });
 
-            if (leftDecreaseBtn) {
-                leftDecreaseBtn.addEventListener('click', (e) => {
-                    console.log('Left decrease clicked');
-                    e.stopPropagation();
-                    e.preventDefault();
-                    bufferLeftSeconds = Math.max(0, bufferLeftSeconds - 60);
-                    console.log('bufferLeftSeconds:', bufferLeftSeconds);
-                    updateUI();
-                });
-            }
-
-            if (leftIncreaseBtn) {
-                leftIncreaseBtn.addEventListener('click', (e) => {
-                    console.log('Left increase clicked');
-                    e.stopPropagation();
-                    e.preventDefault();
-                    bufferLeftSeconds += 60;
-                    console.log('bufferLeftSeconds:', bufferLeftSeconds);
-                    updateUI();
-                });
-            }
+            leftIncreaseBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                bufferLeftSeconds += 60;
+                updateUI();
+            });
 
             // Right side controls - adjust buffer after theme
-            if (rightDecreaseBtn) {
-                rightDecreaseBtn.addEventListener('click', (e) => {
-                    console.log('Right decrease clicked');
-                    e.stopPropagation();
-                    e.preventDefault();
-                    bufferRightSeconds = Math.max(0, bufferRightSeconds - 60);
-                    console.log('bufferRightSeconds:', bufferRightSeconds);
-                    updateUI();
-                });
-            }
+            rightDecreaseBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                bufferRightSeconds = Math.max(0, bufferRightSeconds - 60);
+                updateUI();
+            });
 
-            if (rightIncreaseBtn) {
-                rightIncreaseBtn.addEventListener('click', (e) => {
-                    console.log('Right increase clicked');
-                    e.stopPropagation();
-                    e.preventDefault();
-                    bufferRightSeconds += 60;
-                    console.log('bufferRightSeconds:', bufferRightSeconds);
-                    updateUI();
-                });
-            }
+            rightIncreaseBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                bufferRightSeconds += 60;
+                updateUI();
+            });
         }
 
         // Setup custom video controls
