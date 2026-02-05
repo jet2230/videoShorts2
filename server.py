@@ -337,26 +337,37 @@ def get_themes(folder_number: str):
     video_title = folder.name.split('_', 1)[1] if '_' in folder.name else folder.name
     video_filename = None
 
-    # First, find the actual video file
-    video_files = list(folder.glob('*.mp4')) + list(folder.glob('*.mkv')) + list(folder.glob('*.webm'))
-    if video_files:
-        # Exclude edited_shorts directory
-        video_files = [f for f in video_files if 'edited_shorts' not in str(f)]
-        if video_files:
-            video_filename = video_files[0].name
+    # First, find the actual video file in the folder (universal fix for any special characters)
+    video_files = []
+    for ext in ['*.mp4', '*.mkv', '*.webm', '*.mov', '*.avi']:
+        video_files.extend(folder.glob(ext))
 
-    # Get title from video info.txt if available
+    # Filter out videos in shorts/edited_shorts subdirectories
+    main_video_files = [f for f in video_files
+                        if 'shorts' not in f.parent.name
+                        and f.is_file()]
+
+    if main_video_files:
+        # Use the first (main) video file found
+        video_filename = main_video_files[0].name
+
+    # Get title from video info.txt if available (for display only)
     if video_info_file.exists():
         with open(video_info_file, 'r') as f:
             for line in f:
                 if line.startswith('Title:'):
                     video_title = line.split(':', 1)[1].strip()
                     break
-                # Also check for Video Path line to get actual filename
+
+    # If no video file found, try to get from Video Path in info file
+    if not video_filename and video_info_file.exists():
+        with open(video_info_file, 'r') as f:
+            for line in f:
                 if line.startswith('Video Path:'):
                     path = line.split(':', 1)[1].strip()
-                    # Extract just the filename
-                    video_filename = Path(path).name
+                    potential_file = Path(path)
+                    if potential_file.exists():
+                        video_filename = potential_file.name
                     break
 
     return jsonify({
