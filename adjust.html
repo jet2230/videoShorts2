@@ -1874,7 +1874,7 @@
                 top: rect.top - parentRect.top
             };
 
-            console.log('Drag start:', subtitleStartPos);
+            console.log('Drag start - parentRect.height:', parentRect.height, 'subtitleOverlay.offsetHeight:', subtitleOverlay.offsetHeight, 'startPos.top:', subtitleStartPos.top);
 
             e.preventDefault();
             e.stopPropagation();
@@ -1894,10 +1894,19 @@
 
             // Constrain within parent bounds with some padding
             const padding = 10;
-            newX = Math.max(padding, Math.min(newX, parentRect.width - subtitleOverlay.offsetWidth - padding));
-            newY = Math.max(padding, Math.min(newY, parentRect.height - subtitleOverlay.offsetHeight - padding));
+            const maxX = parentRect.width - subtitleOverlay.offsetWidth - padding;
+            const maxY = parentRect.height - subtitleOverlay.offsetHeight - padding;
 
-            console.log('New position:', { newX, newY });
+            if (deltaY > 0) {  // Only log when trying to move down
+                console.log('Trying to move DOWN - deltaY:', deltaY, 'newY before:', newY, 'maxY:', maxY);
+            }
+
+            newX = Math.max(padding, Math.min(newX, maxX));
+            newY = Math.max(padding, Math.min(newY, maxY));
+
+            if (deltaY > 0) {
+                console.log('newY after constrain:', newY);
+            }
 
             // Update position
             subtitleOverlay.style.left = `${newX + subtitleOverlay.offsetWidth / 2}px`;
