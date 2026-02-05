@@ -354,6 +354,11 @@
             display: none;
         }
 
+        .subtitle-overlay.draggable {
+            pointer-events: auto;
+            cursor: move;
+        }
+
         .subtitle-text {
             display: inline-block;
             padding: 6px 16px;
@@ -1817,6 +1822,7 @@
             videoControlsLocked = !videoControlsLocked;
             const lockBtn = document.getElementById('lock-video-btn');
             const lockIcon = document.getElementById('lock-icon');
+            const subtitleOverlay = document.getElementById('subtitle-overlay');
 
             if (videoControlsLocked) {
                 lockBtn.classList.add('locked');
@@ -1827,10 +1833,94 @@
                 if (!previewVideo.paused) {
                     previewVideo.pause();
                 }
+
+                // Enable subtitle dragging when locked
+                if (subtitleOverlay) {
+                    subtitleOverlay.classList.add('draggable');
+                }
             } else {
                 lockBtn.classList.remove('locked');
                 lockIcon.textContent = '🔓';
                 lockBtn.title = 'Lock video controls';
+
+                // Disable subtitle dragging when unlocked
+                if (subtitleOverlay) {
+                    subtitleOverlay.classList.remove('draggable');
+                }
+            }
+        });
+
+        // Subtitle dragging functionality
+        const subtitleOverlay = document.getElementById('subtitle-overlay');
+        let isDraggingSubtitle = false;
+        let subtitleDragStart = { x: 0, y: 0 };
+        let subtitleOffset = { x: 0, y: 0 };
+
+        subtitleOverlay.addEventListener('mousedown', (e) => {
+            if (!videoControlsLocked) return;
+
+            isDraggingSubtitle = true;
+            subtitleDragStart = { x: e.clientX, y: e.clientY };
+
+            // Get current position from computed style
+            const rect = subtitleOverlay.getBoundingClientRect();
+            const parentRect = subtitleOverlay.parentElement.getBoundingClientRect();
+
+            subtitleOffset = {
+                x: rect.left - parentRect.left,
+                y: rect.top - parentRect.top
+            };
+
+            e.preventDefault();
+            e.stopPropagation();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDraggingSubtitle || !videoControlsLocked) return;
+
+            const deltaX = e.clientX - subtitleDragStart.x;
+            const deltaY = e.clientY - subtitleDragStart.y;
+
+            // Calculate new position
+            const parentRect = subtitleOverlay.parentElement.getBoundingClientRect();
+            let newX = subtitleOffset.x + deltaX;
+            let newY = subtitleOffset.y + deltaY;
+
+            // Constrain within parent bounds
+            newX = Math.max(0, Math.min(newX, parentRect.width - subtitleOverlay.offsetWidth));
+            newY = Math.max(0, Math.min(newY, parentRect.height - subtitleOverlay.offsetHeight));
+
+            // Update position (remove translate since we're using absolute positioning)
+            subtitleOverlay.style.left = `${newX + subtitleOverlay.offsetWidth / 2}px`;
+            subtitleOverlay.style.top = `${newY}px`;
+            subtitleOverlay.style.bottom = 'auto';
+            subtitleOverlay.style.transform = 'translateX(-50%)';
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isDraggingSubtitle) {
+                isDraggingSubtitle = false;
+
+                // Update subtitle position setting to match new position
+                const rect = subtitleOverlay.getBoundingClientRect();
+                const parentRect = subtitleOverlay.parentElement.getBoundingClientRect();
+
+                const relativeTop = rect.top - parentRect.top;
+                const relativeBottom = parentRect.height - rect.top - rect.height;
+
+                // Determine position (top/middle/bottom) based on current location
+                const positionSelect = document.getElementById('subtitle-position');
+                const third = parentRect.height / 3;
+
+                if (relativeTop < third) {
+                    positionSelect.value = 'top';
+                } else if (relativeTop > 2 * third) {
+                    positionSelect.value = 'bottom';
+                } else {
+                    positionSelect.value = 'middle';
+                }
+
+                updateSubtitlePreview();
             }
         });
 
