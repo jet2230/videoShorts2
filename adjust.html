@@ -288,6 +288,14 @@
             display: flex;
             flex-direction: column;
             gap: 8px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+
+        .preview-wrapper:hover .preview-seekbar-container {
+            opacity: 1;
+            pointer-events: auto;
         }
 
         .preview-controls-row {
