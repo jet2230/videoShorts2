@@ -1107,15 +1107,12 @@
 
             // When video loads, seek to theme start and enable subtitles
             previewVideo.addEventListener('loadedmetadata', () => {
-                console.log('Preview video loaded, seeking to theme start:', startSeconds);
                 previewVideo.currentTime = startSeconds;
 
                 // Enable subtitles after video loads
                 setTimeout(() => {
                     if (previewVideo.textTracks.length > 0) {
-                        const track = previewVideo.textTracks[0];
-                        track.mode = 'showing';
-                        console.log('Subtitles enabled, cues:', track.cues.length);
+                        previewVideo.textTracks[0].mode = 'showing';
                     }
                 }, 100);
             }, { once: true });
@@ -1123,9 +1120,7 @@
             // Load VTT subtitles for preview with NO offset (using original video timeline)
             const previewSubtitleTrack = document.getElementById('preview-subtitle-track');
             if (previewSubtitleTrack) {
-                // Load without offset since we're using the full video timeline
                 previewSubtitleTrack.src = `/api/subtitles/${folderNumber}.vtt`;
-                console.log('Loading subtitles from:', `/api/subtitles/${folderNumber}.vtt`);
             }
 
             // Don't autoplay

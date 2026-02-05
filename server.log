@@ -56,3 +56,52 @@ Video request: 001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The He
 Full path: videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The Hereafter ｜ Shaikh Abul Abbaas ｜ Unbreakable ｜ Session 6.mp4
 Exists: True
 127.0.0.1 - - [05/Feb/2026 22:58:58] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+127.0.0.1 - - [05/Feb/2026 22:59:40] "GET /adjust.html?folder=002&theme=4 HTTP/1.1" 200 -
+127.0.0.1 - - [05/Feb/2026 22:59:40] "GET /api/folder/002/themes HTTP/1.1" 200 -
+Video request: 002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You Make These Claims But DO NOT Act Upon Them ｜ Hadith Reflection E60 ｜ Sh. Mohamed Ali.mp4
+Full path: videos/002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You Make These Claims But DO NOT Act Upon Them ｜ Hadith Reflection E60 ｜ Sh. Mohamed Ali.mp4
+Exists: True
+127.0.0.1 - - [05/Feb/2026 22:59:40] "[35m[1mGET /videos/002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You%20Make%20These%20Claims%20But%20DO%20NOT%20Act%20Upon%20Them%20｜%20Hadith%20Reflection%20E60%20｜%20Sh.%20Mohamed%20Ali.mp4 HTTP/1.1[0m" 206 -
+127.0.0.1 - - [05/Feb/2026 22:59:40] "GET /api/subtitles/002.vtt HTTP/1.1" 200 -
+Video request: 002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You Make These Claims But DO NOT Act Upon Them ｜ Hadith Reflection E60 ｜ Sh. Mohamed Ali.mp4
+Full path: videos/002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You Make These Claims But DO NOT Act Upon Them ｜ Hadith Reflection E60 ｜ Sh. Mohamed Ali.mp4
+Exists: True
+127.0.0.1 - - [05/Feb/2026 22:59:40] "[35m[1mGET /videos/002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You%20Make%20These%20Claims%20But%20DO%20NOT%20Act%20Upon%20Them%20｜%20Hadith%20Reflection%20E60%20｜%20Sh.%20Mohamed%20Ali.mp4 HTTP/1.1[0m" 206 -
+Video request: 002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You Make These Claims But DO NOT Act Upon Them ｜ Hadith Reflection E60 ｜ Sh. Mohamed Ali.mp4
+Full path: videos/002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You Make These Claims But DO NOT Act Upon Them ｜ Hadith Reflection E60 ｜ Sh. Mohamed Ali.mp4
+Exists: True
+127.0.0.1 - - [05/Feb/2026 22:59:40] "[35m[1mGET /videos/002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You%20Make%20These%20Claims%20But%20DO%20NOT%20Act%20Upon%20Them%20｜%20Hadith%20Reflection%20E60%20｜%20Sh.%20Mohamed%20Ali.mp4 HTTP/1.1[0m" 206 -
+Video request: 002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You Make These Claims But DO NOT Act Upon Them ｜ Hadith Reflection E60 ｜ Sh. Mohamed Ali.mp4
+Full path: videos/002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You Make These Claims But DO NOT Act Upon Them ｜ Hadith Reflection E60 ｜ Sh. Mohamed Ali.mp4
+Exists: True
+127.0.0.1 - - [05/Feb/2026 22:59:40] "[35m[1mGET /videos/002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You%20Make%20These%20Claims%20But%20DO%20NOT%20Act%20Upon%20Them%20｜%20Hadith%20Reflection%20E60%20｜%20Sh.%20Mohamed%20Ali.mp4 HTTP/1.1[0m" 206 -
+Video request: 002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You Make These Claims But DO NOT Act Upon Them ｜ Hadith Reflection E60 ｜ Sh. Mohamed Ali.mp4
+Full path: videos/002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You Make These Claims But DO NOT Act Upon Them ｜ Hadith Reflection E60 ｜ Sh. Mohamed Ali.mp4
+Exists: True
+127.0.0.1 - - [05/Feb/2026 22:59:40] "[35m[1mGET /videos/002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You%20Make%20These%20Claims%20But%20DO%20NOT%20Act%20Upon%20Them%20｜%20Hadith%20Reflection%20E60%20｜%20Sh.%20Mohamed%20Ali.mp4 HTTP/1.1[0m" 206 -
+127.0.0.1 - - [05/Feb/2026 22:59:40] "GET /api/subtitles/002.vtt HTTP/1.1" 200 -
+Video request: 002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You Make These Claims But DO NOT Act Upon Them ｜ Hadith Reflection E60 ｜ Sh. Mohamed Ali.mp4
+Full path: videos/002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You Make These Claims But DO NOT Act Upon Them ｜ Hadith Reflection E60 ｜ Sh. Mohamed Ali.mp4
+Exists: True
+127.0.0.1 - - [05/Feb/2026 22:59:40] "[35m[1mGET /videos/002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You%20Make%20These%20Claims%20But%20DO%20NOT%20Act%20Upon%20Them%20｜%20Hadith%20Reflection%20E60%20｜%20Sh.%20Mohamed%20Ali.mp4 HTTP/1.1[0m" 206 -
+Video request: 002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You Make These Claims But DO NOT Act Upon Them ｜ Hadith Reflection E60 ｜ Sh. Mohamed Ali.mp4
+Full path: videos/002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You Make These Claims But DO NOT Act Upon Them ｜ Hadith Reflection E60 ｜ Sh. Mohamed Ali.mp4
+Exists: True
+127.0.0.1 - - [05/Feb/2026 22:59:40] "[35m[1mGET /videos/002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You%20Make%20These%20Claims%20But%20DO%20NOT%20Act%20Upon%20Them%20｜%20Hadith%20Reflection%20E60%20｜%20Sh.%20Mohamed%20Ali.mp4 HTTP/1.1[0m" 206 -
+Video request: 002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You Make These Claims But DO NOT Act Upon Them ｜ Hadith Reflection E60 ｜ Sh. Mohamed Ali.mp4
+Full path: videos/002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You Make These Claims But DO NOT Act Upon Them ｜ Hadith Reflection E60 ｜ Sh. Mohamed Ali.mp4
+Exists: True
+127.0.0.1 - - [05/Feb/2026 22:59:40] "[35m[1mGET /videos/002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You%20Make%20These%20Claims%20But%20DO%20NOT%20Act%20Upon%20Them%20｜%20Hadith%20Reflection%20E60%20｜%20Sh.%20Mohamed%20Ali.mp4 HTTP/1.1[0m" 206 -
+Video request: 002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You Make These Claims But DO NOT Act Upon Them ｜ Hadith Reflection E60 ｜ Sh. Mohamed Ali.mp4
+Full path: videos/002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You Make These Claims But DO NOT Act Upon Them ｜ Hadith Reflection E60 ｜ Sh. Mohamed Ali.mp4
+Exists: True
+127.0.0.1 - - [05/Feb/2026 22:59:40] "[35m[1mGET /videos/002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You%20Make%20These%20Claims%20But%20DO%20NOT%20Act%20Upon%20Them%20｜%20Hadith%20Reflection%20E60%20｜%20Sh.%20Mohamed%20Ali.mp4 HTTP/1.1[0m" 206 -
+127.0.0.1 - - [05/Feb/2026 22:59:42] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+Video request: 002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You Make These Claims But DO NOT Act Upon Them ｜ Hadith Reflection E60 ｜ Sh. Mohamed Ali.mp4
+Full path: videos/002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You Make These Claims But DO NOT Act Upon Them ｜ Hadith Reflection E60 ｜ Sh. Mohamed Ali.mp4
+Exists: True
+127.0.0.1 - - [05/Feb/2026 22:59:42] "[35m[1mGET /videos/002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You%20Make%20These%20Claims%20But%20DO%20NOT%20Act%20Upon%20Them%20｜%20Hadith%20Reflection%20E60%20｜%20Sh.%20Mohamed%20Ali.mp4 HTTP/1.1[0m" 206 -
+Video request: 002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You Make These Claims But DO NOT Act Upon Them ｜ Hadith Reflection E60 ｜ Sh. Mohamed Ali.mp4
+Full path: videos/002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You Make These Claims But DO NOT Act Upon Them ｜ Hadith Reflection E60 ｜ Sh. Mohamed Ali.mp4
+Exists: True
+127.0.0.1 - - [05/Feb/2026 22:59:42] "[35m[1mGET /videos/002_You_Make_These_Claims_But_DO_NOT_Act_Upon_Them_Hadith_Reflection_E60_Sh._Mohamed_Ali/You%20Make%20These%20Claims%20But%20DO%20NOT%20Act%20Upon%20Them%20｜%20Hadith%20Reflection%20E60%20｜%20Sh.%20Mohamed%20Ali.mp4 HTTP/1.1[0m" 206 -
