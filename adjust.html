@@ -285,6 +285,35 @@
             background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
             padding: 10px;
             z-index: 20;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .preview-control-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            background: rgba(255, 255, 255, 0.1);
+            color: #00ff9d;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .preview-control-btn:hover {
+            background: rgba(0, 255, 157, 0.2);
+            border-color: #00ff9d;
+        }
+
+        .preview-seekbar {
+            flex-grow: 1;
         }
 
         /* Subtitle overlay */
@@ -844,9 +873,10 @@
                     <span class="subtitle-text" id="subtitle-preview-text">Preview subtitles</span>
                 </div>
 
-                <!-- Custom seekbar for preview video -->
+                <!-- Custom controls for preview video -->
                 <div class="preview-seekbar-container">
-                    <input type="range" id="preview-seekbar" class="seekbar" min="0" max="100" value="0" step="0.1">
+                    <button id="preview-play-btn" class="preview-control-btn">▶</button>
+                    <input type="range" id="preview-seekbar" class="seekbar preview-seekbar" min="0" max="100" value="0" step="0.1">
                 </div>
             </div>
 
@@ -940,6 +970,7 @@
         const originalVideo = document.getElementById('original-video');
         const previewVideo = document.getElementById('preview-video');
         const previewSeekbar = document.getElementById('preview-seekbar');
+        const previewPlayBtn = document.getElementById('preview-play-btn');
         const themeBox = document.getElementById('theme-box');
         const handleLeft = document.getElementById('handle-left');
         const handleRight = document.getElementById('handle-right');
@@ -1122,6 +1153,18 @@
             if (previewVideo.seekbarHandler) {
                 previewSeekbar.removeEventListener('input', previewVideo.seekbarHandler);
             }
+            if (previewVideo.playBtnHandler) {
+                previewPlayBtn.removeEventListener('click', previewVideo.playBtnHandler);
+            }
+            if (previewVideo.clickHandler) {
+                previewVideo.removeEventListener('click', previewVideo.clickHandler);
+            }
+            if (previewVideo.playHandler) {
+                previewVideo.removeEventListener('play', previewVideo.playHandler);
+            }
+            if (previewVideo.pauseHandler) {
+                previewVideo.removeEventListener('pause', previewVideo.pauseHandler);
+            }
 
             // Enforce theme boundaries and loop
             const enforceThemeBoundaries = () => {
@@ -1164,6 +1207,20 @@
                 previewVideo.currentTime = themeStart + relativeTime;
             };
 
+            // Toggle play/pause
+            const togglePlayPause = () => {
+                if (previewVideo.paused) {
+                    previewVideo.play();
+                } else {
+                    previewVideo.pause();
+                }
+            };
+
+            // Update play button icon
+            const updatePlayButton = () => {
+                previewPlayBtn.textContent = previewVideo.paused ? '▶' : '⏸';
+            };
+
             // Add new listeners
             previewVideo.boundariesHandler = enforceThemeBoundaries;
             previewVideo.addEventListener('timeupdate', enforceThemeBoundaries);
@@ -1174,10 +1231,23 @@
             previewVideo.seekbarHandler = handleSeekbarInput;
             previewSeekbar.addEventListener('input', handleSeekbarInput);
 
+            previewVideo.playBtnHandler = togglePlayPause;
+            previewPlayBtn.addEventListener('click', togglePlayPause);
+
+            previewVideo.clickHandler = togglePlayPause;
+            previewVideo.addEventListener('click', togglePlayPause);
+
+            previewVideo.playHandler = updatePlayButton;
+            previewVideo.addEventListener('play', updatePlayButton);
+
+            previewVideo.pauseHandler = updatePlayButton;
+            previewVideo.addEventListener('pause', updatePlayButton);
+
             // When video loads, seek to theme start and enable subtitles
             previewVideo.addEventListener('loadedmetadata', () => {
                 previewVideo.currentTime = startSeconds;
                 updateTimeDisplay();
+                updatePlayButton();
 
                 // Enable subtitles after video loads
                 setTimeout(() => {
