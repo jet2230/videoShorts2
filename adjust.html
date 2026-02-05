@@ -1855,7 +1855,7 @@
         const subtitleOverlay = document.getElementById('subtitle-overlay');
         let isDraggingSubtitle = false;
         let subtitleDragStart = { x: 0, y: 0 };
-        let subtitleOffset = { x: 0, y: 0 };
+        let subtitleStartPos = { left: 0, top: 0 };
 
         subtitleOverlay.addEventListener('mousedown', (e) => {
             if (!videoControlsLocked) return;
@@ -1864,13 +1864,17 @@
             subtitleDragStart = { x: e.clientX, y: e.clientY };
 
             // Get current position from computed style
+            const computedStyle = window.getComputedStyle(subtitleOverlay);
             const rect = subtitleOverlay.getBoundingClientRect();
             const parentRect = subtitleOverlay.parentElement.getBoundingClientRect();
 
-            subtitleOffset = {
-                x: rect.left - parentRect.left,
-                y: rect.top - parentRect.top
+            // Store initial position relative to parent
+            subtitleStartPos = {
+                left: rect.left - parentRect.left,
+                top: rect.top - parentRect.top
             };
+
+            console.log('Drag start:', subtitleStartPos);
 
             e.preventDefault();
             e.stopPropagation();
@@ -1882,23 +1886,24 @@
             const deltaX = e.clientX - subtitleDragStart.x;
             const deltaY = e.clientY - subtitleDragStart.y;
 
-            // Calculate new position
             const parentRect = subtitleOverlay.parentElement.getBoundingClientRect();
-            let newX = subtitleOffset.x + deltaX;
-            let newY = subtitleOffset.y + deltaY;
+
+            // Calculate new position
+            let newX = subtitleStartPos.left + deltaX;
+            let newY = subtitleStartPos.top + deltaY;
 
             // Constrain within parent bounds with some padding
             const padding = 10;
             newX = Math.max(padding, Math.min(newX, parentRect.width - subtitleOverlay.offsetWidth - padding));
             newY = Math.max(padding, Math.min(newY, parentRect.height - subtitleOverlay.offsetHeight - padding));
 
-            // Update position (keep translateX(-50%) for horizontal centering)
+            console.log('New position:', { newX, newY });
+
+            // Update position
             subtitleOverlay.style.left = `${newX + subtitleOverlay.offsetWidth / 2}px`;
             subtitleOverlay.style.top = `${newY}px`;
             subtitleOverlay.style.bottom = 'auto';
             subtitleOverlay.style.transform = 'translateX(-50%)';
-
-            e.preventDefault();
         });
 
         document.addEventListener('mouseup', () => {
