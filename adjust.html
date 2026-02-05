@@ -276,6 +276,17 @@
             object-fit: cover;
         }
 
+        /* Preview seekbar container */
+        .preview-seekbar-container {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+            padding: 10px;
+            z-index: 20;
+        }
+
         /* Subtitle overlay */
         .subtitle-overlay {
             position: absolute;
@@ -826,11 +837,16 @@
                 Time: <span id="preview-time-display">00:00 / 00:00</span>
             </div>
             <div class="video-wrapper preview-wrapper">
-                <video id="preview-video" controls loop playsinline>
+                <video id="preview-video" loop playsinline>
                     <track id="preview-subtitle-track" kind="subtitles" srclang="en" label="English" default>
                 </video>
                 <div class="subtitle-overlay" id="subtitle-overlay">
                     <span class="subtitle-text" id="subtitle-preview-text">Preview subtitles</span>
+                </div>
+
+                <!-- Custom seekbar for preview video -->
+                <div class="preview-seekbar-container">
+                    <input type="range" id="preview-seekbar" class="seekbar" min="0" max="100" value="0" step="0.1">
                 </div>
             </div>
 
@@ -923,6 +939,7 @@
         // DOM Elements
         const originalVideo = document.getElementById('original-video');
         const previewVideo = document.getElementById('preview-video');
+        const previewSeekbar = document.getElementById('preview-seekbar');
         const themeBox = document.getElementById('theme-box');
         const handleLeft = document.getElementById('handle-left');
         const handleRight = document.getElementById('handle-right');
@@ -1102,30 +1119,12 @@
             if (previewVideo.timeUpdateHandler) {
                 previewVideo.removeEventListener('timeupdate', previewVideo.timeUpdateHandler);
             }
+            if (previewVideo.seekbarHandler) {
+                previewSeekbar.removeEventListener('input', previewVideo.seekbarHandler);
+            }
 
-            // Track if user is currently seeking (to avoid interfering with native controls)
-            let isSeeking = false;
-
-            previewVideo.addEventListener('seeking', () => {
-                isSeeking = true;
-            });
-
-            previewVideo.addEventListener('seeked', () => {
-                isSeeking = false;
-                // After seeking, if outside theme range, move to nearest boundary
-                const themeStart = parseFloat(previewVideo.dataset.themeStart);
-                const themeEnd = parseFloat(previewVideo.dataset.themeEnd);
-                if (previewVideo.currentTime < themeStart) {
-                    previewVideo.currentTime = themeStart;
-                } else if (previewVideo.currentTime > themeEnd) {
-                    previewVideo.currentTime = themeEnd;
-                }
-            });
-
-            // Enforce theme boundaries only when playing (not during seeking)
+            // Enforce theme boundaries and loop
             const enforceThemeBoundaries = () => {
-                if (isSeeking) return;
-
                 const themeStart = parseFloat(previewVideo.dataset.themeStart);
                 const themeEnd = parseFloat(previewVideo.dataset.themeEnd);
 
@@ -1135,7 +1134,7 @@
                 }
             };
 
-            // Update time display
+            // Update time display and seekbar
             const updateTimeDisplay = () => {
                 const themeStart = parseFloat(previewVideo.dataset.themeStart);
                 const themeEnd = parseFloat(previewVideo.dataset.themeEnd);
@@ -1145,8 +1144,24 @@
                 const relativeTime = currentTime - themeStart;
                 const themeDuration = themeEnd - themeStart;
 
+                // Update time display
                 document.getElementById('preview-time-display').textContent =
                     `${formatTime(Math.max(0, relativeTime))} / ${formatTime(themeDuration)}`;
+
+                // Update seekbar position (0-100% of theme duration)
+                const seekbarPercent = (Math.max(0, relativeTime) / themeDuration) * 100;
+                previewSeekbar.value = seekbarPercent;
+            };
+
+            // Handle seekbar input
+            const handleSeekbarInput = () => {
+                const themeStart = parseFloat(previewVideo.dataset.themeStart);
+                const themeEnd = parseFloat(previewVideo.dataset.themeEnd);
+                const themeDuration = themeEnd - themeStart;
+
+                // Calculate target time based on seekbar percentage
+                const relativeTime = (previewSeekbar.value / 100) * themeDuration;
+                previewVideo.currentTime = themeStart + relativeTime;
             };
 
             // Add new listeners
@@ -1155,6 +1170,9 @@
 
             previewVideo.timeUpdateHandler = updateTimeDisplay;
             previewVideo.addEventListener('timeupdate', updateTimeDisplay);
+
+            previewVideo.seekbarHandler = handleSeekbarInput;
+            previewSeekbar.addEventListener('input', handleSeekbarInput);
 
             // When video loads, seek to theme start and enable subtitles
             previewVideo.addEventListener('loadedmetadata', () => {
