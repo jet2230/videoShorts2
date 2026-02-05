@@ -316,6 +316,14 @@
             flex-grow: 1;
         }
 
+        .preview-time-display {
+            font-size: 13px;
+            color: #00ff9d;
+            font-family: monospace;
+            min-width: 120px;
+            text-align: right;
+        }
+
         /* Subtitle overlay */
         .subtitle-overlay {
             position: absolute;
@@ -862,9 +870,6 @@
         <!-- Right Panel: Theme Clip Preview + Subtitle Editor -->
         <div class="panel">
             <h2>Theme Clip Preview (9:16 Shorts)</h2>
-            <div style="margin-bottom: 8px; font-size: 13px; color: #00ff9d;">
-                Time: <span id="preview-time-display">00:00 / 00:00</span>
-            </div>
             <div class="video-wrapper preview-wrapper">
                 <video id="preview-video" loop playsinline>
                     <track id="preview-subtitle-track" kind="subtitles" srclang="en" label="English" default>
@@ -877,6 +882,7 @@
                 <div class="preview-seekbar-container">
                     <button id="preview-play-btn" class="preview-control-btn">▶</button>
                     <input type="range" id="preview-seekbar" class="seekbar preview-seekbar" min="0" max="100" value="0" step="0.1">
+                    <span id="preview-time-display" class="preview-time-display">00:00 / 00:00</span>
                 </div>
             </div>
 
@@ -1187,13 +1193,13 @@
                 const relativeTime = currentTime - themeStart;
                 const themeDuration = themeEnd - themeStart;
 
-                // Update time display
-                document.getElementById('preview-time-display').textContent =
-                    `${formatTime(Math.max(0, relativeTime))} / ${formatTime(themeDuration)}`;
-
                 // Update seekbar position (0-100% of theme duration)
                 const seekbarPercent = (Math.max(0, relativeTime) / themeDuration) * 100;
                 previewSeekbar.value = seekbarPercent;
+
+                // Update time display
+                document.getElementById('preview-time-display').textContent =
+                    `${formatTime(Math.max(0, relativeTime))} / ${formatTime(themeDuration)}`;
             };
 
             // Handle seekbar input
