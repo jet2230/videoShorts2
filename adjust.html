@@ -357,6 +357,7 @@
         .subtitle-overlay.draggable {
             pointer-events: auto;
             cursor: move;
+            z-index: 30; /* Above controls (z-index 20) but not too high */
         }
 
         .subtitle-text {
@@ -1886,15 +1887,18 @@
             let newX = subtitleOffset.x + deltaX;
             let newY = subtitleOffset.y + deltaY;
 
-            // Constrain within parent bounds
-            newX = Math.max(0, Math.min(newX, parentRect.width - subtitleOverlay.offsetWidth));
-            newY = Math.max(0, Math.min(newY, parentRect.height - subtitleOverlay.offsetHeight));
+            // Constrain within parent bounds with some padding
+            const padding = 10;
+            newX = Math.max(padding, Math.min(newX, parentRect.width - subtitleOverlay.offsetWidth - padding));
+            newY = Math.max(padding, Math.min(newY, parentRect.height - subtitleOverlay.offsetHeight - padding));
 
-            // Update position (remove translate since we're using absolute positioning)
+            // Update position (keep translateX(-50%) for horizontal centering)
             subtitleOverlay.style.left = `${newX + subtitleOverlay.offsetWidth / 2}px`;
             subtitleOverlay.style.top = `${newY}px`;
             subtitleOverlay.style.bottom = 'auto';
             subtitleOverlay.style.transform = 'translateX(-50%)';
+
+            e.preventDefault();
         });
 
         document.addEventListener('mouseup', () => {
