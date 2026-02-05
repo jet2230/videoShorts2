@@ -1073,10 +1073,19 @@
             if (!videoPath || !startSeconds || !endSeconds) return;
 
             // Use media fragment to clip the video to the theme range
-            previewVideo.src = `${videoPath}#t=${startSeconds},${endSeconds}`;
+            const previewSrc = `${videoPath}#t=${startSeconds},${endSeconds}`;
+            console.log('Preview video src:', previewSrc);
+            console.log('Theme range:', { start: startSeconds, end: endSeconds, duration: endSeconds - startSeconds });
+
+            previewVideo.src = previewSrc;
             // Set to loop the clip
             previewVideo.loop = true;
             previewVideo.muted = false; // Unmute so user can hear audio
+
+            // Log when video loads to check duration
+            previewVideo.addEventListener('loadedmetadata', () => {
+                console.log('Preview video duration:', previewVideo.duration);
+            }, { once: true });
 
             // Load VTT subtitles for preview with offset
             const previewSubtitleTrack = document.getElementById('preview-subtitle-track');
