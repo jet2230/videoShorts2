@@ -335,16 +335,34 @@ def get_themes(folder_number: str):
     # Get video info
     video_info_file = folder / 'video info.txt'
     video_title = folder.name.split('_', 1)[1] if '_' in folder.name else folder.name
+    video_filename = None
+
+    # First, find the actual video file
+    video_files = list(folder.glob('*.mp4')) + list(folder.glob('*.mkv')) + list(folder.glob('*.webm'))
+    if video_files:
+        # Exclude edited_shorts directory
+        video_files = [f for f in video_files if 'edited_shorts' not in str(f)]
+        if video_files:
+            video_filename = video_files[0].name
+
+    # Get title from video info.txt if available
     if video_info_file.exists():
         with open(video_info_file, 'r') as f:
             for line in f:
                 if line.startswith('Title:'):
                     video_title = line.split(':', 1)[1].strip()
                     break
+                # Also check for Video Path line to get actual filename
+                if line.startswith('Video Path:'):
+                    path = line.split(':', 1)[1].strip()
+                    # Extract just the filename
+                    video_filename = Path(path).name
+                    break
 
     return jsonify({
         'folder': folder.name,
         'title': video_title,
+        'video_filename': video_filename,
         'themes': themes
     })
 

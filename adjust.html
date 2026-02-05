@@ -961,8 +961,13 @@
                 startSeconds = parseTime(themeData.start);
                 endSeconds = parseTime(themeData.end);
 
-                // Construct video path from folder
-                videoPath = `videos/${data.folder}/${encodeURIComponent(data.title)}.mp4`;
+                // Construct video path from folder and actual video filename
+                if (data.video_filename) {
+                    videoPath = `videos/${data.folder}/${encodeURIComponent(data.video_filename)}`;
+                } else {
+                    // Fallback: try to construct from title (old behavior)
+                    videoPath = `videos/${data.folder}/${encodeURIComponent(data.title)}.mp4`;
+                }
 
                 // Update info display
                 document.getElementById('theme-number').textContent = `Theme ${themeData.number}`;
