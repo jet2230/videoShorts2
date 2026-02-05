@@ -1072,19 +1072,43 @@
         function updatePreviewVideo() {
             if (!videoPath || !startSeconds || !endSeconds) return;
 
-            // Use media fragment to clip the video to the theme range
-            const previewSrc = `${videoPath}#t=${startSeconds},${endSeconds}`;
-            console.log('Preview video src:', previewSrc);
-            console.log('Theme range:', { start: startSeconds, end: endSeconds, duration: endSeconds - startSeconds });
-
-            previewVideo.src = previewSrc;
-            // Set to loop the clip
+            // Load full video and use JavaScript to enforce theme boundaries
+            previewVideo.src = videoPath;
             previewVideo.loop = true;
-            previewVideo.muted = false; // Unmute so user can hear audio
+            previewVideo.muted = false;
 
-            // Log when video loads to check duration and enable subtitles
+            // Store theme boundaries for enforcement
+            previewVideo.dataset.themeStart = startSeconds;
+            previewVideo.dataset.themeEnd = endSeconds;
+
+            // Enforce theme boundaries with timeupdate listener
+            const enforceThemeBoundaries = () => {
+                const themeStart = parseFloat(previewVideo.dataset.themeStart);
+                const themeEnd = parseFloat(previewVideo.dataset.themeEnd);
+
+                // If video is before theme start, seek to start
+                if (previewVideo.currentTime < themeStart) {
+                    previewVideo.currentTime = themeStart;
+                }
+                // If video is past theme end, loop back to start
+                if (previewVideo.currentTime >= themeEnd) {
+                    previewVideo.currentTime = themeStart;
+                }
+            };
+
+            // Remove old listener if exists
+            if (previewVideo.themeBoundariesHandler) {
+                previewVideo.removeEventListener('timeupdate', previewVideo.themeBoundariesHandler);
+            }
+
+            // Add new listener
+            previewVideo.themeBoundariesHandler = enforceThemeBoundaries;
+            previewVideo.addEventListener('timeupdate', enforceThemeBoundaries);
+
+            // When video loads, seek to theme start and enable subtitles
             previewVideo.addEventListener('loadedmetadata', () => {
-                console.log('Preview video duration:', previewVideo.duration);
+                console.log('Preview video loaded, seeking to theme start:', startSeconds);
+                previewVideo.currentTime = startSeconds;
 
                 // Enable subtitles after video loads
                 setTimeout(() => {
@@ -1096,25 +1120,16 @@
                 }, 100);
             }, { once: true });
 
-            // Load VTT subtitles for preview with offset
+            // Load VTT subtitles for preview with NO offset (using original video timeline)
             const previewSubtitleTrack = document.getElementById('preview-subtitle-track');
             if (previewSubtitleTrack) {
-                // Remove old track by setting src to empty first
-                const oldSrc = previewSubtitleTrack.src;
-                previewSubtitleTrack.src = '';
-
-                // Load with offset to sync with clipped video
-                setTimeout(() => {
-                    const subtitleUrl = `/api/subtitles/${folderNumber}.vtt?offset=${startSeconds}`;
-                    console.log('Loading subtitles from:', subtitleUrl);
-                    previewSubtitleTrack.src = subtitleUrl;
-                }, 50);
+                // Load without offset since we're using the full video timeline
+                previewSubtitleTrack.src = `/api/subtitles/${folderNumber}.vtt`;
+                console.log('Loading subtitles from:', `/api/subtitles/${folderNumber}.vtt`);
             }
 
-            // Don't autoplay - user will manually play when needed
-            // previewVideo.play().catch(() => {
-            //     // Auto-play was prevented (browser policy), video is ready to play
-            // });
+            // Don't autoplay
+            // previewVideo.play().catch(() => {});
         }
 
         // Update UI
