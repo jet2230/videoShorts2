@@ -409,16 +409,25 @@
         .timeline-track {
             position: relative;
             height: 60px;
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.05);
             border-radius: 8px;
             overflow: hidden;
+        }
+
+        /* Buffer range band (shows the buffered portion of the video) */
+        .buffer-range {
+            position: absolute;
+            height: 100%;
+            background: rgba(100, 150, 200, 0.2);
+            border-radius: 6px;
+            pointer-events: none;
         }
 
         .theme-box {
             position: absolute;
             height: 100%;
-            background: linear-gradient(135deg, rgba(0, 255, 157, 0.4), rgba(0, 191, 255, 0.4));
-            border: 2px solid #00ff9d;
+            background: linear-gradient(135deg, rgba(244, 67, 54, 0.5), rgba(255, 87, 34, 0.5));
+            border: 2px solid #f44336;
             border-radius: 6px;
             cursor: default;
             transition: border-color 0.2s;
@@ -438,7 +447,7 @@
             transform: translateY(-50%);
             width: 12px;
             height: 12px;
-            background: #00ff9d;
+            background: #f44336;
             border: 2px solid #fff;
             border-radius: 50%;
             cursor: ew-resize;
@@ -769,10 +778,12 @@
                     <span class="buffer-label" id="buffer-display">L: ±5min | R: ±5min</span>
                 </div>
                 <div class="timeline-track" id="timeline-track">
-                    <div class="theme-box" id="theme-box">
-                        <div class="theme-box-handle left" id="handle-left"></div>
-                        <div class="theme-box-content" id="theme-box-content">00:30 - 01:30</div>
-                        <div class="theme-box-handle right" id="handle-right"></div>
+                    <div class="buffer-range" id="buffer-range">
+                        <div class="theme-box" id="theme-box">
+                            <div class="theme-box-handle left" id="handle-left"></div>
+                            <div class="theme-box-content" id="theme-box-content">00:30 - 01:30</div>
+                            <div class="theme-box-handle right" id="handle-right"></div>
+                        </div>
                     </div>
                 </div>
                 <div class="time-markers">
@@ -914,6 +925,7 @@
         const handleLeft = document.getElementById('handle-left');
         const handleRight = document.getElementById('handle-right');
         const timelineTrack = document.getElementById('timeline-track');
+        const bufferRange = document.getElementById('buffer-range');
         const themeBoxContent = document.getElementById('theme-box-content');
 
         // Custom video control elements
@@ -1136,17 +1148,22 @@
             const bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferRightSeconds);
             bufferedDuration = bufferEnd - bufferStart;
 
-            // Update theme box position relative to buffered timeline
-            const leftPercent = ((startSeconds - bufferStart) / bufferedDuration) * 100;
-            const widthPercent = (clipDuration / bufferedDuration) * 100;
+            // Position buffer range on full video timeline
+            const bufferLeftPercent = (bufferStart / fullVideoDuration) * 100;
+            const bufferWidthPercent = (bufferedDuration / fullVideoDuration) * 100;
+            bufferRange.style.left = `${bufferLeftPercent}%`;
+            bufferRange.style.width = `${bufferWidthPercent}%`;
 
-            themeBox.style.left = `${leftPercent}%`;
-            themeBox.style.width = `${widthPercent}%`;
+            // Position theme box within buffer range
+            const themeLeftPercent = ((startSeconds - bufferStart) / bufferedDuration) * 100;
+            const themeWidthPercent = (clipDuration / bufferedDuration) * 100;
+            themeBox.style.left = `${themeLeftPercent}%`;
+            themeBox.style.width = `${themeWidthPercent}%`;
             themeBoxContent.textContent = `${formatTime(startSeconds)} - ${formatTime(endSeconds)}`;
 
-            // Update timeline markers to show buffered range
-            document.getElementById('time-start-marker').textContent = formatTime(bufferStart);
-            document.getElementById('time-end-marker').textContent = formatTime(bufferEnd);
+            // Update timeline markers to show full video range
+            document.getElementById('time-start-marker').textContent = '00:00:00';
+            document.getElementById('time-end-marker').textContent = formatTime(fullVideoDuration);
 
             // Update info display
             document.getElementById('display-start').textContent = formatTime(startSeconds);
@@ -1215,8 +1232,8 @@
                 if (!isDragging) return;
 
                 const deltaX = e.clientX - dragStartX;
-                const bufferDuration = (Math.min(fullVideoDuration, endSeconds + bufferRightSeconds) - Math.max(0, startSeconds - bufferLeftSeconds));
-                const deltaTime = (deltaX / timelineTrack.offsetWidth) * bufferDuration;
+                // Use full video duration for drag calculations
+                const deltaTime = (deltaX / timelineTrack.offsetWidth) * fullVideoDuration;
 
                 if (isDragging === 'left') {
                     let newStart = dragStartValue + deltaTime;
