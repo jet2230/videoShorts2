@@ -1094,9 +1094,6 @@
                         if (previewVideo.textTracks.length > 0) {
                             const track = previewVideo.textTracks[0];
                             track.mode = 'showing';
-                            console.log('Preview subtitle track enabled:', track.mode, 'cues:', track.cues.length);
-                        } else {
-                            console.log('No text tracks found for preview video');
                         }
                     }, 200);
                 }, 50);
