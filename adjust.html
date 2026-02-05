@@ -1834,6 +1834,44 @@
             }
         });
 
+        // Keyboard controls for preview video
+        document.addEventListener('keydown', (e) => {
+            // Only handle keyboard events when not in textarea/input
+            if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') {
+                return;
+            }
+
+            // Space key for play/pause
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (!videoControlsLocked) {
+                    if (previewVideo.paused) {
+                        previewVideo.play();
+                    } else {
+                        previewVideo.pause();
+                    }
+                }
+                return;
+            }
+
+            // Arrow keys for seeking (only when video controls are not locked)
+            if (!videoControlsLocked && (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) {
+                e.preventDefault();
+
+                const themeStart = parseFloat(previewVideo.dataset.themeStart);
+                const themeEnd = parseFloat(previewVideo.dataset.themeEnd);
+                const seekAmount = 5; // Seek by 5 seconds
+
+                if (e.code === 'ArrowLeft') {
+                    // Seek backward
+                    previewVideo.currentTime = Math.max(themeStart, previewVideo.currentTime - seekAmount);
+                } else {
+                    // Seek forward
+                    previewVideo.currentTime = Math.min(themeEnd, previewVideo.currentTime + seekAmount);
+                }
+            }
+        });
+
         // Initialize
         if (folderNumber && themeNumber) {
             loadTheme();

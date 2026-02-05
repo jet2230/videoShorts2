@@ -4233,3 +4233,52 @@ Video request: 001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The He
 Full path: videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The Hereafter ｜ Shaikh Abul Abbaas ｜ Unbreakable ｜ Session 6.mp4
 Exists: True
 127.0.0.1 - - [05/Feb/2026 23:38:14] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+127.0.0.1 - - [05/Feb/2026 23:42:44] "GET /adjust.html?folder=001&theme=5 HTTP/1.1" 200 -
+127.0.0.1 - - [05/Feb/2026 23:42:44] "GET /api/folder/001/themes HTTP/1.1" 200 -
+Video request: 001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The Hereafter ｜ Shaikh Abul Abbaas ｜ Unbreakable ｜ Session 6.mp4
+Full path: videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The Hereafter ｜ Shaikh Abul Abbaas ｜ Unbreakable ｜ Session 6.mp4
+Exists: True
+127.0.0.1 - - [05/Feb/2026 23:42:44] "GET /api/subtitles/001.vtt HTTP/1.1" 200 -
+127.0.0.1 - - [05/Feb/2026 23:42:44] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+Video request: 001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The Hereafter ｜ Shaikh Abul Abbaas ｜ Unbreakable ｜ Session 6.mp4
+Full path: videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The Hereafter ｜ Shaikh Abul Abbaas ｜ Unbreakable ｜ Session 6.mp4
+Exists: True
+127.0.0.1 - - [05/Feb/2026 23:42:44] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+Video request: 001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The Hereafter ｜ Shaikh Abul Abbaas ｜ Unbreakable ｜ Session 6.mp4
+Full path: videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The Hereafter ｜ Shaikh Abul Abbaas ｜ Unbreakable ｜ Session 6.mp4
+Exists: True
+127.0.0.1 - - [05/Feb/2026 23:42:44] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+Video request: 001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The Hereafter ｜ Shaikh Abul Abbaas ｜ Unbreakable ｜ Session 6.mp4
+Full path: videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The Hereafter ｜ Shaikh Abul Abbaas ｜ Unbreakable ｜ Session 6.mp4
+Exists: True
+127.0.0.1 - - [05/Feb/2026 23:42:44] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+Video request: 001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The Hereafter ｜ Shaikh Abul Abbaas ｜ Unbreakable ｜ Session 6.mp4
+Full path: videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The Hereafter ｜ Shaikh Abul Abbaas ｜ Unbreakable ｜ Session 6.mp4
+Exists: True
+127.0.0.1 - - [05/Feb/2026 23:42:44] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+127.0.0.1 - - [05/Feb/2026 23:42:45] "GET /api/subtitles/001.vtt HTTP/1.1" 200 -
+Video request: 001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The Hereafter ｜ Shaikh Abul Abbaas ｜ Unbreakable ｜ Session 6.mp4
+Full path: videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The Hereafter ｜ Shaikh Abul Abbaas ｜ Unbreakable ｜ Session 6.mp4
+Exists: True
+127.0.0.1 - - [05/Feb/2026 23:42:45] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+Video request: 001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The Hereafter ｜ Shaikh Abul Abbaas ｜ Unbreakable ｜ Session 6.mp4
+Full path: videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The Hereafter ｜ Shaikh Abul Abbaas ｜ Unbreakable ｜ Session 6.mp4
+Exists: True
+127.0.0.1 - - [05/Feb/2026 23:42:45] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+Video request: 001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The Hereafter ｜ Shaikh Abul Abbaas ｜ Unbreakable ｜ Session 6.mp4
+Full path: videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The Hereafter ｜ Shaikh Abul Abbaas ｜ Unbreakable ｜ Session 6.mp4
+Exists: True
+127.0.0.1 - - [05/Feb/2026 23:42:45] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+127.0.0.1 - - [05/Feb/2026 23:42:52] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+Video request: 001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The Hereafter ｜ Shaikh Abul Abbaas ｜ Unbreakable ｜ Session 6.mp4
+Full path: videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The Hereafter ｜ Shaikh Abul Abbaas ｜ Unbreakable ｜ Session 6.mp4
+Exists: True
+127.0.0.1 - - [05/Feb/2026 23:42:52] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+Video request: 001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The Hereafter ｜ Shaikh Abul Abbaas ｜ Unbreakable ｜ Session 6.mp4
+Full path: videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The Hereafter ｜ Shaikh Abul Abbaas ｜ Unbreakable ｜ Session 6.mp4
+Exists: True
+127.0.0.1 - - [05/Feb/2026 23:43:50] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+Video request: 001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The Hereafter ｜ Shaikh Abul Abbaas ｜ Unbreakable ｜ Session 6.mp4
+Full path: videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The Hereafter ｜ Shaikh Abul Abbaas ｜ Unbreakable ｜ Session 6.mp4
+Exists: True
+127.0.0.1 - - [05/Feb/2026 23:43:50] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
