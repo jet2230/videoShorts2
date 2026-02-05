@@ -586,6 +586,27 @@
             margin-top: 20px;
         }
 
+        .lock-btn {
+            background: none;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 6px;
+            padding: 6px 10px;
+            cursor: pointer;
+            font-size: 20px;
+            transition: all 0.2s;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .lock-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        .lock-btn.locked {
+            border-color: #ff9800;
+            background: rgba(255, 152, 0, 0.1);
+        }
+
         .subtitle-section {
             margin-bottom: 20px;
         }
@@ -909,7 +930,12 @@
 
             <div class="subtitle-editor">
                 <div class="subtitle-section">
-                    <h3>Subtitle Text</h3>
+                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                        <h3>Subtitle Text</h3>
+                        <button id="lock-video-btn" class="lock-btn" title="Lock video controls">
+                            <span id="lock-icon">🔓</span>
+                        </button>
+                    </div>
                     <div class="rich-text-toolbar">
                         <button class="toolbar-btn" data-style="bold" onclick="toggleStyle('bold')"><b>Bold</b></button>
                         <button class="toolbar-btn" data-style="italic" onclick="toggleStyle('italic')"><i>Italic</i></button>
@@ -992,6 +1018,7 @@
         let dragStartX = 0;
         let dragStartValue = 0;
         let dragStartValueEnd = 0;
+        let videoControlsLocked = false; // Video controls lock state
 
         // DOM Elements
         const originalVideo = document.getElementById('original-video');
@@ -1246,6 +1273,8 @@
 
             // Handle seekbar input
             const handleSeekbarInput = () => {
+                if (videoControlsLocked) return;
+
                 const themeStart = parseFloat(previewVideo.dataset.themeStart);
                 const themeEnd = parseFloat(previewVideo.dataset.themeEnd);
                 const themeDuration = themeEnd - themeStart;
@@ -1257,6 +1286,8 @@
 
             // Toggle play/pause
             const togglePlayPause = () => {
+                if (videoControlsLocked) return;
+
                 if (previewVideo.paused) {
                     previewVideo.play();
                 } else {
@@ -1778,6 +1809,28 @@
                 overlay.classList.remove('hidden');
             } else {
                 overlay.classList.add('hidden');
+            }
+        });
+
+        // Lock video controls button
+        document.getElementById('lock-video-btn').addEventListener('click', () => {
+            videoControlsLocked = !videoControlsLocked;
+            const lockBtn = document.getElementById('lock-video-btn');
+            const lockIcon = document.getElementById('lock-icon');
+
+            if (videoControlsLocked) {
+                lockBtn.classList.add('locked');
+                lockIcon.textContent = '🔒';
+                lockBtn.title = 'Unlock video controls';
+
+                // Pause video if playing when locked
+                if (!previewVideo.paused) {
+                    previewVideo.pause();
+                }
+            } else {
+                lockBtn.classList.remove('locked');
+                lockIcon.textContent = '🔓';
+                lockBtn.title = 'Lock video controls';
             }
         });
 
