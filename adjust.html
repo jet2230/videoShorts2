@@ -1092,17 +1092,34 @@
             previewVideo.dataset.themeStart = startSeconds;
             previewVideo.dataset.themeEnd = endSeconds;
 
-            // Enforce theme boundaries with timeupdate listener
+            // Track if user is currently seeking (to avoid interfering with native controls)
+            let isSeeking = false;
+
+            previewVideo.addEventListener('seeking', () => {
+                isSeeking = true;
+            });
+
+            previewVideo.addEventListener('seeked', () => {
+                isSeeking = false;
+                // After seeking, if outside theme range, move to nearest boundary
+                const themeStart = parseFloat(previewVideo.dataset.themeStart);
+                const themeEnd = parseFloat(previewVideo.dataset.themeEnd);
+                if (previewVideo.currentTime < themeStart) {
+                    previewVideo.currentTime = themeStart;
+                } else if (previewVideo.currentTime > themeEnd) {
+                    previewVideo.currentTime = themeEnd;
+                }
+            });
+
+            // Enforce theme boundaries only when playing (not during seeking)
             const enforceThemeBoundaries = () => {
+                if (isSeeking) return;
+
                 const themeStart = parseFloat(previewVideo.dataset.themeStart);
                 const themeEnd = parseFloat(previewVideo.dataset.themeEnd);
 
-                // If video is before theme start, seek to start
-                if (previewVideo.currentTime < themeStart) {
-                    previewVideo.currentTime = themeStart;
-                }
-                // If video is past theme end, loop back to start
-                if (previewVideo.currentTime >= themeEnd) {
+                // If video is past theme end and playing, loop back to start
+                if (previewVideo.currentTime >= themeEnd && !previewVideo.paused) {
                     previewVideo.currentTime = themeStart;
                 }
             };
