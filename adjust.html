@@ -822,6 +822,9 @@
         <!-- Right Panel: Theme Clip Preview + Subtitle Editor -->
         <div class="panel">
             <h2>Theme Clip Preview (9:16 Shorts)</h2>
+            <div style="margin-bottom: 8px; font-size: 13px; color: #00ff9d;">
+                Time: <span id="preview-time-display">00:00 / 00:00</span>
+            </div>
             <div class="video-wrapper preview-wrapper">
                 <video id="preview-video" controls loop playsinline>
                     <track id="preview-subtitle-track" kind="subtitles" srclang="en" label="English" default>
@@ -1092,6 +1095,14 @@
             previewVideo.dataset.themeStart = startSeconds;
             previewVideo.dataset.themeEnd = endSeconds;
 
+            // Remove old listeners
+            if (previewVideo.boundariesHandler) {
+                previewVideo.removeEventListener('timeupdate', previewVideo.boundariesHandler);
+            }
+            if (previewVideo.timeUpdateHandler) {
+                previewVideo.removeEventListener('timeupdate', previewVideo.timeUpdateHandler);
+            }
+
             // Track if user is currently seeking (to avoid interfering with native controls)
             let isSeeking = false;
 
@@ -1124,18 +1135,31 @@
                 }
             };
 
-            // Remove old listener if exists
-            if (previewVideo.themeBoundariesHandler) {
-                previewVideo.removeEventListener('timeupdate', previewVideo.themeBoundariesHandler);
-            }
+            // Update time display
+            const updateTimeDisplay = () => {
+                const themeStart = parseFloat(previewVideo.dataset.themeStart);
+                const themeEnd = parseFloat(previewVideo.dataset.themeEnd);
+                const currentTime = previewVideo.currentTime;
 
-            // Add new listener
-            previewVideo.themeBoundariesHandler = enforceThemeBoundaries;
+                // Show time relative to theme start
+                const relativeTime = currentTime - themeStart;
+                const themeDuration = themeEnd - themeStart;
+
+                document.getElementById('preview-time-display').textContent =
+                    `${formatTime(Math.max(0, relativeTime))} / ${formatTime(themeDuration)}`;
+            };
+
+            // Add new listeners
+            previewVideo.boundariesHandler = enforceThemeBoundaries;
             previewVideo.addEventListener('timeupdate', enforceThemeBoundaries);
+
+            previewVideo.timeUpdateHandler = updateTimeDisplay;
+            previewVideo.addEventListener('timeupdate', updateTimeDisplay);
 
             // When video loads, seek to theme start and enable subtitles
             previewVideo.addEventListener('loadedmetadata', () => {
                 previewVideo.currentTime = startSeconds;
+                updateTimeDisplay();
 
                 // Enable subtitles after video loads
                 setTimeout(() => {
