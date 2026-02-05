@@ -1914,6 +1914,9 @@
             if (isDraggingSubtitle) {
                 isDraggingSubtitle = false;
 
+                // Remove drag border
+                subtitleOverlay.style.border = '';
+
                 // Update subtitle position setting to match new position
                 const rect = subtitleOverlay.getBoundingClientRect();
                 const parentRect = subtitleOverlay.parentElement.getBoundingClientRect();
