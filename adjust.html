@@ -1081,18 +1081,25 @@
             // Load VTT subtitles for preview with offset
             const previewSubtitleTrack = document.getElementById('preview-subtitle-track');
             if (previewSubtitleTrack) {
-                // Remove old track if exists
-                if (previewSubtitleTrack.src) {
-                    previewSubtitleTrack.src = '';
-                }
+                // Remove old track by setting src to empty first
+                const oldSrc = previewSubtitleTrack.src;
+                previewSubtitleTrack.src = '';
+
                 // Load with offset to sync with clipped video
-                previewSubtitleTrack.src = `/api/subtitles/${folderNumber}.vtt?offset=${startSeconds}`;
-                // Force mode to showing
-                previewVideo.addEventListener('loadedmetadata', () => {
-                    if (previewVideo.textTracks.length > 0) {
-                        previewVideo.textTracks[0].mode = 'showing';
-                    }
-                }, { once: true });
+                setTimeout(() => {
+                    previewSubtitleTrack.src = `/api/subtitles/${folderNumber}.vtt?offset=${startSeconds}`;
+
+                    // Enable the track using multiple methods to ensure it works
+                    setTimeout(() => {
+                        if (previewVideo.textTracks.length > 0) {
+                            const track = previewVideo.textTracks[0];
+                            track.mode = 'showing';
+                            console.log('Preview subtitle track enabled:', track.mode, 'cues:', track.cues.length);
+                        } else {
+                            console.log('No text tracks found for preview video');
+                        }
+                    }, 200);
+                }, 50);
             }
 
             // Don't autoplay - user will manually play when needed
