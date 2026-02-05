@@ -1177,6 +1177,9 @@
             if (previewVideo.timeUpdateHandler) {
                 previewVideo.removeEventListener('timeupdate', previewVideo.timeUpdateHandler);
             }
+            if (previewVideo.subtitleSyncHandler) {
+                previewVideo.removeEventListener('timeupdate', previewVideo.subtitleSyncHandler);
+            }
             if (previewVideo.seekbarHandler) {
                 previewSeekbar.removeEventListener('input', previewVideo.seekbarHandler);
             }
@@ -1201,6 +1204,24 @@
                 // If video is past theme end and playing, loop back to start
                 if (previewVideo.currentTime >= themeEnd && !previewVideo.paused) {
                     previewVideo.currentTime = themeStart;
+                }
+            };
+
+            // Sync current subtitle from VTT to textarea
+            const syncSubtitleToTextarea = () => {
+                const textTrack = previewVideo.textTracks[0];
+                if (!textTrack || textTrack.cues.length === 0) return;
+
+                const activeCues = textTrack.activeCues;
+                if (activeCues.length > 0) {
+                    const currentCue = activeCues[0];
+                    const subtitleText = document.getElementById('subtitle-text');
+
+                    // Only update if user is not currently typing (check focus)
+                    if (document.activeElement !== subtitleText) {
+                        subtitleText.value = currentCue.text;
+                        updateSubtitlePreview();
+                    }
                 }
             };
 
@@ -1251,6 +1272,9 @@
             // Add new listeners
             previewVideo.boundariesHandler = enforceThemeBoundaries;
             previewVideo.addEventListener('timeupdate', enforceThemeBoundaries);
+
+            previewVideo.subtitleSyncHandler = syncSubtitleToTextarea;
+            previewVideo.addEventListener('timeupdate', syncSubtitleToTextarea);
 
             previewVideo.timeUpdateHandler = updateTimeDisplay;
             previewVideo.addEventListener('timeupdate', updateTimeDisplay);
