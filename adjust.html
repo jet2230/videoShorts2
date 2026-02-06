@@ -971,7 +971,7 @@
                         </div>
                         <div class="form-group">
                             <label>Font Size (px)</label>
-                            <input type="number" id="subtitle-size" value="24" min="12" max="72">
+                            <input type="number" id="subtitle-size" value="16" min="12" max="72">
                         </div>
                     </div>
                     <div class="form-row">
@@ -1337,10 +1337,10 @@
                 updateTimeDisplay();
                 updatePlayButton();
 
-                // Enable subtitles after video loads
+                // DISABLE native VTT subtitles - we only show custom overlay
                 setTimeout(() => {
                     if (previewVideo.textTracks.length > 0) {
-                        previewVideo.textTracks[0].mode = 'showing';
+                        previewVideo.textTracks[0].mode = 'hidden';
                     }
                 }, 100);
             }, { once: true });
