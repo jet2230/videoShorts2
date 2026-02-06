@@ -657,21 +657,19 @@ def get_theme_subtitles(folder_number: str, theme_number: str):
     if theme_start_sec is None or theme_end_sec is None:
         return jsonify({'error': 'Theme time range not found'}), 404
 
-    # Check if adjusted subtitles exist in shorts folder
+    # Always use the original SRT for loading (filter based on current theme time)
+    # The adjusted SRT is only for saving custom edits
+    srt_files = list(folder.glob('*.srt'))
+    if not srt_files:
+        return "SRT file not found", 404
+
+    srt_file = srt_files[0]
+
+    # Check if adjusted subtitles exist (for info only)
     shorts_dir = folder / 'shorts'
     shorts_dir.mkdir(exist_ok=True)
     adjusted_srt = shorts_dir / f'theme_{int(theme_number):03d}_adjust.srt'
-    srt_file = None
-
-    if adjusted_srt.exists():
-        srt_file = adjusted_srt
-    else:
-        # Fall back to original SRT
-        srt_files = list(folder.glob('*.srt'))
-        if srt_files:
-            srt_file = srt_files[0]
-        else:
-            return "SRT file not found", 404
+    has_adjusted = adjusted_srt.exists()
 
     # Read and parse SRT file
     with open(srt_file, 'r', encoding='utf-8') as f:
@@ -734,7 +732,7 @@ def get_theme_subtitles(folder_number: str, theme_number: str):
 
     return jsonify({
         'cues': filtered_cues,
-        'is_adjusted': adjusted_srt.exists()
+        'is_adjusted': has_adjusted
     })
 
 
