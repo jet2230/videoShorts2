@@ -885,19 +885,12 @@ def get_theme_vtt_subtitles(folder_number: str, theme_number: str):
     if theme_start_sec is None or theme_end_sec is None:
         return "Theme time range not found", 404
 
-    # Check if adjusted subtitles exist
-    shorts_dir = folder / 'shorts'
-    adjusted_srt = shorts_dir / f'theme_{int(theme_number):03d}_adjust.srt'
-
-    if adjusted_srt.exists():
-        # Use adjusted subtitles
-        srt_file = adjusted_srt
-    else:
-        # Use original subtitles
-        srt_files = list(folder.glob('*.srt'))
-        if not srt_files:
-            return "SRT file not found", 404
-        srt_file = srt_files[0]
+    # For preview, ALWAYS use the original SRT (not the trimmed/adjusted one)
+    # The preview video plays from theme start in the original video, so it needs original timestamps
+    srt_files = list(folder.glob('*.srt'))
+    if not srt_files:
+        return "SRT file not found", 404
+    srt_file = srt_files[0]
 
     # Read SRT and convert to VTT
     with open(srt_file, 'r', encoding='utf-8') as f:
@@ -931,7 +924,7 @@ def get_theme_vtt_subtitles(folder_number: str, theme_number: str):
 
                 # Only include if within theme range
                 if cue_end_sec > theme_start_sec and cue_start_sec < theme_end_sec:
-                    # Add timestamp
+                    # Keep original timestamps for preview (preview video seeks to theme start)
                     vtt_content += timestamp + '\n'
 
                     # Add subtitle text lines

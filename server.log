@@ -1,11 +1,5 @@
-============================================================
-YouTube Shorts Creator - Web Server
-============================================================
-Server running at: http://localhost:5000
-Video directory: videos
-============================================================
- * Serving Flask app 'server'
- * Debug mode: on
-[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
- * Running on http://127.0.0.1:5000
-[33mPress CTRL+C to quit[0m
+kill: cannot find process "echo"
+kill: cannot find process "Killed processes on port 5000"
+kill: cannot find process "sleep"
+kill: sending signal to 1 failed: Operation not permitted
+kill: cannot find process "server.py"

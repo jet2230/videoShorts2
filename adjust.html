@@ -1328,27 +1328,31 @@
                 clearTimeout(subtitleAutoSaveTimeout);
             }
 
-            const indicator = document.getElementById('preview-autosave-indicator');
-            indicator.textContent = '⏳ Saving...';
-            indicator.classList.add('show', 'saving');
-
             subtitleAutoSaveTimeout = setTimeout(async () => {
                 try {
                     const textarea = document.getElementById('subtitle-text');
                     const newText = textarea.innerText.trim();
 
-                    if (!currentCueInfo || !newText) {
-                        indicator.classList.remove('show');
+                    // Don't save if there's no text or no current cue
+                    if (!newText) {
                         return;
                     }
 
-                    // Find and update the current cue
-                    const cueIndex = allThemeCues.findIndex(cue =>
-                        cue.start === currentCueInfo.start && cue.end === currentCueInfo.end
-                    );
+                    // Show saving indicator
+                    const indicator = document.getElementById('preview-autosave-indicator');
+                    indicator.textContent = '⏳ Saving...';
+                    indicator.classList.add('show', 'saving');
 
-                    if (cueIndex !== -1) {
-                        allThemeCues[cueIndex].text = newText;
+                    // If we have currentCueInfo, update that specific cue
+                    if (currentCueInfo) {
+                        // Find and update the current cue
+                        const cueIndex = allThemeCues.findIndex(cue =>
+                            cue.start === currentCueInfo.start && cue.end === currentCueInfo.end
+                        );
+
+                        if (cueIndex !== -1) {
+                            allThemeCues[cueIndex].text = newText;
+                        }
                     }
 
                     // Save to server
@@ -1377,6 +1381,7 @@
                         indicator.classList.remove('show');
                     }, 2000);
                 } catch (error) {
+                    const indicator = document.getElementById('preview-autosave-indicator');
                     indicator.textContent = '✗ Save failed';
                     indicator.classList.remove('saving');
                     setTimeout(() => {
@@ -1583,9 +1588,13 @@
                     };
 
                     // Track current cue info with matching format
+                    // Convert VTT time (original video time) to trimmed time (relative to theme start)
+                    // This ensures JSON keys match the trimmed SRT timestamps used for export
+                    const trimmedStartTime = Math.max(0, currentCue.startTime - startSeconds);
+                    const trimmedEndTime = Math.max(0, currentCue.endTime - startSeconds);
                     const newCueInfo = {
-                        start: vttToTimestamp(currentCue.startTime),
-                        end: vttToTimestamp(currentCue.endTime),
+                        start: vttToTimestamp(trimmedStartTime),
+                        end: vttToTimestamp(trimmedEndTime),
                         text: currentCue.text
                     };
 
@@ -2219,9 +2228,14 @@
             allCueFormatting[currentCueInfo.start].size = size;
             subtitleFormatting = { ...allCueFormatting[currentCueInfo.start] };
 
+            // Show saving indicator
+            const indicator = document.getElementById('preview-autosave-indicator');
+            indicator.textContent = '⏳ Saving...';
+            indicator.classList.add('show', 'saving');
+
             // Save to server
             try {
-                await fetch('/api/save-subtitle-formatting', {
+                const response = await fetch('/api/save-subtitle-formatting', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -2230,8 +2244,22 @@
                         formatting: allCueFormatting
                     })
                 });
+
+                if (!response.ok) throw new Error('Failed to save formatting');
+
+                indicator.textContent = '✓ Saved';
+                indicator.classList.remove('saving');
+
+                setTimeout(() => {
+                    indicator.classList.remove('show');
+                }, 2000);
             } catch (error) {
                 console.error('Failed to save formatting:', error);
+                indicator.textContent = '✗ Save failed';
+                indicator.classList.remove('saving');
+                setTimeout(() => {
+                    indicator.classList.remove('show');
+                }, 2000);
             }
         }
 
