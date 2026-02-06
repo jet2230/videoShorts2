@@ -1335,6 +1335,12 @@
 
                     if (!response.ok) throw new Error('Failed to save subtitle');
 
+                    // Reload the subtitle track to show changes
+                    const previewSubtitleTrack = document.getElementById('preview-subtitle-track');
+                    if (previewSubtitleTrack) {
+                        previewSubtitleTrack.src = `/api/subtitles/${folderNumber}/${themeNumber}.vtt?t=${Date.now()}`;
+                    }
+
                     indicator.textContent = '✓ Saved';
                     indicator.classList.remove('saving');
 
@@ -1638,10 +1644,10 @@
                 }, 100);
             }, { once: true });
 
-            // Load VTT subtitles for preview with NO offset (using original video timeline)
+            // Load VTT subtitles for preview - use adjusted subtitles if available
             const previewSubtitleTrack = document.getElementById('preview-subtitle-track');
             if (previewSubtitleTrack) {
-                previewSubtitleTrack.src = `/api/subtitles/${folderNumber}.vtt`;
+                previewSubtitleTrack.src = `/api/subtitles/${folderNumber}/${themeNumber}.vtt`;
             }
 
             // Don't autoplay

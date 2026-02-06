@@ -782,6 +782,109 @@ def save_theme_subtitles():
     })
 
 
+@app.route('/api/subtitles/<folder_number>/<theme_number>.vtt', methods=['GET'])
+def get_theme_vtt_subtitles(folder_number: str, theme_number: str):
+    """Get adjusted theme subtitles as VTT for preview video."""
+    import re
+
+    base_dir = Path(settings.get('video', 'output_dir'))
+    folder = None
+
+    for f in base_dir.iterdir():
+        if f.is_dir() and f.name.startswith(f"{folder_number}_"):
+            folder = f
+            break
+
+    if not folder:
+        return "Folder not found", 404
+
+    # Get theme start/end time
+    themes_file = folder / 'themes.md'
+    theme_start_sec = None
+    theme_end_sec = None
+
+    adjust_file = folder / 'shorts' / f'theme_{int(theme_number):03d}_adjust.md'
+    if adjust_file.exists():
+        with open(adjust_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+            time_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})', content)
+            if time_match:
+                theme_start_sec = creator.parse_timestamp_to_seconds(time_match.group(1))
+                theme_end_sec = creator.parse_timestamp_to_seconds(time_match.group(2))
+    else:
+        themes = creator.parse_themes_file(themes_file)
+        for theme in themes:
+            if theme['number'] == int(theme_number):
+                theme_start_sec = creator.parse_timestamp_to_seconds(theme['start'])
+                theme_end_sec = creator.parse_timestamp_to_seconds(theme['end'])
+                break
+
+    if theme_start_sec is None or theme_end_sec is None:
+        return "Theme time range not found", 404
+
+    # Check if adjusted subtitles exist
+    shorts_dir = folder / 'shorts'
+    adjusted_srt = shorts_dir / f'theme_{int(theme_number):03d}_adjust.srt'
+
+    if adjusted_srt.exists():
+        # Use adjusted subtitles
+        srt_file = adjusted_srt
+    else:
+        # Use original subtitles
+        srt_files = list(folder.glob('*.srt'))
+        if not srt_files:
+            return "SRT file not found", 404
+        srt_file = srt_files[0]
+
+    # Read SRT and convert to VTT
+    with open(srt_file, 'r', encoding='utf-8') as f:
+        srt_content = f.read()
+
+    # Convert SRT to VTT
+    vtt_content = "WEBVTT\n\n"
+    lines = srt_content.strip().split('\n')
+    i = 0
+
+    while i < len(lines):
+        line = lines[i].strip()
+
+        # Skip empty lines and sequence numbers
+        if not line or line.isdigit():
+            i += 1
+            continue
+
+        # Look for timestamp lines
+        if '-->' in line:
+            # Convert SRT timestamp to VTT format (commas to periods)
+            timestamp = line.replace(',', '.')
+
+            # Parse timestamps to check if within theme range
+            match = re.match(r'(\d+):(\d+):([\d.]+)\s*-->\s*(\d+):(\d+):([\d.]+)', timestamp)
+            if match:
+                h1, m1, s1 = int(match.group(1)), int(match.group(2)), float(match.group(3))
+                h2, m2, s2 = int(match.group(4)), int(match.group(5)), float(match.group(6))
+                cue_start_sec = h1 * 3600 + m1 * 60 + s1
+                cue_end_sec = h2 * 3600 + m2 * 60 + s2
+
+                # Only include if within theme range
+                if cue_end_sec > theme_start_sec and cue_start_sec < theme_end_sec:
+                    # Add timestamp
+                    vtt_content += timestamp + '\n'
+
+                    # Add subtitle text lines
+                    i += 1
+                    while i < len(lines) and lines[i].strip() and not lines[i].strip().isdigit():
+                        vtt_content += lines[i].strip() + '\n'
+                        i += 1
+
+                    vtt_content += '\n'
+                    continue
+
+        i += 1
+
+    return vtt_content, 200, {'Content-Type': 'text/vtt; charset=utf-8'}
+
+
 @app.route('/api/shorts', methods=['GET'])
 def list_shorts():
     """List all shorts from all folders."""
