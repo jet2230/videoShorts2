@@ -2064,6 +2064,7 @@
             const editor = document.getElementById('subtitle-text');
             editor.focus();
 
+            // Save current selection
             const selection = window.getSelection();
             if (selection.rangeCount > 0) {
                 const range = selection.getRangeAt(0);
@@ -2072,11 +2073,20 @@
                 if (range.toString().trim().length > 0) {
                     const tag = style === 'bold' ? 'strong' : 'em';
                     const element = document.createElement(tag);
+                    element.textContent = range.toString();
 
                     try {
-                        range.surroundContents(element);
+                        // Delete the selected content and insert the formatted element
+                        range.deleteContents();
+                        range.insertNode(element);
+
+                        // Restore selection to the new element
+                        range.selectNodeContents(element);
+                        selection.removeAllRanges();
+                        selection.addRange(range);
                     } catch (e) {
-                        // If selection spans multiple nodes, use execCommand
+                        // Fallback to execCommand if surroundContents fails
+                        console.error('Error applying style:', e);
                         document.execCommand(style === 'bold' ? 'bold' : 'italic', false, null);
                     }
                 }
@@ -2090,19 +2100,30 @@
             const editor = document.getElementById('subtitle-text');
             editor.focus();
 
+            // Save current selection
             const selection = window.getSelection();
             if (selection.rangeCount > 0) {
                 const range = selection.getRangeAt(0);
 
                 // Only apply if there's actual text selected
                 if (range.toString().trim().length > 0) {
+                    // Create a span with the color
                     const span = document.createElement('span');
                     span.style.color = color;
+                    span.textContent = range.toString();
 
                     try {
-                        range.surroundContents(span);
+                        // Delete the selected content and insert the colored span
+                        range.deleteContents();
+                        range.insertNode(span);
+
+                        // Restore selection to the new span
+                        range.selectNodeContents(span);
+                        selection.removeAllRanges();
+                        selection.addRange(range);
                     } catch (e) {
-                        // If selection spans multiple nodes, use execCommand on the selection
+                        // Fallback to execCommand if surroundContents fails
+                        console.error('Error applying color:', e);
                         document.execCommand('styleWithCSS', false, true);
                         document.execCommand('foreColor', false, color);
                     }
