@@ -1664,9 +1664,9 @@
                 overlay.style.display = 'block';
                 overlay.style.left = '50%';
 
-                // Only update position if NOT dragging
-                // When dragging, we keep the manual position from mouse events
-                if (!isDraggingSubtitle) {
+                // Only update position if NOT manually positioned
+                // When user has dragged the subtitle, keep their manual position
+                if (!hasManualPosition) {
                     // Position overlay
                     if (position === 'bottom') {
                         overlay.style.bottom = '80px';
@@ -1748,7 +1748,10 @@
         document.getElementById('subtitle-color').addEventListener('input', updateSubtitlePreview);
         document.getElementById('subtitle-bg').addEventListener('input', updateSubtitlePreview);
         document.getElementById('subtitle-bg-opacity').addEventListener('input', updateSubtitlePreview);
-        document.getElementById('subtitle-position').addEventListener('change', updateSubtitlePreview);
+        document.getElementById('subtitle-position').addEventListener('change', () => {
+            hasManualPosition = false; // Clear manual position when user changes dropdown
+            updateSubtitlePreview();
+        });
 
         // Preview button
         document.getElementById('preview-btn').addEventListener('click', () => {
@@ -1861,11 +1864,14 @@
         let isDraggingSubtitle = false;
         let subtitleDragStart = { x: 0, y: 0 };
         let subtitleStartPos = { left: 0, top: 0 };
+        let hasManualPosition = false; // Flag to indicate manual positioning
 
         subtitleOverlay.addEventListener('mousedown', (e) => {
             if (!videoControlsLocked) return;
 
             isDraggingSubtitle = true;
+            hasManualPosition = true; // Mark as having manual position
+
             subtitleDragStart = { x: e.clientX, y: e.clientY };
 
             // Get current position from computed style
