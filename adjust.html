@@ -1230,6 +1230,8 @@
         let subtitleAutoSaveTimeout = null;
         let currentCueInfo = null; // Track current cue {start, end, text, sequence}
         let allThemeCues = []; // Cache all theme cues
+        let subtitleFormatting = { bold: false, italic: false, color: null, size: null };
+        let allCueFormatting = {}; // Store formatting for all cues: {start_time: {bold, italic, color, size}}
 
         function autoSaveTheme() {
             // Clear existing timeout
@@ -1290,6 +1292,19 @@
             } catch (error) {
                 console.error('Failed to load theme cues:', error);
                 return [];
+            }
+        }
+
+        // Load subtitle formatting metadata
+        async function loadSubtitleFormatting() {
+            try {
+                const response = await fetch(`/api/subtitle-formatting/${folderNumber}/${themeNumber}`);
+                if (!response.ok) return;
+
+                const data = await response.json();
+                allCueFormatting = data.formatting || {};
+            } catch (error) {
+                console.error('Failed to load subtitle formatting:', error);
             }
         }
 
@@ -1394,6 +1409,9 @@
 
                 // Load all theme cues for subtitle editing
                 loadThemeCues();
+
+                // Load subtitle formatting metadata
+                loadSubtitleFormatting();
 
                 // Load VTT subtitles
                 const subtitleTrack = document.getElementById('subtitle-track');
@@ -1556,6 +1574,13 @@
                         end: vttToTimestamp(currentCue.endTime),
                         text: currentCue.text
                     };
+
+                    // Load saved formatting for this cue
+                    if (allCueFormatting[currentCueInfo.start]) {
+                        subtitleFormatting = { ...allCueFormatting[currentCueInfo.start] };
+                    } else {
+                        subtitleFormatting = { bold: false, italic: false, color: null, size: null };
+                    }
 
                     // Only update if user is not currently typing (check focus)
                     if (document.activeElement !== subtitleText) {
@@ -1965,6 +1990,8 @@
 
             // Apply formatting to selected text only in the preview
             let displayText = text;
+
+            // If there's a selection, use current formatting (user is applying it now)
             if (start !== end && (subtitleFormatting.bold || subtitleFormatting.italic || subtitleFormatting.color || subtitleFormatting.size)) {
                 const selected = text.substring(start, end);
                 const before = text.substring(0, start);
@@ -1985,6 +2012,28 @@
                 }
 
                 displayText = before + formatted + after;
+            }
+            // If no selection, apply saved formatting for current cue
+            else if (currentCueInfo && allCueFormatting[currentCueInfo.start] &&
+                     (allCueFormatting[currentCueInfo.start].bold ||
+                      allCueFormatting[currentCueInfo.start].italic ||
+                      allCueFormatting[currentCueInfo.start].color ||
+                      allCueFormatting[currentCueInfo.start].size)) {
+                const savedFormat = allCueFormatting[currentCueInfo.start];
+                let formatted = text;
+                if (savedFormat.bold) {
+                    formatted = `<strong>${formatted}</strong>`;
+                }
+                if (savedFormat.italic) {
+                    formatted = `<em>${formatted}</em>`;
+                }
+                if (savedFormat.color) {
+                    formatted = `<span style="color:${savedFormat.color}">${formatted}</span>`;
+                }
+                if (savedFormat.size) {
+                    formatted = `<span style="font-size:${savedFormat.size}em">${formatted}</span>`;
+                }
+                displayText = formatted;
             } else {
                 // Parse markdown-style formatting to HTML (for whole text when no selection)
                 displayText = text
@@ -2053,6 +2102,7 @@
                 subtitleFormatting.italic = !subtitleFormatting.italic;
             }
 
+            saveCurrentCueFormatting();
             updateSubtitlePreview();
         }
 
@@ -2064,6 +2114,7 @@
             if (start === end) return;
 
             subtitleFormatting.color = color;
+            saveCurrentCueFormatting();
             updateSubtitlePreview();
         }
 
@@ -2075,7 +2126,36 @@
             if (start === end) return;
 
             subtitleFormatting.size = multiplier;
+            saveCurrentCueFormatting();
             updateSubtitlePreview();
+        }
+
+        // Save formatting for the current cue
+        async function saveCurrentCueFormatting() {
+            if (!currentCueInfo) return;
+
+            // Store formatting for this cue
+            allCueFormatting[currentCueInfo.start] = {
+                bold: subtitleFormatting.bold,
+                italic: subtitleFormatting.italic,
+                color: subtitleFormatting.color,
+                size: subtitleFormatting.size
+            };
+
+            // Save to server
+            try {
+                await fetch('/api/save-subtitle-formatting', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        folder: folderNumber,
+                        theme: themeNumber,
+                        formatting: allCueFormatting
+                    })
+                });
+            } catch (error) {
+                console.error('Failed to save formatting:', error);
+            }
         }
 
         // Event listeners for subtitle settings

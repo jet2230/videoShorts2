@@ -782,6 +782,69 @@ def save_theme_subtitles():
     })
 
 
+@app.route('/api/save-subtitle-formatting', methods=['POST'])
+def save_subtitle_formatting():
+    """Save subtitle formatting metadata for a theme."""
+    data = request.json
+    folder_number = data.get('folder')
+    theme_number = data.get('theme')
+    formatting = data.get('formatting', {})  # {start_time: {bold, italic, color, size, text}}
+
+    if not all([folder_number, theme_number]):
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    # Find the folder
+    base_dir = Path(settings.get('video', 'output_dir'))
+    folder = None
+    for f in base_dir.iterdir():
+        if f.is_dir() and f.name.startswith(f"{folder_number}_"):
+            folder = f
+            break
+
+    if not folder:
+        return jsonify({'error': 'Folder not found'}), 404
+
+    # Save formatting metadata to JSON file
+    import json
+    shorts_dir = folder / 'shorts'
+    shorts_dir.mkdir(exist_ok=True)
+    formatting_file = shorts_dir / f'theme_{int(theme_number):03d}_formatting.json'
+
+    with open(formatting_file, 'w', encoding='utf-8') as f:
+        json.dump(formatting, f, indent=2)
+
+    return jsonify({
+        'success': True,
+        'message': f'Saved subtitle formatting for theme {theme_number}'
+    })
+
+
+@app.route('/api/subtitle-formatting/<folder_number>/<theme_number>', methods=['GET'])
+def get_subtitle_formatting(folder_number: str, theme_number: str):
+    """Get subtitle formatting metadata for a theme."""
+    import json
+
+    base_dir = Path(settings.get('video', 'output_dir'))
+    folder = None
+    for f in base_dir.iterdir():
+        if f.is_dir() and f.name.startswith(f"{folder_number}_"):
+            folder = f
+            break
+
+    if not folder:
+        return jsonify({'error': 'Folder not found'}), 404
+
+    # Check if formatting file exists
+    formatting_file = folder / 'shorts' / f'theme_{int(theme_number):03d}_formatting.json'
+
+    if formatting_file.exists():
+        with open(formatting_file, 'r', encoding='utf-8') as f:
+            formatting = json.load(f)
+        return jsonify({'formatting': formatting})
+    else:
+        return jsonify({'formatting': {}})
+
+
 @app.route('/api/subtitles/<folder_number>/<theme_number>.vtt', methods=['GET'])
 def get_theme_vtt_subtitles(folder_number: str, theme_number: str):
     """Get adjusted theme subtitles as VTT for preview video."""
