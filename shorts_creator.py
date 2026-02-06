@@ -1405,7 +1405,7 @@ Video Path: {video_info['video_path']}
                 srt_path_for_theme = theme_adjust_srt
             else:
                 # Use the default SRT file (already set above)
-                srt_path_for_theme = srt_path if 'srt_path' in locals() else None
+                srt_path_for_theme = original_srt_path
                 if not srt_path_for_theme:
                     _log_msg(f"  Warning: No SRT file found for theme {theme_num}")
 
