@@ -1310,6 +1310,27 @@ Video Path: {video_info['video_path']}
         themes = self.parse_themes_file(themes_file)
         _log_msg(f"Found {len(themes)} themes")
 
+        # Check for adjusted theme files and update themes with adjusted values
+        for theme in themes:
+            adjust_file = folder / 'shorts' / f"theme_{theme['number']:03d}_adjust.md"
+            if adjust_file.exists():
+                try:
+                    with open(adjust_file, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    # Parse adjusted values
+                    import re
+                    title_match = re.search(r'\*\*Title:\*\*\s*(.+?)(?:\n\n|\n\*)', content)
+                    time_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})', content)
+                    if title_match:
+                        theme['title'] = title_match.group(1).strip()
+                    if time_match:
+                        theme['start'] = time_match.group(1)
+                        theme['end'] = time_match.group(2)
+                    theme['adjusted'] = True
+                    _log_msg(f"  Theme {theme['number']}: Using adjusted values from adjust file")
+                except Exception as e:
+                    _log_msg(f"  Warning: Could not read adjust file for theme {theme['number']}: {e}")
+
         # Determine which themes to create
         if theme_numbers == 'all':
             selected_themes = themes
@@ -1336,21 +1357,31 @@ Video Path: {video_info['video_path']}
         total_themes = len(selected_themes)
         _log_msg(f"Creating {total_themes} short(s)...")
 
-        # Find the SRT subtitle file
-        srt_path = None
+        # Create output directory for shorts
+        shorts_dir = folder / 'shorts'
+        shorts_dir.mkdir(exist_ok=True)
+
+        # Find the original SRT subtitle file (fallback if no adjusted subs exist)
+        original_srt_path = None
         for ext in ['*.srt']:
             srt_files = list(folder.glob(ext))
             if srt_files:
-                srt_path = srt_files[0]
+                original_srt_path = srt_files[0]
                 break
 
-        if not srt_path:
-            _log_msg("Error: No SRT subtitle file found. Cannot create shorts with burnt-in subtitles.")
-            return
+        if original_srt_path:
+            _log_msg(f"Original subtitles: {original_srt_path.name}")
+        else:
+            _log_msg("Warning: No SRT subtitle file found in folder")
 
-        _log_msg(f"Using subtitles: {srt_path.name}")
+        # Check if there are adjusted subtitle files for any of the selected themes
+        has_adjusted_subs = any(
+            (folder / 'shorts' / f"theme_{t['number']:03d}_adjust.srt").exists()
+            for t in selected_themes
+        )
 
-        # Create output directory for shorts
+        if has_adjusted_subs:
+            _log_msg("Note: Some themes have adjusted subtitle files (theme_XXX_adjust.srt)")
         shorts_dir = folder / 'shorts'
         shorts_dir.mkdir(exist_ok=True)
 
@@ -1366,6 +1397,17 @@ Video Path: {video_info['video_path']}
             theme_title = theme['title'][:50]
 
             _log_msg(f"Short {idx + 1}/{total_themes}: Theme {theme_num} - {theme_title}...")
+
+            # Check for adjusted subtitle file for this specific theme
+            theme_adjust_srt = shorts_dir / f"theme_{theme_num:03d}_adjust.srt"
+            if theme_adjust_srt.exists():
+                _log_msg(f"  Using adjusted subtitles: {theme_adjust_srt.name}")
+                srt_path_for_theme = theme_adjust_srt
+            else:
+                # Use the default SRT file (already set above)
+                srt_path_for_theme = srt_path if 'srt_path' in locals() else None
+                if not srt_path_for_theme:
+                    _log_msg(f"  Warning: No SRT file found for theme {theme_num}")
 
             # Create wrapper callback that adds overall progress
             def make_progress_callback(current_idx, total):
@@ -1391,7 +1433,7 @@ Video Path: {video_info['video_path']}
                 return callback
 
             result = self.create_short(
-                video_path, theme, shorts_dir, srt_path,
+                video_path, theme, shorts_dir, srt_path_for_theme,
                 progress_callback=make_progress_callback(idx, total_themes)
             )
             if result:
