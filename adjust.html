@@ -108,6 +108,12 @@
             background: rgba(255, 193, 7, 0.9);
         }
 
+        .preview-autosave {
+            top: 10px;
+            right: 10px;
+            left: auto;
+        }
+
         /* Custom Video Controls */
         .video-controls-overlay {
             position: absolute;
@@ -1051,6 +1057,7 @@
                 <div class="subtitle-overlay" id="subtitle-overlay">
                     <span class="subtitle-text" id="subtitle-preview-text">Preview subtitles</span>
                 </div>
+                <div class="autosave-indicator preview-autosave" id="preview-autosave-indicator"></div>
 
                 <!-- Custom controls for preview video -->
                 <div class="preview-seekbar-container">
@@ -1220,6 +1227,10 @@
 
         // Auto-save theme adjustment
         let autoSaveTimeout = null;
+        let subtitleAutoSaveTimeout = null;
+        let currentCueInfo = null; // Track current cue {start, end, text, sequence}
+        let allThemeCues = []; // Cache all theme cues
+
         function autoSaveTheme() {
             // Clear existing timeout
             if (autoSaveTimeout) {
@@ -1267,6 +1278,79 @@
             }, 500); // Wait 500ms after drag ends before saving
         }
 
+        // Load all theme cues for editing
+        async function loadThemeCues() {
+            try {
+                const response = await fetch(`/api/theme-subtitles/${folderNumber}/${themeNumber}`);
+                if (!response.ok) return [];
+
+                const data = await response.json();
+                allThemeCues = data.cues;
+                return allThemeCues;
+            } catch (error) {
+                console.error('Failed to load theme cues:', error);
+                return [];
+            }
+        }
+
+        // Auto-save subtitle edit
+        function autoSaveSubtitle() {
+            if (subtitleAutoSaveTimeout) {
+                clearTimeout(subtitleAutoSaveTimeout);
+            }
+
+            const indicator = document.getElementById('preview-autosave-indicator');
+            indicator.textContent = '⏳ Saving...';
+            indicator.classList.add('show', 'saving');
+
+            subtitleAutoSaveTimeout = setTimeout(async () => {
+                try {
+                    const textarea = document.getElementById('subtitle-text');
+                    const newText = textarea.value.trim();
+
+                    if (!currentCueInfo || !newText) {
+                        indicator.classList.remove('show');
+                        return;
+                    }
+
+                    // Find and update the current cue
+                    const cueIndex = allThemeCues.findIndex(cue =>
+                        cue.start === currentCueInfo.start && cue.end === currentCueInfo.end
+                    );
+
+                    if (cueIndex !== -1) {
+                        allThemeCues[cueIndex].text = newText;
+                    }
+
+                    // Save to server
+                    const response = await fetch('/api/save-theme-subtitles', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            folder: folderNumber,
+                            theme: themeNumber,
+                            cues: allThemeCues
+                        })
+                    });
+
+                    if (!response.ok) throw new Error('Failed to save subtitle');
+
+                    indicator.textContent = '✓ Saved';
+                    indicator.classList.remove('saving');
+
+                    setTimeout(() => {
+                        indicator.classList.remove('show');
+                    }, 2000);
+                } catch (error) {
+                    indicator.textContent = '✗ Save failed';
+                    indicator.classList.remove('saving');
+                    setTimeout(() => {
+                        indicator.classList.remove('show');
+                    }, 2000);
+                }
+            }, 800); // Wait 800ms after typing stops
+        }
+
         // Load theme details
         async function loadTheme() {
             try {
@@ -1301,6 +1385,9 @@
                 document.getElementById('header-theme-name').textContent = themeData.title || '';
 
                 document.getElementById('subtitle-text').value = themeData.text || '';
+
+                // Load all theme cues for subtitle editing
+                loadThemeCues();
 
                 // Load VTT subtitles
                 const subtitleTrack = document.getElementById('subtitle-track');
@@ -1448,6 +1535,13 @@
                 if (activeCues.length > 0) {
                     const currentCue = activeCues[0];
                     const subtitleText = document.getElementById('subtitle-text');
+
+                    // Track current cue info
+                    currentCueInfo = {
+                        start: currentCue.startTime.toFixed(3).replace('.', ','),
+                        end: currentCue.endTime.toFixed(3).replace('.', ','),
+                        text: currentCue.text
+                    };
 
                     // Only update if user is not currently typing (check focus)
                     if (document.activeElement !== subtitleText) {
@@ -1971,7 +2065,10 @@
         }
 
         // Event listeners for subtitle settings
-        document.getElementById('subtitle-text').addEventListener('input', updateSubtitlePreview);
+        document.getElementById('subtitle-text').addEventListener('input', () => {
+            updateSubtitlePreview();
+            autoSaveSubtitle(); // Auto-save subtitle edits
+        });
         document.getElementById('subtitle-font').addEventListener('change', updateSubtitlePreview);
         document.getElementById('subtitle-size').addEventListener('input', updateSubtitlePreview);
         document.getElementById('subtitle-color').addEventListener('input', updateSubtitlePreview);
