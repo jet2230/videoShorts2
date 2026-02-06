@@ -617,7 +617,7 @@ def get_vtt_subtitles(folder_number: str):
 
 @app.route('/api/theme-subtitles/<folder_number>/<theme_number>', methods=['GET'])
 def get_theme_subtitles(folder_number: str, theme_number: str):
-    """Get adjusted subtitles for a specific theme, or fall back to original."""
+    """Get adjusted subtitles for a specific theme, or fall back to original filtered by theme time range."""
     import re
 
     base_dir = Path(settings.get('video', 'output_dir'))
@@ -630,6 +630,32 @@ def get_theme_subtitles(folder_number: str, theme_number: str):
 
     if not folder:
         return "Folder not found", 404
+
+    # Get theme start/end time from themes file
+    themes_file = folder / 'themes.md'
+    theme_start_sec = None
+    theme_end_sec = None
+
+    # First check if there's an adjust file with the theme times
+    adjust_file = folder / 'shorts' / f'theme_{int(theme_number):03d}_adjust.md'
+    if adjust_file.exists():
+        with open(adjust_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+            time_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})', content)
+            if time_match:
+                theme_start_sec = creator.parse_timestamp_to_seconds(time_match.group(1))
+                theme_end_sec = creator.parse_timestamp_to_seconds(time_match.group(2))
+    else:
+        # Parse themes file to get theme time range
+        themes = creator.parse_themes_file(themes_file)
+        for theme in themes:
+            if theme['number'] == int(theme_number):
+                theme_start_sec = creator.parse_timestamp_to_seconds(theme['start'])
+                theme_end_sec = creator.parse_timestamp_to_seconds(theme['end'])
+                break
+
+    if theme_start_sec is None or theme_end_sec is None:
+        return jsonify({'error': 'Theme time range not found'}), 404
 
     # Check if adjusted subtitles exist in shorts folder
     shorts_dir = folder / 'shorts'
@@ -651,8 +677,9 @@ def get_theme_subtitles(folder_number: str, theme_number: str):
     with open(srt_file, 'r', encoding='utf-8') as f:
         srt_content = f.read()
 
-    # Parse SRT into JSON format
+    # Parse SRT into JSON format, filtering by theme time range
     cues = []
+    filtered_cues = []
     lines = srt_content.strip().split('\n')
     i = 0
 
@@ -675,30 +702,38 @@ def get_theme_subtitles(folder_number: str, theme_number: str):
                 # Parse timestamps: 00:00:00,000 --> 00:00:05,000
                 match = re.match(r'(\d{2}:\d{2}:\d{2}),(\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}),(\d{3})', timestamp_line)
                 if match:
-                    start_time = f"{match.group(1)}.{match.group(2)}"
-                    end_time = f"{match.group(3)}.{match.group(4)}"
+                    # Convert to seconds for filtering
+                    start_h, start_m, start_s = map(int, match.group(1).split(':'))
+                    start_millis = int(match.group(2))
+                    cue_start_sec = start_h * 3600 + start_m * 60 + start_s + start_millis / 1000
 
-                    # Get subtitle text (may be multiple lines)
-                    i += 1
-                    text_lines = []
-                    while i < len(lines) and lines[i].strip() and not lines[i].strip().isdigit():
-                        text_lines.append(lines[i].strip())
+                    end_h, end_m, end_s = map(int, match.group(3).split(':'))
+                    end_millis = int(match.group(4))
+                    cue_end_sec = end_h * 3600 + end_m * 60 + end_s + end_millis / 1000
+
+                    # Filter: only include cues that overlap with theme time range
+                    if cue_end_sec > theme_start_sec and cue_start_sec < theme_end_sec:
+                        # Get subtitle text (may be multiple lines)
                         i += 1
+                        text_lines = []
+                        while i < len(lines) and lines[i].strip() and not lines[i].strip().isdigit():
+                            text_lines.append(lines[i].strip())
+                            i += 1
 
-                    cues.append({
-                        'sequence': seq_num,
-                        'start': start_time,
-                        'end': end_time,
-                        'text': '\n'.join(text_lines)
-                    })
-                    continue
+                        filtered_cues.append({
+                            'sequence': seq_num,
+                            'start': f"{match.group(1)}.{match.group(2)}",
+                            'end': f"{match.group(3)}.{match.group(4)}",
+                            'text': '\n'.join(text_lines)
+                        })
+                        continue
             else:
                 i += 1
         else:
             i += 1
 
     return jsonify({
-        'cues': cues,
+        'cues': filtered_cues,
         'is_adjusted': adjusted_srt.exists()
     })
 
