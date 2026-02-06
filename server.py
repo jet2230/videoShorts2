@@ -361,7 +361,7 @@ def get_themes(folder_number: str):
 
     # Check for adjusted theme files and override with adjusted values
     for theme in themes:
-        adjust_file = folder / f"theme_{theme['number']:03d}_adjust.md"
+        adjust_file = folder / 'shorts' / f"theme_{theme['number']:03d}_adjust.md"
         if adjust_file.exists():
             try:
                 with open(adjust_file, 'r', encoding='utf-8') as f:
@@ -487,8 +487,10 @@ def update_theme():
                     f.write(f"**Transcript Preview:**\n```\n{theme['text']}\n```\n\n")
                 f.write(f"---\n\n")
 
-    # Save adjusted theme details to separate file
-    adjust_file = folder / f'theme_{theme_number:03d}_adjust.md'
+    # Save adjusted theme details to separate file in shorts folder
+    shorts_dir = folder / 'shorts'
+    shorts_dir.mkdir(exist_ok=True)
+    adjust_file = shorts_dir / f'theme_{theme_number:03d}_adjust.md'
 
     # Calculate duration for the adjusted theme
     start_secs = creator.parse_timestamp_to_seconds(new_start)
@@ -629,8 +631,10 @@ def get_theme_subtitles(folder_number: str, theme_number: str):
     if not folder:
         return "Folder not found", 404
 
-    # Check if adjusted subtitles exist
-    adjusted_srt = folder / f'theme_{int(theme_number):03d}_adjust.srt'
+    # Check if adjusted subtitles exist in shorts folder
+    shorts_dir = folder / 'shorts'
+    shorts_dir.mkdir(exist_ok=True)
+    adjusted_srt = shorts_dir / f'theme_{int(theme_number):03d}_adjust.srt'
     srt_file = None
 
     if adjusted_srt.exists():
@@ -723,9 +727,11 @@ def save_theme_subtitles():
     if not folder:
         return jsonify({'error': 'Folder not found'}), 404
 
-    # Convert VTT timestamps back to SRT format and save
+    # Convert VTT timestamps back to SRT format and save to shorts folder
     # VTT uses periods, SRT uses commas for milliseconds
-    adjust_srt_path = folder / f'theme_{int(theme_number):03d}_adjust.srt'
+    shorts_dir = folder / 'shorts'
+    shorts_dir.mkdir(exist_ok=True)
+    adjust_srt_path = shorts_dir / f'theme_{int(theme_number):03d}_adjust.srt'
 
     with open(adjust_srt_path, 'w', encoding='utf-8') as f:
         for cue in cues:

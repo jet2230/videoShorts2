@@ -84,6 +84,30 @@
             pointer-events: none;
         }
 
+        .autosave-indicator {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 255, 157, 0.9);
+            color: #000;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 500;
+            z-index: 10;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+
+        .autosave-indicator.show {
+            opacity: 1;
+        }
+
+        .autosave-indicator.saving {
+            background: rgba(255, 193, 7, 0.9);
+        }
+
         /* Custom Video Controls */
         .video-controls-overlay {
             position: absolute;
@@ -940,6 +964,7 @@
                     <div class="shorts-crop-area"></div>
                 </div>
                 <div class="buffer-info" id="buffer-info">Buffer range: 00:00:00 - 00:00:00</div>
+                <div class="autosave-indicator" id="autosave-indicator"></div>
 
                 <!-- Custom Video Controls -->
                 <div class="video-controls-overlay">
@@ -995,7 +1020,7 @@
                 </div>
                 <div class="info-row">
                     <span class="info-label">Theme Name</span>
-                    <span class="info-value" id="theme-name" style="color: #00ff9d;">-</span>
+                    <span class="info-value" id="theme-name" style="color: #00ff9d; cursor: pointer;" contenteditable="true" title="Click to edit">-</span>
                 </div>
                 <div class="info-row">
                     <span class="info-label">Start Time</span>
@@ -1202,9 +1227,9 @@
             }
 
             // Show saving indicator
-            const messageDiv = document.getElementById('message');
-            messageDiv.textContent = '⏳ Saving...';
-            messageDiv.className = '';
+            const indicator = document.getElementById('autosave-indicator');
+            indicator.textContent = '⏳ Saving...';
+            indicator.classList.add('show', 'saving');
 
             // Debounce save to avoid too many requests
             autoSaveTimeout = setTimeout(async () => {
@@ -1225,19 +1250,19 @@
 
                     if (!response.ok) throw new Error('Failed to auto-save');
 
-                    messageDiv.textContent = '✓ Auto-saved';
-                    messageDiv.className = 'success';
+                    indicator.textContent = '✓ Saved';
+                    indicator.classList.remove('saving');
 
-                    // Clear message after 2 seconds
+                    // Hide after 2 seconds
                     setTimeout(() => {
-                        if (messageDiv.textContent === '✓ Auto-saved') {
-                            messageDiv.textContent = '';
-                            messageDiv.className = '';
-                        }
+                        indicator.classList.remove('show');
                     }, 2000);
                 } catch (error) {
-                    messageDiv.textContent = `Auto-save failed: ${error.message}`;
-                    messageDiv.className = 'error';
+                    indicator.textContent = '✗ Save failed';
+                    indicator.classList.remove('saving');
+                    setTimeout(() => {
+                        indicator.classList.remove('show');
+                    }, 2000);
                 }
             }, 500); // Wait 500ms after drag ends before saving
         }
@@ -1965,6 +1990,38 @@
 
         document.getElementById('subtitle-text').addEventListener('keyup', () => {
             subtitleFormatting = { bold: false, italic: false, color: null, size: null };
+        });
+
+        // Theme name editing
+        const themeNameElement = document.getElementById('theme-name');
+        let originalThemeName = '';
+
+        themeNameElement.addEventListener('focus', () => {
+            originalThemeName = themeNameElement.textContent;
+        });
+
+        themeNameElement.addEventListener('blur', () => {
+            const newName = themeNameElement.textContent.trim();
+            if (newName && newName !== originalThemeName) {
+                // Save the new name
+                themeData.title = newName;
+                autoSaveTheme();
+                // Update header too
+                document.getElementById('header-theme-name').textContent = newName;
+            } else if (!newName) {
+                // Revert if empty
+                themeNameElement.textContent = originalThemeName;
+            }
+        });
+
+        themeNameElement.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                themeNameElement.blur();
+            } else if (e.key === 'Escape') {
+                themeNameElement.textContent = originalThemeName;
+                themeNameElement.blur();
+            }
         });
 
         // Preview button
