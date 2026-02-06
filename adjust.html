@@ -1193,6 +1193,55 @@
             return parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseFloat(parts[2]);
         }
 
+        // Auto-save theme adjustment
+        let autoSaveTimeout = null;
+        function autoSaveTheme() {
+            // Clear existing timeout
+            if (autoSaveTimeout) {
+                clearTimeout(autoSaveTimeout);
+            }
+
+            // Show saving indicator
+            const messageDiv = document.getElementById('message');
+            messageDiv.textContent = '⏳ Saving...';
+            messageDiv.className = '';
+
+            // Debounce save to avoid too many requests
+            autoSaveTimeout = setTimeout(async () => {
+                try {
+                    const updates = {
+                        folder: folderNumber,
+                        theme: themeNumber,
+                        title: themeData.title,
+                        start: formatTime(startSeconds),
+                        end: formatTime(endSeconds)
+                    };
+
+                    const response = await fetch('/api/update-theme', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(updates)
+                    });
+
+                    if (!response.ok) throw new Error('Failed to auto-save');
+
+                    messageDiv.textContent = '✓ Auto-saved';
+                    messageDiv.className = 'success';
+
+                    // Clear message after 2 seconds
+                    setTimeout(() => {
+                        if (messageDiv.textContent === '✓ Auto-saved') {
+                            messageDiv.textContent = '';
+                            messageDiv.className = '';
+                        }
+                    }, 2000);
+                } catch (error) {
+                    messageDiv.textContent = `Auto-save failed: ${error.message}`;
+                    messageDiv.className = 'error';
+                }
+            }, 500); // Wait 500ms after drag ends before saving
+        }
+
         // Load theme details
         async function loadTheme() {
             try {
@@ -1593,6 +1642,8 @@
                 if (isDragging) {
                     // Drag ended - seek original video to new theme start position
                     originalVideo.currentTime = startSeconds;
+                    // Auto-save theme adjustment
+                    autoSaveTheme();
                 }
                 isDragging = null;
             });
