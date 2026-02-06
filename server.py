@@ -585,7 +585,7 @@ def get_theme_subtitles(folder_number: str, theme_number: str):
         return "Folder not found", 404
 
     # Check if adjusted subtitles exist
-    adjusted_srt = folder / f'theme_{theme_number}_adjust.srt'
+    adjusted_srt = folder / f'theme_{int(theme_number):03d}_adjust.srt'
     srt_file = None
 
     if adjusted_srt.exists():
@@ -680,7 +680,7 @@ def save_theme_subtitles():
 
     # Convert VTT timestamps back to SRT format and save
     # VTT uses periods, SRT uses commas for milliseconds
-    adjust_srt_path = folder / f'theme_{theme_number}_adjust.srt'
+    adjust_srt_path = folder / f'theme_{int(theme_number):03d}_adjust.srt'
 
     with open(adjust_srt_path, 'w', encoding='utf-8') as f:
         for cue in cues:
@@ -694,7 +694,7 @@ def save_theme_subtitles():
 
     return jsonify({
         'success': True,
-        'message': f'Saved {len(cues)} subtitle cues to theme_{theme_number}_adjust.srt'
+        'message': f'Saved {len(cues)} subtitle cues to theme_{int(theme_number):03d}_adjust.srt'
     })
 
 
