@@ -359,6 +359,27 @@ def get_themes(folder_number: str):
                     video_title = line.split(':', 1)[1].strip()
                     break
 
+    # Check for adjusted theme files and override with adjusted values
+    for theme in themes:
+        adjust_file = folder / f"theme_{theme['number']:03d}_adjust.md"
+        if adjust_file.exists():
+            try:
+                with open(adjust_file, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    # Parse adjusted values from the file
+                    import re
+                    title_match = re.search(r'\*\*Title:\*\*\s*(.+?)(?:\n\n|\n\*)', content)
+                    time_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})', content)
+
+                    if title_match:
+                        theme['title'] = title_match.group(1).strip()
+                    if time_match:
+                        theme['start'] = time_match.group(1)
+                        theme['end'] = time_match.group(2)
+                    theme['adjusted'] = True
+            except Exception as e:
+                print(f"Error reading adjust file {adjust_file}: {e}")
+
     # If no video file found, try to get from Video Path in info file
     if not video_filename and video_info_file.exists():
         with open(video_info_file, 'r') as f:
@@ -465,6 +486,30 @@ def update_theme():
                 if 'text' in theme:
                     f.write(f"**Transcript Preview:**\n```\n{theme['text']}\n```\n\n")
                 f.write(f"---\n\n")
+
+    # Save adjusted theme details to separate file
+    adjust_file = folder / f'theme_{theme_number:03d}_adjust.md'
+
+    # Calculate duration for the adjusted theme
+    start_secs = creator.parse_timestamp_to_seconds(new_start)
+    end_secs = creator.parse_timestamp_to_seconds(new_end)
+    duration_secs = end_secs - start_secs
+    minutes = int(duration_secs // 60)
+    seconds = int(duration_secs % 60)
+    duration_str = f"{minutes}m {seconds}s"
+
+    with open(adjust_file, 'w', encoding='utf-8') as f:
+        f.write(f"# Theme {theme_number} - Adjusted\n\n")
+        f.write(f"**Title:** {new_title}\n\n")
+        f.write(f"**Time Range:** {new_start} - {new_end} ({duration_str})\n\n")
+        f.write(f"**Folder:** {folder.name}\n\n")
+        f.write(f"**Last Modified:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+        f.write(f"---\n\n")
+        f.write(f"## Adjusted Settings\n\n")
+        f.write(f"- Theme Number: {theme_number}\n")
+        f.write(f"- Original Start: {new_start}\n")
+        f.write(f"- Original End: {new_end}\n")
+        f.write(f"- Duration: {duration_str}\n")
 
     return jsonify({'success': True, 'message': 'Theme updated successfully'})
 
