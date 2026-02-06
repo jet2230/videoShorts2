@@ -2063,11 +2063,22 @@
             const editor = document.getElementById('subtitle-text');
             editor.focus();
 
-            // Apply formatting using execCommand
-            if (style === 'bold') {
-                document.execCommand('bold', false, null);
-            } else if (style === 'italic') {
-                document.execCommand('italic', false, null);
+            const selection = window.getSelection();
+            if (selection.rangeCount > 0) {
+                const range = selection.getRangeAt(0);
+
+                // Only apply if there's actual text selected
+                if (range.toString().trim().length > 0) {
+                    const tag = style === 'bold' ? 'strong' : 'em';
+                    const element = document.createElement(tag);
+
+                    try {
+                        range.surroundContents(element);
+                    } catch (e) {
+                        // If selection spans multiple nodes, use execCommand
+                        document.execCommand(style === 'bold' ? 'bold' : 'italic', false, null);
+                    }
+                }
             }
 
             // Save the formatting for the current cue
@@ -2078,9 +2089,24 @@
             const editor = document.getElementById('subtitle-text');
             editor.focus();
 
-            // Apply color using execCommand
-            document.execCommand('styleWithCSS', false, true);
-            document.execCommand('foreColor', false, color);
+            const selection = window.getSelection();
+            if (selection.rangeCount > 0) {
+                const range = selection.getRangeAt(0);
+
+                // Only apply if there's actual text selected
+                if (range.toString().trim().length > 0) {
+                    const span = document.createElement('span');
+                    span.style.color = color;
+
+                    try {
+                        range.surroundContents(span);
+                    } catch (e) {
+                        // If selection spans multiple nodes, use execCommand on the selection
+                        document.execCommand('styleWithCSS', false, true);
+                        document.execCommand('foreColor', false, color);
+                    }
+                }
+            }
 
             // Save the formatting for the current cue
             saveCurrentCueFormatting();
