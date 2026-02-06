@@ -568,6 +568,136 @@ def get_vtt_subtitles(folder_number: str):
     return vtt_content, 200, {'Content-Type': 'text/vtt; charset=utf-8'}
 
 
+@app.route('/api/theme-subtitles/<folder_number>/<theme_number>', methods=['GET'])
+def get_theme_subtitles(folder_number: str, theme_number: str):
+    """Get adjusted subtitles for a specific theme, or fall back to original."""
+    import re
+
+    base_dir = Path(settings.get('video', 'output_dir'))
+    folder = None
+
+    for f in base_dir.iterdir():
+        if f.is_dir() and f.name.startswith(f"{folder_number}_"):
+            folder = f
+            break
+
+    if not folder:
+        return "Folder not found", 404
+
+    # Check if adjusted subtitles exist
+    adjusted_srt = folder / f'theme_{theme_number}_adjust.srt'
+    srt_file = None
+
+    if adjusted_srt.exists():
+        srt_file = adjusted_srt
+    else:
+        # Fall back to original SRT
+        srt_files = list(folder.glob('*.srt'))
+        if srt_files:
+            srt_file = srt_files[0]
+        else:
+            return "SRT file not found", 404
+
+    # Read and parse SRT file
+    with open(srt_file, 'r', encoding='utf-8') as f:
+        srt_content = f.read()
+
+    # Parse SRT into JSON format
+    cues = []
+    lines = srt_content.strip().split('\n')
+    i = 0
+
+    while i < len(lines):
+        line = lines[i].strip()
+
+        # Skip empty lines
+        if not line:
+            i += 1
+            continue
+
+        # Sequence number
+        if line.isdigit():
+            seq_num = int(line)
+            i += 1
+
+            # Timestamp line
+            if i < len(lines) and '-->' in lines[i]:
+                timestamp_line = lines[i].strip()
+                # Parse timestamps: 00:00:00,000 --> 00:00:05,000
+                match = re.match(r'(\d{2}:\d{2}:\d{2}),(\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}),(\d{3})', timestamp_line)
+                if match:
+                    start_time = f"{match.group(1)}.{match.group(2)}"
+                    end_time = f"{match.group(3)}.{match.group(4)}"
+
+                    # Get subtitle text (may be multiple lines)
+                    i += 1
+                    text_lines = []
+                    while i < len(lines) and lines[i].strip() and not lines[i].strip().isdigit():
+                        text_lines.append(lines[i].strip())
+                        i += 1
+
+                    cues.append({
+                        'sequence': seq_num,
+                        'start': start_time,
+                        'end': end_time,
+                        'text': '\n'.join(text_lines)
+                    })
+                    continue
+            else:
+                i += 1
+        else:
+            i += 1
+
+    return jsonify({
+        'cues': cues,
+        'is_adjusted': adjusted_srt.exists()
+    })
+
+
+@app.route('/api/save-theme-subtitles', methods=['POST'])
+def save_theme_subtitles():
+    """Save adjusted subtitles for a specific theme."""
+    import re
+
+    data = request.json
+    folder_number = data.get('folder')
+    theme_number = data.get('theme')
+    cues = data.get('cues', [])  # Array of {sequence, start, end, text}
+
+    if not all([folder_number, theme_number, cues]):
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    # Find the folder
+    base_dir = Path(settings.get('video', 'output_dir'))
+    folder = None
+    for f in base_dir.iterdir():
+        if f.is_dir() and f.name.startswith(f"{folder_number}_"):
+            folder = f
+            break
+
+    if not folder:
+        return jsonify({'error': 'Folder not found'}), 404
+
+    # Convert VTT timestamps back to SRT format and save
+    # VTT uses periods, SRT uses commas for milliseconds
+    adjust_srt_path = folder / f'theme_{theme_number}_adjust.srt'
+
+    with open(adjust_srt_path, 'w', encoding='utf-8') as f:
+        for cue in cues:
+            # Convert timestamp from VTT (00:00:00.000) to SRT (00:00:00,000)
+            def vtt_to_srt(ts):
+                return ts.replace('.', ',')
+
+            f.write(f"{cue['sequence']}\n")
+            f.write(f"{vtt_to_srt(cue['start'])} --> {vtt_to_srt(cue['end'])}\n")
+            f.write(f"{cue['text']}\n\n")
+
+    return jsonify({
+        'success': True,
+        'message': f'Saved {len(cues)} subtitle cues to theme_{theme_number}_adjust.srt'
+    })
+
+
 @app.route('/api/shorts', methods=['GET'])
 def list_shorts():
     """List all shorts from all folders."""

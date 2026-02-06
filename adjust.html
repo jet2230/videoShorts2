@@ -793,6 +793,111 @@
             z-index: 1000;
             pointer-events: none;
         }
+
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+        }
+
+        .modal-content {
+            background-color: #1e1e1e;
+            margin: 5% auto;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 800px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            font-size: 20px;
+        }
+
+        .close {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .close:hover,
+        .close:focus {
+            color: #fff;
+        }
+
+        .modal-body {
+            padding: 20px;
+        }
+
+        .subtitle-cue-item {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+
+        .cue-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 8px;
+            font-size: 13px;
+            color: #aaa;
+        }
+
+        .cue-time-input {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            width: 90px;
+        }
+
+        .cue-textarea {
+            width: 100%;
+            min-height: 60px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            color: #fff;
+            font-size: 14px;
+            font-family: inherit;
+            resize: vertical;
+        }
+
+        .cue-textarea:focus {
+            outline: none;
+            border-color: #00ff9d;
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            padding: 16px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
     </style>
 </head>
 <body>
@@ -938,9 +1043,12 @@
                 <div class="subtitle-section">
                     <div style="display: flex; align-items: center; justify-content: space-between;">
                         <h3>Subtitle Text</h3>
-                        <button id="lock-video-btn" class="lock-btn" title="Lock video controls">
-                            <span id="lock-icon">🔓</span>
-                        </button>
+                        <div style="display: flex; gap: 8px;">
+                            <button id="edit-all-subs-btn" class="lock-btn" title="Edit all subtitles for this theme">📝 Edit All</button>
+                            <button id="lock-video-btn" class="lock-btn" title="Lock video controls">
+                                <span id="lock-icon">🔓</span>
+                            </button>
+                        </div>
                     </div>
                     <div class="rich-text-toolbar">
                         <button class="toolbar-btn" data-style="bold" onclick="toggleStyle('bold')"><b>Bold</b></button>
@@ -1007,6 +1115,23 @@
             </div>
 
             <div id="message" style="margin-top: 16px;"></div>
+        </div>
+    </div>
+
+    <!-- Subtitle Editor Modal -->
+    <div id="subtitle-modal" class="modal">
+        <div class="modal-content" style="max-width: 800px; max-height: 80vh; display: flex; flex-direction: column;">
+            <div class="modal-header">
+                <h2>Edit All Subtitles</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body" style="flex: 1; overflow-y: auto;">
+                <div id="subtitle-cues-container"></div>
+            </div>
+            <div class="modal-footer" style="padding: 16px; border-top: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: flex-end; gap: 12px;">
+                <button id="cancel-subs-btn" class="btn btn-secondary">Cancel</button>
+                <button id="save-subs-btn" class="btn btn-primary">Save Subtitles</button>
+            </div>
         </div>
     </div>
 
@@ -2022,6 +2147,124 @@
                     // Seek forward
                     previewVideo.currentTime = Math.min(themeEnd, previewVideo.currentTime + seekAmount);
                 }
+            }
+        });
+
+        // Subtitle Editor Modal
+        let themeSubtitles = []; // Store all subtitles for the theme
+        const subtitleModal = document.getElementById('subtitle-modal');
+        const editAllSubsBtn = document.getElementById('edit-all-subs-btn');
+        const closeSubsModal = subtitleModal.querySelector('.close');
+        const cancelSubsBtn = document.getElementById('cancel-subs-btn');
+        const saveSubsBtn = document.getElementById('save-subs-btn');
+
+        // Open subtitle editor modal
+        editAllSubsBtn.addEventListener('click', async () => {
+            const messageDiv = document.getElementById('message');
+            messageDiv.textContent = 'Loading subtitles...';
+            messageDiv.className = '';
+
+            try {
+                const response = await fetch(`/api/theme-subtitles/${folderNumber}/${themeNumber}`);
+                if (!response.ok) throw new Error('Failed to load subtitles');
+
+                const data = await response.json();
+                themeSubtitles = data.cues;
+
+                renderSubtitleCues();
+                subtitleModal.style.display = 'block';
+                messageDiv.textContent = '';
+                messageDiv.className = '';
+            } catch (error) {
+                messageDiv.textContent = `Error: ${error.message}`;
+                messageDiv.className = 'error';
+            }
+        });
+
+        // Close modal handlers
+        closeSubsModal.addEventListener('click', () => {
+            subtitleModal.style.display = 'none';
+        });
+
+        cancelSubsBtn.addEventListener('click', () => {
+            subtitleModal.style.display = 'none';
+        });
+
+        window.addEventListener('click', (e) => {
+            if (e.target === subtitleModal) {
+                subtitleModal.style.display = 'none';
+            }
+        });
+
+        // Render subtitle cues in the modal
+        function renderSubtitleCues() {
+            const container = document.getElementById('subtitle-cues-container');
+            container.innerHTML = '';
+
+            themeSubtitles.forEach((cue, index) => {
+                const cueDiv = document.createElement('div');
+                cueDiv.className = 'subtitle-cue-item';
+                cueDiv.innerHTML = `
+                    <div class="cue-header">
+                        <strong>#${cue.sequence}</strong>
+                        <label>Start:
+                            <input type="text" class="cue-time-input" data-index="${index}" data-field="start" value="${cue.start}">
+                        </label>
+                        <label>End:
+                            <input type="text" class="cue-time-input" data-index="${index}" data-field="end" value="${cue.end}">
+                        </label>
+                    </div>
+                    <textarea class="cue-textarea" data-index="${index}" data-field="text">${cue.text}</textarea>
+                `;
+                container.appendChild(cueDiv);
+            });
+
+            // Add event listeners to inputs
+            container.querySelectorAll('.cue-time-input, .cue-textarea').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const index = parseInt(e.target.dataset.index);
+                    const field = e.target.dataset.field;
+                    themeSubtitles[index][field] = e.target.value;
+                });
+            });
+        }
+
+        // Save subtitles
+        saveSubsBtn.addEventListener('click', async () => {
+            const messageDiv = document.getElementById('message');
+            messageDiv.textContent = 'Saving subtitles...';
+            messageDiv.className = '';
+
+            try {
+                const response = await fetch('/api/save-theme-subtitles', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        folder: folderNumber,
+                        theme: themeNumber,
+                        cues: themeSubtitles
+                    })
+                });
+
+                if (!response.ok) throw new Error('Failed to save subtitles');
+
+                const result = await response.json();
+                messageDiv.textContent = `✓ ${result.message}`;
+                messageDiv.className = 'success';
+
+                // Reload the video subtitles
+                const subtitleTrack = document.getElementById('subtitle-track');
+                subtitleTrack.src = `/api/subtitles/${folderNumber}.vtt?t=${Date.now()}`;
+
+                subtitleModal.style.display = 'none';
+
+                setTimeout(() => {
+                    messageDiv.textContent = '';
+                    messageDiv.className = '';
+                }, 3000);
+            } catch (error) {
+                messageDiv.textContent = `Error: ${error.message}`;
+                messageDiv.className = 'error';
             }
         });
 
