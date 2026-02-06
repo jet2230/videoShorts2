@@ -2222,8 +2222,8 @@
 
         // Keyboard controls for preview video
         document.addEventListener('keydown', (e) => {
-            // Only handle keyboard events when not in textarea/input
-            if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') {
+            // Only handle keyboard events when not in textarea/input or editing theme name
+            if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT' || e.target.id === 'theme-name') {
                 return;
             }
 
