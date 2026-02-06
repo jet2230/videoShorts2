@@ -1649,14 +1649,43 @@
             const overlay = document.getElementById('subtitle-overlay');
             const textEl = document.getElementById('subtitle-preview-text');
 
-            // Parse markdown-style formatting to HTML
-            text = text
-                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-                .replace(/\*(.+?)\*/g, '<em>$1</em>');
+            // Get current selection if any
+            const textarea = document.getElementById('subtitle-text');
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+
+            // Apply formatting to selected text only in the preview
+            let displayText = text;
+            if (start !== end && (subtitleFormatting.bold || subtitleFormatting.italic || subtitleFormatting.color || subtitleFormatting.size)) {
+                const selected = text.substring(start, end);
+                const before = text.substring(0, start);
+                const after = text.substring(end);
+
+                let formatted = selected;
+                if (subtitleFormatting.bold) {
+                    formatted = `<strong>${formatted}</strong>`;
+                }
+                if (subtitleFormatting.italic) {
+                    formatted = `<em>${formatted}</em>`;
+                }
+                if (subtitleFormatting.color) {
+                    formatted = `<span style="color:${subtitleFormatting.color}">${formatted}</span>`;
+                }
+                if (subtitleFormatting.size) {
+                    formatted = `<span style="font-size:${subtitleFormatting.size}em">${formatted}</span>`;
+                }
+
+                displayText = before + formatted + after;
+            } else {
+                // Parse markdown-style formatting to HTML (for whole text when no selection)
+                displayText = text
+                    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                    .replace(/\*(.+?)\*/g, '<em>$1</em>');
+            }
 
             // Only show overlay if there's text
-            if (text.trim()) {
-                textEl.innerHTML = text;
+            if (displayText.trim()) {
+                textEl.innerHTML = displayText;
                 textEl.style.fontSize = `${fontSize}px`;
                 textEl.style.fontFamily = fontFamily;
                 textEl.style.color = color;
@@ -1693,25 +1722,28 @@
             return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : '0, 0, 0';
         }
 
+        // Store formatting for current selection
+        let subtitleFormatting = {
+            bold: false,
+            italic: false,
+            color: null,
+            size: null
+        };
+
         // Rich text toolbar functions
         function toggleStyle(style) {
             const textarea = document.getElementById('subtitle-text');
             const start = textarea.selectionStart;
             const end = textarea.selectionEnd;
-            const text = textarea.value;
 
             if (start === end) return;
 
-            const selected = text.substring(start, end);
-            let wrapped = '';
-
             if (style === 'bold') {
-                wrapped = `**${selected}**`;
+                subtitleFormatting.bold = !subtitleFormatting.bold;
             } else if (style === 'italic') {
-                wrapped = `*${selected}*`;
+                subtitleFormatting.italic = !subtitleFormatting.italic;
             }
 
-            textarea.value = text.substring(0, start) + wrapped + text.substring(end);
             updateSubtitlePreview();
         }
 
@@ -1719,12 +1751,10 @@
             const textarea = document.getElementById('subtitle-text');
             const start = textarea.selectionStart;
             const end = textarea.selectionEnd;
-            const text = textarea.value;
 
             if (start === end) return;
 
-            const selected = text.substring(start, end);
-            textarea.value = text.substring(0, start) + `<span style="color:${color}">${selected}</span>` + text.substring(end);
+            subtitleFormatting.color = color;
             updateSubtitlePreview();
         }
 
@@ -1732,12 +1762,10 @@
             const textarea = document.getElementById('subtitle-text');
             const start = textarea.selectionStart;
             const end = textarea.selectionEnd;
-            const text = textarea.value;
 
             if (start === end) return;
 
-            const selected = text.substring(start, end);
-            textarea.value = text.substring(0, start) + `<span style="font-size:${multiplier}em">${selected}</span>` + text.substring(end);
+            subtitleFormatting.size = multiplier;
             updateSubtitlePreview();
         }
 
@@ -1751,6 +1779,16 @@
         document.getElementById('subtitle-position').addEventListener('change', () => {
             hasManualPosition = false; // Clear manual position when user changes dropdown
             updateSubtitlePreview();
+        });
+
+        // Reset formatting when user changes selection or clicks away
+        document.getElementById('subtitle-text').addEventListener('click', () => {
+            subtitleFormatting = { bold: false, italic: false, color: null, size: null };
+            updateSubtitlePreview();
+        });
+
+        document.getElementById('subtitle-text').addEventListener('keyup', () => {
+            subtitleFormatting = { bold: false, italic: false, color: null, size: null };
         });
 
         // Preview button
