@@ -710,6 +710,19 @@
             border-color: #00ff9d;
         }
 
+        .subtitle-text-area:empty:before {
+            content: attr(data-placeholder);
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        .subtitle-text-area strong {
+            font-weight: bold;
+        }
+
+        .subtitle-text-area em {
+            font-style: italic;
+        }
+
         .rich-text-toolbar {
             display: flex;
             gap: 8px;
@@ -1092,7 +1105,7 @@
                         <button class="toolbar-btn" data-style="size" onclick="applySize(1.2)">A+</button>
                         <button class="toolbar-btn" data-style="size" onclick="applySize(0.8)">a-</button>
                     </div>
-                    <textarea class="subtitle-text-area" id="subtitle-text" placeholder="Edit subtitle text here..."></textarea>
+                    <div class="subtitle-text-area" id="subtitle-text" contenteditable="true" data-placeholder="Edit subtitle text here..."></div>
                 </div>
 
                 <div class="subtitle-section">
@@ -1321,7 +1334,7 @@
             subtitleAutoSaveTimeout = setTimeout(async () => {
                 try {
                     const textarea = document.getElementById('subtitle-text');
-                    const newText = textarea.value.trim();
+                    const newText = textarea.innerText.trim();
 
                     if (!currentCueInfo || !newText) {
                         indicator.classList.remove('show');
@@ -1405,7 +1418,7 @@
                 document.getElementById('header-title').textContent = `Adjust Theme ${themeData.number}`;
                 document.getElementById('header-theme-name').textContent = themeData.title || '';
 
-                document.getElementById('subtitle-text').value = themeData.text || '';
+                document.getElementById('subtitle-text').innerHTML = themeData.text || '';
 
                 // Load all theme cues for subtitle editing
                 loadThemeCues();
@@ -1584,7 +1597,25 @@
 
                     // Only update if user is not currently typing (check focus)
                     if (document.activeElement !== subtitleText) {
-                        subtitleText.value = currentCue.text;
+                        // Show text with HTML formatting if it exists
+                        let displayHTML = currentCue.text;
+                        const savedFormat = allCueFormatting[currentCueInfo.start];
+                        if (savedFormat && (savedFormat.bold || savedFormat.italic || savedFormat.color || savedFormat.size)) {
+                            // Wrap text with HTML tags
+                            if (savedFormat.bold) {
+                                displayHTML = `<strong>${displayHTML}</strong>`;
+                            }
+                            if (savedFormat.italic) {
+                                displayHTML = `<em>${displayHTML}</em>`;
+                            }
+                            if (savedFormat.color) {
+                                displayHTML = `<span style="color:${savedFormat.color}">${displayHTML}</span>`;
+                            }
+                            if (savedFormat.size) {
+                                displayHTML = `<span style="font-size:${savedFormat.size}em">${displayHTML}</span>`;
+                            }
+                        }
+                        subtitleText.innerHTML = displayHTML;
                         updateSubtitlePreview();
                     }
                 }
@@ -1972,7 +2003,9 @@
 
         // Update subtitle preview
         function updateSubtitlePreview() {
-            let text = document.getElementById('subtitle-text').value;
+            const editor = document.getElementById('subtitle-text');
+            let text = editor.innerText; // Get plain text for saving
+            const html = editor.innerHTML; // Get HTML for display
             const fontSize = document.getElementById('subtitle-size').value;
             const fontFamily = document.getElementById('subtitle-font').value;
             const color = document.getElementById('subtitle-color').value;
@@ -1983,63 +2016,8 @@
             const overlay = document.getElementById('subtitle-overlay');
             const textEl = document.getElementById('subtitle-preview-text');
 
-            // Get current selection if any
-            const textarea = document.getElementById('subtitle-text');
-            const start = textarea.selectionStart;
-            const end = textarea.selectionEnd;
-
-            // Apply formatting to selected text only in the preview
-            let displayText = text;
-
-            // If there's a selection, use current formatting (user is applying it now)
-            if (start !== end && (subtitleFormatting.bold || subtitleFormatting.italic || subtitleFormatting.color || subtitleFormatting.size)) {
-                const selected = text.substring(start, end);
-                const before = text.substring(0, start);
-                const after = text.substring(end);
-
-                let formatted = selected;
-                if (subtitleFormatting.bold) {
-                    formatted = `<strong>${formatted}</strong>`;
-                }
-                if (subtitleFormatting.italic) {
-                    formatted = `<em>${formatted}</em>`;
-                }
-                if (subtitleFormatting.color) {
-                    formatted = `<span style="color:${subtitleFormatting.color}">${formatted}</span>`;
-                }
-                if (subtitleFormatting.size) {
-                    formatted = `<span style="font-size:${subtitleFormatting.size}em">${formatted}</span>`;
-                }
-
-                displayText = before + formatted + after;
-            }
-            // If no selection, apply saved formatting for current cue
-            else if (currentCueInfo && allCueFormatting[currentCueInfo.start] &&
-                     (allCueFormatting[currentCueInfo.start].bold ||
-                      allCueFormatting[currentCueInfo.start].italic ||
-                      allCueFormatting[currentCueInfo.start].color ||
-                      allCueFormatting[currentCueInfo.start].size)) {
-                const savedFormat = allCueFormatting[currentCueInfo.start];
-                let formatted = text;
-                if (savedFormat.bold) {
-                    formatted = `<strong>${formatted}</strong>`;
-                }
-                if (savedFormat.italic) {
-                    formatted = `<em>${formatted}</em>`;
-                }
-                if (savedFormat.color) {
-                    formatted = `<span style="color:${savedFormat.color}">${formatted}</span>`;
-                }
-                if (savedFormat.size) {
-                    formatted = `<span style="font-size:${savedFormat.size}em">${formatted}</span>`;
-                }
-                displayText = formatted;
-            } else {
-                // Parse markdown-style formatting to HTML (for whole text when no selection)
-                displayText = text
-                    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-                    .replace(/\*(.+?)\*/g, '<em>$1</em>');
-            }
+            // For preview, use the innerHTML directly to show formatting
+            let displayText = html;
 
             // Only show overlay if there's text
             if (displayText.trim()) {
@@ -2082,57 +2060,85 @@
 
         // Rich text toolbar functions
         function toggleStyle(style) {
-            const textarea = document.getElementById('subtitle-text');
-            const start = textarea.selectionStart;
-            const end = textarea.selectionEnd;
+            const editor = document.getElementById('subtitle-text');
+            editor.focus();
 
-            if (start === end) return;
-
+            // Apply formatting using execCommand
             if (style === 'bold') {
-                subtitleFormatting.bold = !subtitleFormatting.bold;
+                document.execCommand('bold', false, null);
             } else if (style === 'italic') {
-                subtitleFormatting.italic = !subtitleFormatting.italic;
+                document.execCommand('italic', false, null);
             }
 
+            // Save the formatting for the current cue
             saveCurrentCueFormatting();
-            updateSubtitlePreview();
         }
 
         function applyColor(color) {
-            const textarea = document.getElementById('subtitle-text');
-            const start = textarea.selectionStart;
-            const end = textarea.selectionEnd;
+            const editor = document.getElementById('subtitle-text');
+            editor.focus();
 
-            if (start === end) return;
+            // Apply color using execCommand
+            document.execCommand('styleWithCSS', false, true);
+            document.execCommand('foreColor', false, color);
 
-            subtitleFormatting.color = color;
+            // Save the formatting for the current cue
             saveCurrentCueFormatting();
-            updateSubtitlePreview();
         }
 
         function applySize(multiplier) {
-            const textarea = document.getElementById('subtitle-text');
-            const start = textarea.selectionStart;
-            const end = textarea.selectionEnd;
+            const editor = document.getElementById('subtitle-text');
+            editor.focus();
 
-            if (start === end) return;
+            // Get current selection and wrap with span
+            const selection = window.getSelection();
+            if (selection.rangeCount > 0) {
+                const range = selection.getRangeAt(0);
+                const span = document.createElement('span');
+                span.style.fontSize = `${multiplier}em`;
+                try {
+                    range.surroundContents(span);
+                } catch (e) {
+                    // If selection is complex, use execCommand
+                    document.execCommand('fontSize', false, '7');
+                    const fontElements = editor.querySelectorAll('font[size="7"]');
+                    fontElements.forEach(el => {
+                        el.removeAttribute('size');
+                        el.style.fontSize = `${multiplier}em`;
+                    });
+                }
+            }
 
-            subtitleFormatting.size = multiplier;
+            // Save the formatting for the current cue
             saveCurrentCueFormatting();
-            updateSubtitlePreview();
         }
 
         // Save formatting for the current cue
         async function saveCurrentCueFormatting() {
             if (!currentCueInfo) return;
 
+            const editor = document.getElementById('subtitle-text');
+
+            // Extract formatting from the HTML
+            const bold = editor.querySelector('strong') !== null;
+            const italic = editor.querySelector('em') !== null;
+            const colorSpan = editor.querySelector('span[style*="color"]');
+            const color = colorSpan ? colorSpan.style.color : null;
+            const sizeSpan = editor.querySelector('span[style*="font-size"]');
+            let size = null;
+            if (sizeSpan && sizeSpan.style.fontSize) {
+                const match = sizeSpan.style.fontSize.match(/([\d.]+)em/);
+                if (match) size = parseFloat(match[1]);
+            }
+
             // Store formatting for this cue
             allCueFormatting[currentCueInfo.start] = {
-                bold: subtitleFormatting.bold,
-                italic: subtitleFormatting.italic,
-                color: subtitleFormatting.color,
-                size: subtitleFormatting.size
+                bold: bold,
+                italic: italic,
+                color: color,
+                size: size
             };
+            subtitleFormatting = { ...allCueFormatting[currentCueInfo.start] };
 
             // Save to server
             try {
@@ -2163,16 +2169,6 @@
         document.getElementById('subtitle-position').addEventListener('change', () => {
             hasManualPosition = false; // Clear manual position when user changes dropdown
             updateSubtitlePreview();
-        });
-
-        // Reset formatting when user changes selection or clicks away
-        document.getElementById('subtitle-text').addEventListener('click', () => {
-            subtitleFormatting = { bold: false, italic: false, color: null, size: null };
-            updateSubtitlePreview();
-        });
-
-        document.getElementById('subtitle-text').addEventListener('keyup', () => {
-            subtitleFormatting = { bold: false, italic: false, color: null, size: null };
         });
 
         // Theme name editing
