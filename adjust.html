@@ -2080,14 +2080,6 @@
             return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : '0, 0, 0';
         }
 
-        // Store formatting for current selection
-        let subtitleFormatting = {
-            bold: false,
-            italic: false,
-            color: null,
-            size: null
-        };
-
         // Rich text toolbar functions
         function toggleStyle(style) {
             const textarea = document.getElementById('subtitle-text');
