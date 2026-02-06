@@ -435,16 +435,35 @@ def update_theme():
             f.write(f"| # | Theme | Duration | Time Range |\n")
             f.write(f"|---|-------|----------|------------|\n")
             for i, theme in enumerate(themes, 1):
-                f.write(f"| {i} | {theme['title']} | {theme['duration']} | {theme['start']} - {theme['end']} |\n")
+                # Calculate duration from start and end times
+                start_secs = creator.parse_timestamp_to_seconds(theme['start'])
+                end_secs = creator.parse_timestamp_to_seconds(theme['end'])
+                duration_secs = end_secs - start_secs
+                minutes = int(duration_secs // 60)
+                seconds = int(duration_secs % 60)
+                duration_str = f"{minutes}m {seconds}s"
+
+                f.write(f"| {i} | {theme['title']} | {duration_str} | {theme['start']} - {theme['end']} |\n")
             f.write(f"\n---\n\n")
 
             # Detailed descriptions
             f.write(f"## Detailed Theme Descriptions\n\n")
             for i, theme in enumerate(themes, 1):
+                # Calculate duration from start and end times
+                start_secs = creator.parse_timestamp_to_seconds(theme['start'])
+                end_secs = creator.parse_timestamp_to_seconds(theme['end'])
+                duration_secs = end_secs - start_secs
+                minutes = int(duration_secs // 60)
+                seconds = int(duration_secs % 60)
+                duration_str = f"{minutes}m {seconds}s"
+
                 f.write(f"### Theme {i}: {theme['title']}\n\n")
-                f.write(f"**Time Range:** {theme['start']} - {theme['end']} ({theme['duration']})\n\n")
-                f.write(f"**Why this works:** {theme['reason']}\n\n")
-                f.write(f"**Transcript Preview:**\n```\n{theme['text']}\n```\n\n")
+                f.write(f"**Time Range:** {theme['start']} - {theme['end']} ({duration_str})\n\n")
+                # Only include reason and text if they exist
+                if 'reason' in theme:
+                    f.write(f"**Why this works:** {theme['reason']}\n\n")
+                if 'text' in theme:
+                    f.write(f"**Transcript Preview:**\n```\n{theme['text']}\n```\n\n")
                 f.write(f"---\n\n")
 
     return jsonify({'success': True, 'message': 'Theme updated successfully'})
