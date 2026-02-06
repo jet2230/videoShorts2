@@ -1662,23 +1662,28 @@
                 textEl.style.color = color;
                 textEl.style.backgroundColor = `rgba(${hexToRgb(bgColor)}, ${bgOpacity})`;
                 overlay.style.display = 'block';
+                overlay.style.left = '50%';
+
+                // Only update position if NOT dragging
+                // When dragging, we keep the manual position from mouse events
+                if (!isDraggingSubtitle) {
+                    // Position overlay
+                    if (position === 'bottom') {
+                        overlay.style.bottom = '80px';
+                        overlay.style.top = 'auto';
+                        overlay.style.transform = 'translateX(-50%)';
+                    } else if (position === 'top') {
+                        overlay.style.top = '20px';
+                        overlay.style.bottom = 'auto';
+                        overlay.style.transform = 'translateX(-50%)';
+                    } else {
+                        overlay.style.top = '50%';
+                        overlay.style.bottom = 'auto';
+                        overlay.style.transform = 'translate(-50%, -50%)';
+                    }
+                }
             } else {
                 overlay.style.display = 'none';
-            }
-
-            // Position overlay
-            if (position === 'bottom') {
-                overlay.style.bottom = '80px';
-                overlay.style.top = 'auto';
-                overlay.style.transform = 'translateX(-50%)';
-            } else if (position === 'top') {
-                overlay.style.top = '20px';
-                overlay.style.bottom = 'auto';
-                overlay.style.transform = 'translateX(-50%)';
-            } else {
-                overlay.style.top = '50%';
-                overlay.style.bottom = 'auto';
-                overlay.style.transform = 'translate(-50%, -50%)';
             }
         }
 
