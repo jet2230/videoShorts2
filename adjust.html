@@ -1104,6 +1104,7 @@
                         <button class="toolbar-btn" data-style="color" onclick="applyColor('#ffff00')">🟡 Yellow</button>
                         <button class="toolbar-btn" data-style="size" onclick="applySize(1.2)">A+</button>
                         <button class="toolbar-btn" data-style="size" onclick="applySize(0.8)">a-</button>
+                        <button class="toolbar-btn" onclick="removeFormatting()" style="margin-left: auto;">🗑 Clear Format</button>
                     </div>
                     <div class="subtitle-text-area" id="subtitle-text" contenteditable="true" data-placeholder="Edit subtitle text here..."></div>
                 </div>
@@ -2132,6 +2133,25 @@
                         el.removeAttribute('size');
                         el.style.fontSize = `${multiplier}em`;
                     });
+                }
+            }
+
+            // Save the formatting for the current cue
+            saveCurrentCueFormatting();
+        }
+
+        function removeFormatting() {
+            const editor = document.getElementById('subtitle-text');
+            editor.focus();
+
+            const selection = window.getSelection();
+            if (selection.rangeCount > 0) {
+                const range = selection.getRangeAt(0);
+
+                // Only apply if there's actual text selected
+                if (range.toString().trim().length > 0) {
+                    // Remove all formatting using execCommand
+                    document.execCommand('removeFormat', false, null);
                 }
             }
 
