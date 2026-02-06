@@ -1583,41 +1583,38 @@
                     };
 
                     // Track current cue info with matching format
-                    currentCueInfo = {
+                    const newCueInfo = {
                         start: vttToTimestamp(currentCue.startTime),
                         end: vttToTimestamp(currentCue.endTime),
                         text: currentCue.text
                     };
 
-                    // Load saved formatting for this cue
-                    if (allCueFormatting[currentCueInfo.start]) {
-                        subtitleFormatting = { ...allCueFormatting[currentCueInfo.start] };
-                    } else {
-                        subtitleFormatting = { bold: false, italic: false, color: null, size: null };
-                    }
+                    // Only update if we've moved to a different cue
+                    if (!currentCueInfo || currentCueInfo.start !== newCueInfo.start) {
+                        currentCueInfo = newCueInfo;
 
-                    // Only update if user is not currently typing (check focus)
-                    if (document.activeElement !== subtitleText) {
-                        // Show text with HTML formatting if it exists
-                        let displayHTML = currentCue.text;
-                        const savedFormat = allCueFormatting[currentCueInfo.start];
-                        if (savedFormat && (savedFormat.bold || savedFormat.italic || savedFormat.color || savedFormat.size)) {
-                            // Wrap text with HTML tags
-                            if (savedFormat.bold) {
-                                displayHTML = `<strong>${displayHTML}</strong>`;
-                            }
-                            if (savedFormat.italic) {
-                                displayHTML = `<em>${displayHTML}</em>`;
-                            }
-                            if (savedFormat.color) {
-                                displayHTML = `<span style="color:${savedFormat.color}">${displayHTML}</span>`;
-                            }
-                            if (savedFormat.size) {
-                                displayHTML = `<span style="font-size:${savedFormat.size}em">${displayHTML}</span>`;
-                            }
+                        // Load saved formatting for this cue
+                        if (allCueFormatting[currentCueInfo.start] && allCueFormatting[currentCueInfo.start].html) {
+                            // Use the saved HTML which has selective formatting preserved
+                            subtitleText.innerHTML = allCueFormatting[currentCueInfo.start].html;
+
+                            // Update subtitleFormatting for preview
+                            subtitleFormatting = {
+                                bold: allCueFormatting[currentCueInfo.start].bold || false,
+                                italic: allCueFormatting[currentCueInfo.start].italic || false,
+                                color: allCueFormatting[currentCueInfo.start].color || null,
+                                size: allCueFormatting[currentCueInfo.start].size || null
+                            };
+                        } else {
+                            // No saved formatting, use plain text
+                            subtitleText.innerHTML = currentCue.text;
+                            subtitleFormatting = { bold: false, italic: false, color: null, size: null };
                         }
-                        subtitleText.innerHTML = displayHTML;
-                        updateSubtitlePreview();
+
+                        // Only update if user is not currently typing (check focus)
+                        if (document.activeElement !== subtitleText) {
+                            updateSubtitlePreview();
+                        }
                     }
                 }
             };
@@ -2186,7 +2183,13 @@
 
             const editor = document.getElementById('subtitle-text');
 
-            // Extract formatting from the HTML
+            // Save the actual HTML as the source of truth
+            // We'll store the HTML and parse it when needed
+            allCueFormatting[currentCueInfo.start] = {
+                html: editor.innerHTML
+            };
+
+            // Also extract simplified formatting info for preview
             const bold = editor.querySelector('strong') !== null;
             const italic = editor.querySelector('em') !== null;
             const colorSpan = editor.querySelector('span[style*="color"]');
@@ -2198,13 +2201,10 @@
                 if (match) size = parseFloat(match[1]);
             }
 
-            // Store formatting for this cue
-            allCueFormatting[currentCueInfo.start] = {
-                bold: bold,
-                italic: italic,
-                color: color,
-                size: size
-            };
+            allCueFormatting[currentCueInfo.start].bold = bold;
+            allCueFormatting[currentCueInfo.start].italic = italic;
+            allCueFormatting[currentCueInfo.start].color = color;
+            allCueFormatting[currentCueInfo.start].size = size;
             subtitleFormatting = { ...allCueFormatting[currentCueInfo.start] };
 
             // Save to server
