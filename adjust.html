@@ -1542,10 +1542,18 @@
                     const currentCue = activeCues[0];
                     const subtitleText = document.getElementById('subtitle-text');
 
-                    // Track current cue info
+                    // Convert cue time (seconds) to HH:MM:SS.mmm format for matching with API
+                    const vttToTimestamp = (seconds) => {
+                        const h = Math.floor(seconds / 3600);
+                        const m = Math.floor((seconds % 3600) / 60);
+                        const s = seconds % 60;
+                        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toFixed(3).padStart(6, '0')}`;
+                    };
+
+                    // Track current cue info with matching format
                     currentCueInfo = {
-                        start: currentCue.startTime.toFixed(3).replace('.', ','),
-                        end: currentCue.endTime.toFixed(3).replace('.', ','),
+                        start: vttToTimestamp(currentCue.startTime),
+                        end: vttToTimestamp(currentCue.endTime),
                         text: currentCue.text
                     };
 
