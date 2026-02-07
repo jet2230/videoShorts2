@@ -3936,3 +3936,230 @@ kill: cannot find process "server.py"
 2026-02-07 20:44:29,044 - INFO - 127.0.0.1 - - [07/Feb/2026 20:44:29] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770496927650 HTTP/1.1[0m" 206 -
 2026-02-07 20:44:29,046 - INFO - 127.0.0.1 - - [07/Feb/2026 20:44:29] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770496927650 HTTP/1.1[0m" 206 -
 2026-02-07 20:44:30,156 - INFO - 127.0.0.1 - - [07/Feb/2026 20:44:30] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770496927650 HTTP/1.1[0m" 206 -
+2026-02-07 20:46:49,040 - INFO - 127.0.0.1 - - [07/Feb/2026 20:46:49] "GET /adjust.html?folder=001&theme=3 HTTP/1.1" 200 -
+2026-02-07 20:46:49,103 - INFO - 127.0.0.1 - - [07/Feb/2026 20:46:49] "GET /api/folder/001/themes HTTP/1.1" 200 -
+2026-02-07 20:46:49,116 - INFO - 127.0.0.1 - - [07/Feb/2026 20:46:49] "GET /api/subtitle-formatting/001/3 HTTP/1.1" 200 -
+2026-02-07 20:46:49,126 - INFO - 127.0.0.1 - - [07/Feb/2026 20:46:49] "GET /api/theme-subtitles/001/3 HTTP/1.1" 200 -
+2026-02-07 20:46:49,130 - INFO - 127.0.0.1 - - [07/Feb/2026 20:46:49] "GET /api/subtitles/001.vtt HTTP/1.1" 200 -
+2026-02-07 20:46:49,132 - INFO - 127.0.0.1 - - [07/Feb/2026 20:46:49] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 20:46:49,155 - INFO - 127.0.0.1 - - [07/Feb/2026 20:46:49] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 20:46:49,156 - INFO - 127.0.0.1 - - [07/Feb/2026 20:46:49] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 20:46:49,178 - INFO - 127.0.0.1 - - [07/Feb/2026 20:46:49] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 20:46:49,183 - INFO - 127.0.0.1 - - [07/Feb/2026 20:46:49] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 20:46:49,212 - INFO - 127.0.0.1 - - [07/Feb/2026 20:46:49] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:46:49,215 - INFO - 127.0.0.1 - - [07/Feb/2026 20:46:49] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 20:46:49,219 - INFO - 127.0.0.1 - - [07/Feb/2026 20:46:49] "GET /api/subtitles/001/3.vtt?start=280&end=350 HTTP/1.1" 200 -
+2026-02-07 20:46:49,245 - INFO - 127.0.0.1 - - [07/Feb/2026 20:46:49] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:46:50,266 - INFO - 127.0.0.1 - - [07/Feb/2026 20:46:50] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:46:50,268 - INFO - 127.0.0.1 - - [07/Feb/2026 20:46:50] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-02-07 20:46:50,269 - INFO - 127.0.0.1 - - [07/Feb/2026 20:46:50] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:34,130 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:34] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:34,138 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:34] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:34,139 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:34] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:34,148 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:34] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:34,155 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:34] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:34,157 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:34] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:34,165 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:34] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:34,171 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:34] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:34,179 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:34] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:34,181 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:34] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:34,198 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:34] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:34,206 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:34] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:34,208 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:34] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:34,221 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:34] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:34,227 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:34] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:34,229 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:34] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:34,239 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:34] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:34,250 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:34] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:34,252 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:34] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:34,260 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:34] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:34,267 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:34] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:34,269 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:34] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:34,279 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:34] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:34,285 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:34] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:34,288 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:34] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:34,298 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:34] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:34,304 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:34] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:34,306 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:34] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497209205 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:43,104 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:43] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497383092 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:43,108 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:43] "GET /api/subtitles/001/3.vtt?start=259.6724708495575&end=350&t=1770497383092 HTTP/1.1" 200 -
+2026-02-07 20:49:43,109 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:43] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:43,117 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:43] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:43,119 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:43] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:43,128 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:43] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:43,141 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:43] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:43,141 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:43] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497383092 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:43,143 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:43] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:43,150 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:43] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:43,159 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:43] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:43,162 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:43] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:43,173 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:43] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:43,182 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:43] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:43,184 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:43] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:43,195 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:43] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:43,204 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:43] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:43,208 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:43] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:43,218 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:43] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:43,227 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:43] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:43,230 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:43] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:43,597 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:43] "POST /api/update-theme HTTP/1.1" 200 -
+2026-02-07 20:49:45,011 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:45] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497383092 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:45,013 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:45] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497383092 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:49,166 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:49] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497383092 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:49,178 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:49] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497383092 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:49,180 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:49] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497383092 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:52,527 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:52] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 20:49:54,753 - INFO - 127.0.0.1 - - [07/Feb/2026 20:49:54] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770497383092 HTTP/1.1[0m" 206 -
+2026-02-07 20:51:01,100 - INFO -  * Detected change in '/home/obo/playground/videoShorts2/test_ass_conversion.py.tmp.211890.1770497461099', reloading
+2026-02-07 20:51:01,465 - INFO -  * Restarting with watchdog (inotify)
+2026-02-07 20:51:02,489 - INFO - ============================================================
+2026-02-07 20:51:02,489 - INFO - YouTube Shorts Creator - Web Server STARTED
+2026-02-07 20:51:02,489 - INFO - Server running at: http://localhost:5000
+2026-02-07 20:51:02,489 - INFO - Video directory: videos
+2026-02-07 20:51:02,489 - INFO - ============================================================
+2026-02-07 20:51:02,492 - WARNING -  * Debugger is active!
+2026-02-07 20:51:02,503 - INFO -  * Debugger PIN: 600-389-780
+2026-02-07 20:51:31,678 - INFO -  * Detected change in '/home/obo/playground/videoShorts2/ass_formatter.py.tmp.211890.1770497491677', reloading
+2026-02-07 20:51:32,034 - INFO -  * Restarting with watchdog (inotify)
+2026-02-07 20:51:33,008 - INFO - ============================================================
+2026-02-07 20:51:33,008 - INFO - YouTube Shorts Creator - Web Server STARTED
+2026-02-07 20:51:33,008 - INFO - Server running at: http://localhost:5000
+2026-02-07 20:51:33,008 - INFO - Video directory: videos
+2026-02-07 20:51:33,008 - INFO - ============================================================
+2026-02-07 20:51:33,010 - WARNING -  * Debugger is active!
+2026-02-07 20:51:33,013 - INFO -  * Debugger PIN: 600-389-780
+2026-02-07 20:51:38,570 - INFO -  * Detected change in '/home/obo/playground/videoShorts2/ass_formatter.py.tmp.211890.1770497498569', reloading
+2026-02-07 20:51:38,933 - INFO -  * Restarting with watchdog (inotify)
+2026-02-07 20:51:39,918 - INFO - ============================================================
+2026-02-07 20:51:39,918 - INFO - YouTube Shorts Creator - Web Server STARTED
+2026-02-07 20:51:39,918 - INFO - Server running at: http://localhost:5000
+2026-02-07 20:51:39,918 - INFO - Video directory: videos
+2026-02-07 20:51:39,918 - INFO - ============================================================
+2026-02-07 20:51:39,921 - WARNING -  * Debugger is active!
+2026-02-07 20:51:39,923 - INFO -  * Debugger PIN: 600-389-780
+2026-02-07 20:51:52,700 - INFO -  * Detected change in '/home/obo/playground/videoShorts2/ass_formatter.py.tmp.211890.1770497512699', reloading
+2026-02-07 20:51:53,047 - INFO -  * Restarting with watchdog (inotify)
+2026-02-07 20:51:54,046 - INFO - ============================================================
+2026-02-07 20:51:54,046 - INFO - YouTube Shorts Creator - Web Server STARTED
+2026-02-07 20:51:54,046 - INFO - Server running at: http://localhost:5000
+2026-02-07 20:51:54,046 - INFO - Video directory: videos
+2026-02-07 20:51:54,046 - INFO - ============================================================
+2026-02-07 20:51:54,049 - WARNING -  * Debugger is active!
+2026-02-07 20:51:54,051 - INFO -  * Debugger PIN: 600-389-780
+2026-02-07 20:52:27,415 - INFO -  * Detected change in '/home/obo/playground/videoShorts2/ass_formatter.py.tmp.211890.1770497547414', reloading
+2026-02-07 20:52:27,778 - INFO -  * Restarting with watchdog (inotify)
+2026-02-07 20:52:28,789 - INFO - ============================================================
+2026-02-07 20:52:28,789 - INFO - YouTube Shorts Creator - Web Server STARTED
+2026-02-07 20:52:28,789 - INFO - Server running at: http://localhost:5000
+2026-02-07 20:52:28,789 - INFO - Video directory: videos
+2026-02-07 20:52:28,789 - INFO - ============================================================
+2026-02-07 20:52:28,792 - WARNING -  * Debugger is active!
+2026-02-07 20:52:28,794 - INFO -  * Debugger PIN: 600-389-780
+2026-02-07 20:52:48,001 - INFO -  * Detected change in '/home/obo/playground/videoShorts2/ass_formatter.py.tmp.211890.1770497567998', reloading
+2026-02-07 20:52:48,391 - INFO -  * Restarting with watchdog (inotify)
+2026-02-07 20:52:49,384 - INFO - ============================================================
+2026-02-07 20:52:49,384 - INFO - YouTube Shorts Creator - Web Server STARTED
+2026-02-07 20:52:49,384 - INFO - Server running at: http://localhost:5000
+2026-02-07 20:52:49,384 - INFO - Video directory: videos
+2026-02-07 20:52:49,384 - INFO - ============================================================
+2026-02-07 20:52:49,387 - WARNING -  * Debugger is active!
+2026-02-07 20:52:49,389 - INFO -  * Debugger PIN: 600-389-780
+2026-02-07 20:53:51,666 - INFO -  * Detected change in '/home/obo/playground/videoShorts2/ass_formatter.py.tmp.211890.1770497631665', reloading
+2026-02-07 20:53:52,031 - INFO -  * Restarting with watchdog (inotify)
+2026-02-07 20:53:53,018 - INFO - ============================================================
+2026-02-07 20:53:53,018 - INFO - YouTube Shorts Creator - Web Server STARTED
+2026-02-07 20:53:53,018 - INFO - Server running at: http://localhost:5000
+2026-02-07 20:53:53,018 - INFO - Video directory: videos
+2026-02-07 20:53:53,018 - INFO - ============================================================
+2026-02-07 20:53:53,021 - WARNING -  * Debugger is active!
+2026-02-07 20:53:53,023 - INFO -  * Debugger PIN: 600-389-780
+2026-02-07 20:54:02,315 - INFO -  * Detected change in '/home/obo/playground/videoShorts2/ass_formatter.py.tmp.211890.1770497642313', reloading
+2026-02-07 20:54:02,661 - INFO -  * Restarting with watchdog (inotify)
+2026-02-07 20:54:03,657 - INFO - ============================================================
+2026-02-07 20:54:03,657 - INFO - YouTube Shorts Creator - Web Server STARTED
+2026-02-07 20:54:03,657 - INFO - Server running at: http://localhost:5000
+2026-02-07 20:54:03,657 - INFO - Video directory: videos
+2026-02-07 20:54:03,657 - INFO - ============================================================
+2026-02-07 20:54:03,660 - WARNING -  * Debugger is active!
+2026-02-07 20:54:03,662 - INFO -  * Debugger PIN: 600-389-780
+2026-02-07 20:54:11,840 - INFO -  * Detected change in '/home/obo/playground/videoShorts2/ass_formatter.py.tmp.211890.1770497651837', reloading
+2026-02-07 20:54:12,199 - INFO -  * Restarting with watchdog (inotify)
+2026-02-07 20:54:13,195 - INFO - ============================================================
+2026-02-07 20:54:13,195 - INFO - YouTube Shorts Creator - Web Server STARTED
+2026-02-07 20:54:13,195 - INFO - Server running at: http://localhost:5000
+2026-02-07 20:54:13,195 - INFO - Video directory: videos
+2026-02-07 20:54:13,195 - INFO - ============================================================
+2026-02-07 20:54:13,198 - WARNING -  * Debugger is active!
+2026-02-07 20:54:13,200 - INFO -  * Debugger PIN: 600-389-780
+2026-02-07 20:54:54,237 - INFO -  * Detected change in '/home/obo/playground/videoShorts2/test_ass_conversion.py.tmp.211890.1770497694236', reloading
+2026-02-07 20:54:54,586 - INFO -  * Restarting with watchdog (inotify)
+2026-02-07 20:54:55,573 - INFO - ============================================================
+2026-02-07 20:54:55,573 - INFO - YouTube Shorts Creator - Web Server STARTED
+2026-02-07 20:54:55,573 - INFO - Server running at: http://localhost:5000
+2026-02-07 20:54:55,573 - INFO - Video directory: videos
+2026-02-07 20:54:55,573 - INFO - ============================================================
+2026-02-07 20:54:55,575 - WARNING -  * Debugger is active!
+2026-02-07 20:54:55,578 - INFO -  * Debugger PIN: 600-389-780
+2026-02-07 20:55:06,323 - INFO -  * Detected change in '/home/obo/playground/videoShorts2/test_ass_conversion.py.tmp.211890.1770497706321', reloading
+2026-02-07 20:55:06,689 - INFO -  * Restarting with watchdog (inotify)
+2026-02-07 20:55:07,689 - INFO - ============================================================
+2026-02-07 20:55:07,689 - INFO - YouTube Shorts Creator - Web Server STARTED
+2026-02-07 20:55:07,689 - INFO - Server running at: http://localhost:5000
+2026-02-07 20:55:07,689 - INFO - Video directory: videos
+2026-02-07 20:55:07,689 - INFO - ============================================================
+2026-02-07 20:55:07,692 - WARNING -  * Debugger is active!
+2026-02-07 20:55:07,695 - INFO -  * Debugger PIN: 600-389-780
+2026-02-07 20:55:11,136 - INFO -  * Detected change in '/home/obo/playground/videoShorts2/test_ass_conversion.py.tmp.211890.1770497711133', reloading
+2026-02-07 20:55:11,505 - INFO -  * Restarting with watchdog (inotify)
+2026-02-07 20:55:12,496 - INFO - ============================================================
+2026-02-07 20:55:12,496 - INFO - YouTube Shorts Creator - Web Server STARTED
+2026-02-07 20:55:12,496 - INFO - Server running at: http://localhost:5000
+2026-02-07 20:55:12,496 - INFO - Video directory: videos
+2026-02-07 20:55:12,496 - INFO - ============================================================
+2026-02-07 20:55:12,499 - WARNING -  * Debugger is active!
+2026-02-07 20:55:12,501 - INFO -  * Debugger PIN: 600-389-780
+2026-02-07 20:55:16,152 - INFO -  * Detected change in '/home/obo/playground/videoShorts2/test_ass_conversion.py.tmp.211890.1770497716149', reloading
+2026-02-07 20:55:16,535 - INFO -  * Restarting with watchdog (inotify)
+2026-02-07 20:55:17,523 - INFO - ============================================================
+2026-02-07 20:55:17,523 - INFO - YouTube Shorts Creator - Web Server STARTED
+2026-02-07 20:55:17,523 - INFO - Server running at: http://localhost:5000
+2026-02-07 20:55:17,523 - INFO - Video directory: videos
+2026-02-07 20:55:17,523 - INFO - ============================================================
+2026-02-07 20:55:17,526 - WARNING -  * Debugger is active!
+2026-02-07 20:55:17,528 - INFO -  * Debugger PIN: 600-389-780
+2026-02-07 20:55:29,668 - INFO -  * Detected change in '/home/obo/playground/videoShorts2/test_ass_conversion.py.tmp.211890.1770497729666', reloading
+2026-02-07 20:55:30,033 - INFO -  * Restarting with watchdog (inotify)
+2026-02-07 20:55:31,026 - INFO - ============================================================
+2026-02-07 20:55:31,026 - INFO - YouTube Shorts Creator - Web Server STARTED
+2026-02-07 20:55:31,026 - INFO - Server running at: http://localhost:5000
+2026-02-07 20:55:31,027 - INFO - Video directory: videos
+2026-02-07 20:55:31,027 - INFO - ============================================================
+2026-02-07 20:55:31,029 - WARNING -  * Debugger is active!
+2026-02-07 20:55:31,031 - INFO -  * Debugger PIN: 600-389-780
+2026-02-07 20:55:42,366 - INFO -  * Detected change in '/home/obo/playground/videoShorts2/test_ass_conversion.py.tmp.211890.1770497742364', reloading
+2026-02-07 20:55:42,720 - INFO -  * Restarting with watchdog (inotify)
+2026-02-07 20:55:43,715 - INFO - ============================================================
+2026-02-07 20:55:43,715 - INFO - YouTube Shorts Creator - Web Server STARTED
+2026-02-07 20:55:43,715 - INFO - Server running at: http://localhost:5000
+2026-02-07 20:55:43,715 - INFO - Video directory: videos
+2026-02-07 20:55:43,715 - INFO - ============================================================
+2026-02-07 20:55:43,718 - WARNING -  * Debugger is active!
+2026-02-07 20:55:43,720 - INFO -  * Debugger PIN: 600-389-780
+2026-02-07 20:55:58,236 - INFO -  * Detected change in '/home/obo/playground/videoShorts2/test_ass_conversion.py.tmp.211890.1770497758234', reloading
+2026-02-07 20:55:58,589 - INFO -  * Restarting with watchdog (inotify)
+2026-02-07 20:55:59,572 - INFO - ============================================================
+2026-02-07 20:55:59,572 - INFO - YouTube Shorts Creator - Web Server STARTED
+2026-02-07 20:55:59,572 - INFO - Server running at: http://localhost:5000
+2026-02-07 20:55:59,572 - INFO - Video directory: videos
+2026-02-07 20:55:59,572 - INFO - ============================================================
+2026-02-07 20:55:59,575 - WARNING -  * Debugger is active!
+2026-02-07 20:55:59,577 - INFO -  * Debugger PIN: 600-389-780
+2026-02-07 20:56:06,484 - INFO -  * Detected change in '/home/obo/playground/videoShorts2/test_ass_conversion.py.tmp.211890.1770497766482', reloading
+2026-02-07 20:56:06,865 - INFO -  * Restarting with watchdog (inotify)
+2026-02-07 20:56:07,853 - INFO - ============================================================
+2026-02-07 20:56:07,853 - INFO - YouTube Shorts Creator - Web Server STARTED
+2026-02-07 20:56:07,853 - INFO - Server running at: http://localhost:5000
+2026-02-07 20:56:07,853 - INFO - Video directory: videos
+2026-02-07 20:56:07,853 - INFO - ============================================================
+2026-02-07 20:56:07,856 - WARNING -  * Debugger is active!
+2026-02-07 20:56:07,858 - INFO -  * Debugger PIN: 600-389-780

@@ -220,16 +220,25 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             bold = False
             italic = False
 
-            # Color
+            # Color - handle both hex and rgb formats
             color_match = re.search(r'color:\s*rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)', style_content)
             if color_match:
                 r, g, b = int(color_match.group(1)), int(color_match.group(2)), int(color_match.group(3))
                 color = f'&H00{b:02X}{g:02X}{r:02X}'
+            else:
+                # Handle hex colors like #ffff00
+                hex_match = re.search(r'color:\s*#([0-9a-fA-F]{6})', style_content)
+                if hex_match:
+                    hex_color = hex_match.group(1)
+                    r = int(hex_color[0:2], 16)
+                    g = int(hex_color[2:4], 16)
+                    b = int(hex_color[4:6], 16)
+                    color = f'&H00{b:02X}{g:02X}{r:02X}'
 
             # Font size
             size_match = re.search(r'font-size:\s*([\d.]+)em', style_content)
             if size_match:
-                size = int(self.font_size * float(size_match.group(1)))
+                size = round(self.font_size * float(size_match.group(1)))
 
             # Bold/italic
             if re.search(r'font-weight:\s*bold', style_content) or re.search(r'font-weight:\s*700', style_content):
@@ -239,25 +248,52 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
             # For nested spans with colors, only INNERMOST (last) color applies
             # But other styles (bold, italic, size) can stack
-            if span_text in word_styles:
-                existing = word_styles[span_text]
-                # Update color (innermost takes precedence)
-                if color is not None:
-                    existing['color'] = color
-                # Properly stack other styles (bold, italic, size)
-                if bold:
-                    existing['bold'] = True
-                if italic:
-                    existing['italic'] = True
-                if size is not None:
-                    existing['size'] = size
-            else:
-                word_styles[span_text] = {
-                    'color': color,
-                    'size': size,
-                    'bold': bold,
-                    'italic': italic
-                }
+            # Split multi-word styled text into individual words
+            span_words = span_text.split()
+            for word in span_words:
+                if word in word_styles:
+                    existing = word_styles[word]
+                    # Update color (innermost takes precedence)
+                    if color is not None:
+                        existing['color'] = color
+                    # Properly stack other styles (bold, italic, size)
+                    if bold:
+                        existing['bold'] = True
+                    if italic:
+                        existing['italic'] = True
+                    if size is not None:
+                        existing['size'] = size
+                else:
+                    word_styles[word] = {
+                        'color': color,
+                        'size': size,
+                        'bold': bold,
+                        'italic': italic
+                    }
+
+        # Find all <b> tags (bold)
+        bold_pattern = r'<b[^>]*>(.*?)</b>'
+        for match in re.finditer(bold_pattern, html_text, re.DOTALL):
+            bold_text = unescape(re.sub(r'<[^>]+>', '', match.group(1)))
+            # Split multi-word styled text into individual words
+            bold_words = bold_text.split()
+            for word in bold_words:
+                if word in word_styles:
+                    word_styles[word]['bold'] = True
+                else:
+                    word_styles[word] = {'color': None, 'size': None, 'bold': True, 'italic': False}
+
+        # Find all <i> tags (italic)
+        italic_pattern = r'<i[^>]*>(.*?)</i>'
+        for match in re.finditer(italic_pattern, html_text, re.DOTALL):
+            italic_text = unescape(re.sub(r'<[^>]+>', '', match.group(1)))
+            # Split multi-word styled text into individual words
+            italic_words = italic_text.split()
+            for word in italic_words:
+                if word in word_styles:
+                    word_styles[word]['italic'] = True
+                else:
+                    word_styles[word] = {'color': None, 'size': None, 'bold': False, 'italic': True}
 
         return word_styles
 
@@ -402,7 +438,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 else:
                     size_em = 1.0
 
-                size_px = int(self.font_size * size_em)
+                size_px = round(self.font_size * size_em)
                 tags.append(f'{{\\fs{size_px}}}')
                 closing_tags.insert(0, '{\\r}')  # Font size needs full reset
 
@@ -437,7 +473,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         def convert_font_size(m):
             size_value = m.group(1)
             size_em = font_size_map.get(size_value, 1.0)
-            size_px = int(self.font_size * size_em)
+            size_px = round(self.font_size * size_em)
             return f'{{\\fs{size_px}}}{m.group(2)}{{\\r}}'
 
         # Convert <font color="..." size="..."> combined tags (handles both attributes)
@@ -465,7 +501,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             if size_match:
                 size_val = size_match.group(1)
                 size_em = font_size_map.get(size_val, 1.0)
-                size_px = int(self.font_size * size_em)
+                size_px = round(self.font_size * size_em)
                 tags.append(f'{{\\fs{size_px}}}')
                 closers.insert(0, '{\\r}')
 
@@ -482,7 +518,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         def convert_font_size(m):
             size_value = m.group(1)
             size_em = font_size_map.get(size_value, 1.0)
-            size_px = int(self.font_size * size_em)
+            size_px = round(self.font_size * size_em)
             return f'{{\\fs{size_px}}}{m.group(2)}{{\\r}}'
 
         result = re.sub(r'<font\s+size="([1-7])">(.*?)</font>', convert_font_size, result, flags=re.DOTALL)
