@@ -500,6 +500,38 @@ def update_theme():
     return jsonify({'success': True, 'message': 'Theme updated successfully'})
 
 
+@app.route('/api/reset-theme', methods=['POST'])
+def reset_theme():
+    """Reset theme adjustment by deleting the adjust file."""
+    data = request.json
+    folder_number = data.get('folder')
+    theme_number = int(data.get('theme'))
+
+    if not all([folder_number, theme_number]):
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    # Find the folder
+    base_dir = Path(settings.get('video', 'output_dir'))
+    folder = None
+    for f in base_dir.iterdir():
+        if f.is_dir() and f.name.startswith(f"{folder_number}_"):
+            folder = f
+            break
+
+    if not folder:
+        return jsonify({'error': 'Folder not found'}), 404
+
+    # Delete the adjust file if it exists
+    shorts_dir = folder / 'shorts'
+    adjust_file = shorts_dir / f'theme_{theme_number:03d}_adjust.md'
+
+    if adjust_file.exists():
+        adjust_file.unlink()
+        return jsonify({'success': True, 'message': 'Theme reset successfully', 'deleted': True})
+    else:
+        return jsonify({'success': True, 'message': 'No adjust file to delete', 'deleted': False})
+
+
 @app.route('/api/subtitles/<folder_number>.vtt', methods=['GET'])
 def get_vtt_subtitles(folder_number: str):
     """Convert SRT to VTT and return as WebVTT format for browser native subtitles."""
@@ -596,7 +628,13 @@ def get_vtt_subtitles(folder_number: str):
         else:
             i += 1
 
-    return vtt_content, 200, {'Content-Type': 'text/vtt; charset=utf-8'}
+    # Return with cache-control headers to prevent browser caching
+    return vtt_content, 200, {
+        'Content-Type': 'text/vtt; charset=utf-8',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+    }
 
 
 @app.route('/api/theme-subtitles/<folder_number>/<theme_number>', methods=['GET'])
@@ -854,6 +892,9 @@ def get_theme_vtt_subtitles(folder_number: str, theme_number: str):
     start_override = request.args.get('start', type=float)
     end_override = request.args.get('end', type=float)
 
+    # Debug logging
+    app.logger.info(f"VTT request: folder={folder_number}, theme={theme_number}, start_override={start_override}, end_override={end_override}")
+
     # Get theme start/end time
     themes_file = folder / 'themes.md'
     theme_start_sec = None
@@ -863,6 +904,7 @@ def get_theme_vtt_subtitles(folder_number: str, theme_number: str):
     if start_override is not None and end_override is not None:
         theme_start_sec = start_override
         theme_end_sec = end_override
+        app.logger.info(f"Using query parameters: theme_start_sec={theme_start_sec}, theme_end_sec={theme_end_sec}")
     else:
         adjust_file = folder / 'shorts' / f'theme_{int(theme_number):03d}_adjust.md'
         if adjust_file.exists():
@@ -936,7 +978,13 @@ def get_theme_vtt_subtitles(folder_number: str, theme_number: str):
 
         i += 1
 
-    return vtt_content, 200, {'Content-Type': 'text/vtt; charset=utf-8'}
+    # Return with cache-control headers to prevent browser caching
+    return vtt_content, 200, {
+        'Content-Type': 'text/vtt; charset=utf-8',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+    }
 
 
 @app.route('/api/shorts', methods=['GET'])

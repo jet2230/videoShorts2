@@ -306,6 +306,16 @@
             object-fit: cover;
         }
 
+        /* Hide native VTT subtitles for preview video (we use custom overlay) */
+        #preview-video::cue {
+            background-color: transparent !important;
+            color: transparent !important;
+            text-shadow: none !important;
+        }
+        #preview-video::cue-background {
+            background-color: transparent !important;
+        }
+
         /* Preview seekbar container */
         .preview-seekbar-container {
             position: absolute;
@@ -1396,16 +1406,37 @@
                     if (!response.ok) throw new Error('Failed to save subtitle');
 
                     // Reload the subtitle track to show changes
-                    const previewSubtitleTrack = document.getElementById('preview-subtitle-track');
-                    if (previewSubtitleTrack) {
+                    if (previewVideo) {
+                        // Remove ALL existing tracks
+                        const existingTracks = previewVideo.querySelectorAll('track');
+                        existingTracks.forEach(track => track.remove());
+
+                        // Clear the textTracks list
+                        while (previewVideo.textTracks.length > 0) {
+                            previewVideo.textTracks[0].mode = 'disabled';
+                        }
+
+                        // Create new track
                         const newTrack = document.createElement('track');
                         newTrack.id = 'preview-subtitle-track';
                         newTrack.kind = 'subtitles';
                         newTrack.srclang = 'en';
                         newTrack.label = 'English';
-                        newTrack.default = true;
+                        newTrack.default = false;
                         newTrack.src = `/api/subtitles/${folderNumber}/${themeNumber}.vtt?start=${startSeconds}&end=${endSeconds}&t=${Date.now()}`;
-                        previewSubtitleTrack.replaceWith(newTrack);
+
+                        // Add to DOM
+                        previewVideo.appendChild(newTrack);
+
+                        // Keep mode as 'showing' so cues are loaded and accessible
+                        setTimeout(() => {
+                            if (previewVideo.textTracks.length > 0) {
+                                const textTrack = previewVideo.textTracks[0];
+                                if (textTrack) {
+                                    textTrack.mode = 'showing';
+                                }
+                            }
+                        }, 100);
                     }
 
                     indicator.textContent = '✓ Saved';
@@ -1568,27 +1599,81 @@
         // Update preview video with clipped range
         function reloadSubtitleTrack() {
             // Reload VTT subtitle track with current time range
-            const previewSubtitleTrack = document.getElementById('preview-subtitle-track');
-            if (previewSubtitleTrack && folderNumber && themeNumber) {
-                // Remove old track and create new one to force reload (browser caching fix)
-                const newTrack = document.createElement('track');
-                newTrack.id = 'preview-subtitle-track';
-                newTrack.kind = 'subtitles';
-                newTrack.srclang = 'en';
-                newTrack.label = 'English';
-                newTrack.default = true;
-                newTrack.src = `/api/subtitles/${folderNumber}/${themeNumber}.vtt?start=${startSeconds}&end=${endSeconds}&t=${Date.now()}`;
+            if (!previewVideo || !folderNumber || !themeNumber) return;
 
-                // Replace the old track with the new one
-                previewSubtitleTrack.replaceWith(newTrack);
+            // Clear the current cue info to prevent old subtitle from persisting
+            currentCueInfo = null;
 
-                // Hide the textTrack (we use custom overlay for display)
-                newTrack.addEventListener('load', () => {
-                    if (previewVideo.textTracks.length > 0) {
-                        previewVideo.textTracks[0].mode = 'hidden';
-                    }
-                });
+            // IMPORTANT: Clear the cached formatting when timeline changes
+            // This prevents old formatted subtitles (like "over جهنm" at 00:00:00.000) from appearing
+            allCueFormatting = {};
+
+            // Clear the subtitle overlay text
+            const subtitleText = document.getElementById('subtitle-text');
+            if (subtitleText) {
+                subtitleText.innerHTML = '';
             }
+
+            // Remove ALL existing track elements from the video
+            const existingTracks = previewVideo.querySelectorAll('track');
+            existingTracks.forEach(track => track.remove());
+
+            // Clear the textTracks list (internal browser cache)
+            while (previewVideo.textTracks.length > 0) {
+                previewVideo.textTracks[0].mode = 'disabled';
+            }
+
+            // Create new track with current time range
+            const newSrc = `/api/subtitles/${folderNumber}/${themeNumber}.vtt?start=${startSeconds}&end=${endSeconds}&t=${Date.now()}`;
+
+            const newTrack = document.createElement('track');
+            newTrack.id = 'preview-subtitle-track';
+            newTrack.kind = 'subtitles';
+            newTrack.srclang = 'en';
+            newTrack.label = 'English';
+            newTrack.default = false;
+            newTrack.src = newSrc;
+
+            // Add to DOM
+            previewVideo.appendChild(newTrack);
+
+            // Keep mode as 'showing' so cues are loaded and accessible for sync function
+            setTimeout(() => {
+                if (previewVideo.textTracks.length > 0) {
+                    const textTrack = previewVideo.textTracks[0];
+                    if (textTrack) {
+                        textTrack.mode = 'showing';
+
+                        // Force sync immediately to show correct subtitle
+                        const activeCues = textTrack.activeCues;
+                        if (activeCues && activeCues.length > 0) {
+                            // Manually trigger the sync logic
+                            const currentCue = activeCues[0];
+                            const themeStart = parseFloat(previewVideo.dataset.themeStart);
+
+                            // Convert cue time to trimmed time
+                            const trimmedStartTime = Math.max(0, currentCue.startTime - themeStart);
+                            const vttToTimestamp = (seconds) => {
+                                const h = Math.floor(seconds / 3600);
+                                const m = Math.floor((seconds % 3600) / 60);
+                                const s = seconds % 60;
+                                return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toFixed(3).padStart(6, '0')}`;
+                            };
+
+                            // Update currentCueInfo
+                            currentCueInfo = {
+                                start: vttToTimestamp(trimmedStartTime),
+                                end: vttToTimestamp(Math.max(0, currentCue.endTime - themeStart)),
+                                text: currentCue.text
+                            };
+
+                            // Use plain text (formatting was just cleared)
+                            subtitleText.innerHTML = currentCue.text;
+                            updateSubtitlePreview();
+                        }
+                    }
+                }
+            }, 100);
         }
 
         function updatePreviewBoundaries() {
@@ -1605,7 +1690,8 @@
             if (!videoPath || !startSeconds || !endSeconds) return;
 
             // Load full video and use JavaScript to enforce theme boundaries
-            previewVideo.src = videoPath;
+            // Add cache-busting parameter to force reload when src doesn't change
+            previewVideo.src = videoPath + (videoPath.includes('?') ? '&' : '?') + 't=' + Date.now();
             previewVideo.loop = true;
             previewVideo.muted = false;
 
@@ -1668,11 +1754,15 @@
                         return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toFixed(3).padStart(6, '0')}`;
                     };
 
+                    // IMPORTANT: Use themeStart from dataset, not closure variable
+                    // This ensures correct timing when timeline is expanded/contracted
+                    const themeStart = parseFloat(previewVideo.dataset.themeStart);
+
                     // Track current cue info with matching format
                     // Convert VTT time (original video time) to trimmed time (relative to theme start)
                     // This ensures JSON keys match the trimmed SRT timestamps used for export
-                    const trimmedStartTime = Math.max(0, currentCue.startTime - startSeconds);
-                    const trimmedEndTime = Math.max(0, currentCue.endTime - startSeconds);
+                    const trimmedStartTime = Math.max(0, currentCue.startTime - themeStart);
+                    const trimmedEndTime = Math.max(0, currentCue.endTime - themeStart);
                     const newCueInfo = {
                         start: vttToTimestamp(trimmedStartTime),
                         end: vttToTimestamp(trimmedEndTime),
@@ -1782,33 +1872,103 @@
             previewVideo.pauseHandler = updatePlayButton;
             previewVideo.addEventListener('pause', updatePlayButton);
 
-            // When video loads, seek to theme start and enable subtitles
+            // When video loads metadata, seek to theme start
             previewVideo.addEventListener('loadedmetadata', () => {
-                previewVideo.currentTime = startSeconds;
+                const themeStart = parseFloat(previewVideo.dataset.themeStart);
+                previewVideo.currentTime = themeStart;
                 updateTimeDisplay();
                 updatePlayButton();
 
-                // DISABLE native VTT subtitles - we only show custom overlay
+                // Clear current cue info and overlay
+                currentCueInfo = null;
+
+                // IMPORTANT: Clear cached formatting to prevent old subtitles from appearing
+                allCueFormatting = {};
+
+                const subtitleText = document.getElementById('subtitle-text');
+                if (subtitleText) {
+                    subtitleText.innerHTML = '';
+                }
+
+                // Enable subtitle track
                 setTimeout(() => {
                     if (previewVideo.textTracks.length > 0) {
-                        previewVideo.textTracks[0].mode = 'hidden';
+                        const textTrack = previewVideo.textTracks[0];
+                        if (textTrack) {
+                            textTrack.mode = 'showing';
+
+                            // Force sync to show subtitle at current position
+                            const activeCues = textTrack.activeCues;
+                            if (activeCues && activeCues.length > 0) {
+                                const currentCue = activeCues[0];
+                                const trimmedStartTime = Math.max(0, currentCue.startTime - themeStart);
+                                const vttToTimestamp = (seconds) => {
+                                    const h = Math.floor(seconds / 3600);
+                                    const m = Math.floor((seconds % 3600) / 60);
+                                    const s = seconds % 60;
+                                    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toFixed(3).padStart(6, '0')}`;
+                                };
+
+                                currentCueInfo = {
+                                    start: vttToTimestamp(trimmedStartTime),
+                                    end: vttToTimestamp(Math.max(0, currentCue.endTime - themeStart)),
+                                    text: currentCue.text
+                                };
+
+                                // Use plain text (formatting was just cleared)
+                                subtitleText.innerHTML = currentCue.text;
+                                updateSubtitlePreview();
+                            }
+                        }
                     }
-                }, 100);
+                }, 200);
             }, { once: true });
 
             // Load VTT subtitles for preview - use adjusted subtitles if available
-            const previewSubtitleTrack = document.getElementById('preview-subtitle-track');
-            if (previewSubtitleTrack && folderNumber && themeNumber) {
-                // Replace track to force clean load
+            // Clear current cue info
+            currentCueInfo = null;
+
+            // IMPORTANT: Clear cached formatting to prevent old subtitles from appearing
+            allCueFormatting = {};
+
+            const subtitleTextClear = document.getElementById('subtitle-text');
+            if (subtitleTextClear) {
+                subtitleTextClear.innerHTML = '';
+            }
+
+            // Remove ALL existing tracks first
+            const existingTracks = previewVideo.querySelectorAll('track');
+            existingTracks.forEach(track => track.remove());
+
+            // Clear the textTracks list
+            while (previewVideo.textTracks.length > 0) {
+                previewVideo.textTracks[0].mode = 'disabled';
+            }
+
+            if (folderNumber && themeNumber) {
+                // Create new track
                 const newTrack = document.createElement('track');
                 newTrack.id = 'preview-subtitle-track';
                 newTrack.kind = 'subtitles';
                 newTrack.srclang = 'en';
                 newTrack.label = 'English';
-                newTrack.default = true;
+                newTrack.default = false;
                 newTrack.src = `/api/subtitles/${folderNumber}/${themeNumber}.vtt?start=${startSeconds}&end=${endSeconds}`;
-                previewSubtitleTrack.replaceWith(newTrack);
+
+                // Add to DOM
+                previewVideo.appendChild(newTrack);
+
+                // Keep mode as 'showing' so cues are loaded and accessible
+                setTimeout(() => {
+                    if (previewVideo.textTracks.length > 0) {
+                        const textTrack = previewVideo.textTracks[0];
+                        if (textTrack) {
+                            textTrack.mode = 'showing';
+                        }
+                    }
+                }, 100);
             }
+
 
             // Don't autoplay
             // previewVideo.play().catch(() => {});
@@ -1867,8 +2027,8 @@
                 updatePreviewBoundaries();
             }
 
-            // Reload subtitle track with current time range (reflects timeline dragging)
-            reloadSubtitleTrack();
+            // NOTE: Don't reload subtitle track during drag - only after drag completes
+            // This prevents continuous reloading which causes performance issues
 
             // Update original video to show only buffered range (but not during drag)
             if (!isDragging) {
@@ -1937,6 +2097,13 @@
                 if (isDragging) {
                     // Drag ended - seek original video to new theme start position
                     originalVideo.currentTime = startSeconds;
+
+                    // Now that drag is complete, do full preview video update with new time range
+                    updatePreviewVideo();
+
+                    // Reload subtitle track with new time range
+                    reloadSubtitleTrack();
+
                     // Auto-save theme adjustment
                     autoSaveTheme();
                 }
@@ -1983,7 +2150,7 @@
             // Reset timeline button - reset to original theme time range
             const resetTimelineBtn = document.getElementById('reset-timeline-btn');
             if (resetTimelineBtn) {
-                resetTimelineBtn.addEventListener('click', (e) => {
+                resetTimelineBtn.addEventListener('click', async (e) => {
                     e.stopPropagation();
                     e.preventDefault();
 
@@ -2000,14 +2167,31 @@
                     // Reload subtitle track with new time range
                     reloadSubtitleTrack();
 
-                    // Auto-save the reset
-                    autoSaveTheme();
+                    // Delete the adjust file on server
+                    try {
+                        const response = await fetch('/api/reset-theme', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                folder: folderNumber,
+                                theme: themeNumber
+                            })
+                        });
 
-                    // Visual feedback
-                    resetTimelineBtn.textContent = '✓ Reset Complete';
-                    setTimeout(() => {
-                        resetTimelineBtn.innerHTML = '↺ Reset to Original';
-                    }, 1500);
+                        if (!response.ok) throw new Error('Failed to reset theme');
+
+                        // Visual feedback
+                        resetTimelineBtn.textContent = '✓ Reset Complete';
+                        setTimeout(() => {
+                            resetTimelineBtn.innerHTML = '↺ Reset to Original';
+                        }, 1500);
+                    } catch (error) {
+                        console.error('Error resetting theme:', error);
+                        resetTimelineBtn.textContent = '✗ Reset Failed';
+                        setTimeout(() => {
+                            resetTimelineBtn.innerHTML = '↺ Reset to Original';
+                        }, 1500);
+                    }
                 });
             }
         }
