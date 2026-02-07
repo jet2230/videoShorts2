@@ -829,7 +829,12 @@ def get_subtitle_formatting(folder_number: str, theme_number: str):
 
 @app.route('/api/subtitles/<folder_number>/<theme_number>.vtt', methods=['GET'])
 def get_theme_vtt_subtitles(folder_number: str, theme_number: str):
-    """Get adjusted theme subtitles as VTT for preview video."""
+    """Get adjusted theme subtitles as VTT for preview video.
+
+    Query parameters:
+        start: Override theme start time (seconds)
+        end: Override theme end time (seconds)
+    """
     import re
 
     base_dir = Path(settings.get('video', 'output_dir'))
@@ -843,26 +848,35 @@ def get_theme_vtt_subtitles(folder_number: str, theme_number: str):
     if not folder:
         return "Folder not found", 404
 
+    # Check for query parameter overrides (from timeline dragging)
+    start_override = request.args.get('start', type=float)
+    end_override = request.args.get('end', type=float)
+
     # Get theme start/end time
     themes_file = folder / 'themes.md'
     theme_start_sec = None
     theme_end_sec = None
 
-    adjust_file = folder / 'shorts' / f'theme_{int(theme_number):03d}_adjust.md'
-    if adjust_file.exists():
-        with open(adjust_file, 'r', encoding='utf-8') as f:
-            content = f.read()
-            time_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})', content)
-            if time_match:
-                theme_start_sec = creator.parse_timestamp_to_seconds(time_match.group(1))
-                theme_end_sec = creator.parse_timestamp_to_seconds(time_match.group(2))
+    # Use query parameters if provided, otherwise read from adjust/themes file
+    if start_override is not None and end_override is not None:
+        theme_start_sec = start_override
+        theme_end_sec = end_override
     else:
-        themes = creator.parse_themes_file(themes_file)
-        for theme in themes:
-            if theme['number'] == int(theme_number):
-                theme_start_sec = creator.parse_timestamp_to_seconds(theme['start'])
-                theme_end_sec = creator.parse_timestamp_to_seconds(theme['end'])
-                break
+        adjust_file = folder / 'shorts' / f'theme_{int(theme_number):03d}_adjust.md'
+        if adjust_file.exists():
+            with open(adjust_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+                time_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})', content)
+                if time_match:
+                    theme_start_sec = creator.parse_timestamp_to_seconds(time_match.group(1))
+                    theme_end_sec = creator.parse_timestamp_to_seconds(time_match.group(2))
+        else:
+            themes = creator.parse_themes_file(themes_file)
+            for theme in themes:
+                if theme['number'] == int(theme_number):
+                    theme_start_sec = creator.parse_timestamp_to_seconds(theme['start'])
+                    theme_end_sec = creator.parse_timestamp_to_seconds(theme['end'])
+                    break
 
     if theme_start_sec is None or theme_end_sec is None:
         return "Theme time range not found", 404

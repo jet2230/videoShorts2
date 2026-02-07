@@ -1371,7 +1371,7 @@
                     // Reload the subtitle track to show changes
                     const previewSubtitleTrack = document.getElementById('preview-subtitle-track');
                     if (previewSubtitleTrack) {
-                        previewSubtitleTrack.src = `/api/subtitles/${folderNumber}/${themeNumber}.vtt?t=${Date.now()}`;
+                        previewSubtitleTrack.src = `/api/subtitles/${folderNumber}/${themeNumber}.vtt?start=${startSeconds}&end=${endSeconds}&t=${Date.now()}`;
                     }
 
                     indicator.textContent = '✓ Saved';
@@ -1520,6 +1520,15 @@
         }
 
         // Update preview video with clipped range
+        function reloadSubtitleTrack() {
+            // Reload VTT subtitle track with current time range
+            const previewSubtitleTrack = document.getElementById('preview-subtitle-track');
+            if (previewSubtitleTrack && folderNumber && themeNumber) {
+                // Add timestamp to prevent caching
+                previewSubtitleTrack.src = `/api/subtitles/${folderNumber}/${themeNumber}.vtt?start=${startSeconds}&end=${endSeconds}&t=${Date.now()}`;
+            }
+        }
+
         function updatePreviewVideo() {
             if (!videoPath || !startSeconds || !endSeconds) return;
 
@@ -1718,7 +1727,7 @@
             // Load VTT subtitles for preview - use adjusted subtitles if available
             const previewSubtitleTrack = document.getElementById('preview-subtitle-track');
             if (previewSubtitleTrack) {
-                previewSubtitleTrack.src = `/api/subtitles/${folderNumber}/${themeNumber}.vtt`;
+                previewSubtitleTrack.src = `/api/subtitles/${folderNumber}/${themeNumber}.vtt?start=${startSeconds}&end=${endSeconds}`;
             }
 
             // Don't autoplay
@@ -1770,6 +1779,9 @@
 
             // Update preview video when range changes
             updatePreviewVideo();
+
+            // Reload subtitle track with current time range (reflects timeline dragging)
+            reloadSubtitleTrack();
 
             // Update original video to show only buffered range (but not during drag)
             if (!isDragging) {
