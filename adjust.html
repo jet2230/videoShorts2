@@ -1584,7 +1584,7 @@
 
         // Update original video playback range (buffered range)
         function updateOriginalVideoRange() {
-            if (!videoPath || !fullVideoDuration || !startSeconds || !endSeconds) return;
+            if (!videoPath || !fullVideoDuration || startSeconds === null || startSeconds === undefined || endSeconds === null || endSeconds === undefined) return;
 
             const bufferStart = Math.max(0, startSeconds - bufferLeftSeconds);
             const bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferRightSeconds);
@@ -1679,7 +1679,7 @@
         function updatePreviewBoundaries() {
             // Update only the theme boundaries without resetting video
             // This is called during timeline drag to keep preview in sync
-            if (!previewVideo || !startSeconds || !endSeconds) return;
+            if (!previewVideo || startSeconds === null || startSeconds === undefined || endSeconds === null || endSeconds === undefined) return;
 
             // Update boundary markers
             previewVideo.dataset.themeStart = startSeconds;
@@ -1687,7 +1687,7 @@
         }
 
         function updatePreviewVideo() {
-            if (!videoPath || !startSeconds || !endSeconds) return;
+            if (!videoPath || startSeconds === null || startSeconds === undefined || endSeconds === null || endSeconds === undefined) return;
 
             // Load full video and use JavaScript to enforce theme boundaries
             // Add cache-busting parameter to force reload when src doesn't change
@@ -1739,7 +1739,7 @@
             // Sync current subtitle from VTT to textarea
             const syncSubtitleToTextarea = () => {
                 const textTrack = previewVideo.textTracks[0];
-                if (!textTrack || textTrack.cues.length === 0) return;
+                if (!textTrack || !textTrack.cues || textTrack.cues.length === 0) return;
 
                 const activeCues = textTrack.activeCues;
                 if (activeCues.length > 0) {
@@ -1923,6 +1923,16 @@
                     }
                 }, 200);
             }, { once: true });
+
+            // Fallback: Also seek after a delay in case loadedmetadata doesn't fire
+            // This can happen when the browser thinks the video src hasn't changed
+            setTimeout(() => {
+                const themeStart = parseFloat(previewVideo.dataset.themeStart);
+                if (previewVideo.currentTime !== themeStart && previewVideo.readyState >= 2) {
+                    previewVideo.currentTime = themeStart;
+                    updateTimeDisplay();
+                }
+            }, 500);
 
             // Load VTT subtitles for preview - use adjusted subtitles if available
             // Clear current cue info
@@ -2160,6 +2170,10 @@
 
                     // Update UI (includes original video)
                     updateUI();
+
+                    // IMPORTANT: Explicitly seek original video to the reset position
+                    // This ensures the original video updates even if it's already in buffer range
+                    originalVideo.currentTime = startSeconds;
 
                     // Update preview video with new time range
                     updatePreviewVideo();
