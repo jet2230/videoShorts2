@@ -646,6 +646,22 @@
             font-size: 14px;
         }
 
+        #folder-location {
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            display: inline-block;
+            vertical-align: bottom;
+            cursor: help;
+        }
+
+        #folder-location:hover {
+            overflow: visible;
+            white-space: normal;
+            word-wrap: break-word;
+        }
+
         .duration-value {
             color: #00ff9d;
             font-size: 18px;
@@ -1090,7 +1106,7 @@
                 </div>
                 <div class="info-row">
                     <span class="info-label">Directory location</span>
-                    <span class="info-value custom-tooltip" id="folder-location">📁</span>
+                    <span class="info-value" id="folder-location" title="">-</span>
                 </div>
             </div>
         </div>
@@ -1495,7 +1511,9 @@
                 document.getElementById('theme-number').textContent = `Theme ${themeData.number}`;
                 document.getElementById('theme-name').textContent = displayTitle;
                 const fullPath = `videos/${data.folder}`;
-                document.getElementById('folder-location').setAttribute('data-tooltip', fullPath);
+                const folderLocationEl = document.getElementById('folder-location');
+                folderLocationEl.textContent = fullPath;
+                folderLocationEl.title = fullPath;
 
                 // Update header with theme info
                 document.getElementById('header-title').textContent = `Adjust Theme ${themeData.number}`;
