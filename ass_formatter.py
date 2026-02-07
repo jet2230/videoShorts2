@@ -188,7 +188,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     styles = position_styles[i]
                     tags = self.get_style_tags(styles)
                     if tags:
-                        result_parts.append(''.join(tags) + word + '{\\r}')
+                        # Note: No {\r} reset - let styles persist until end of dialogue
+                        result_parts.append(''.join(tags) + word)
                     else:
                         result_parts.append(word)
                 else:
@@ -310,11 +311,130 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         decoded = unescape(html_text)
         result = decoded
 
-        # Convert <span style="color: rgb(...)"> to ASS color tags
-        color_pattern = r'<span\s+style="[^"]*color:\s*rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)[^"]*">(.*?)</span>'
-        result = re.sub(color_pattern,
-                       lambda m: f'{{\\c&H00{int(m.group(3)):02X}{int(m.group(2)):02X}{int(m.group(1)):02X}}}{m.group(4)}{{\\r}}',
-                       result, flags=re.DOTALL)
+        # CSS font-size keywords to em multipliers
+        size_keywords = {
+            'xx-small': 0.5,
+            'x-small': 0.7,
+            'small': 0.9,
+            'medium': 1.0,
+            'large': 1.2,
+            'x-large': 1.4,
+            'xx-large': 1.6,
+            'xxx-large': 1.8,
+            'smaller': 0.8,
+            'larger': 1.2
+        }
+
+        # Font size attribute (1-7) to em multipliers
+        font_size_map = {
+            '1': 0.6,
+            '2': 0.8,
+            '3': 1.0,
+            '4': 1.2,
+            '5': 1.4,
+            '6': 1.6,
+            '7': 1.8
+        }
+
+        def hex_to_rgb(hex_color):
+            """Convert hex color #RRGGBB to rgb(r, g, b)."""
+            hex_color = hex_color.lstrip('#')
+            if len(hex_color) == 6:
+                r = int(hex_color[0:2], 16)
+                g = int(hex_color[2:4], 16)
+                b = int(hex_color[4:6], 16)
+                return f'rgb({r}, {g}, {b})'
+            return None
+
+        def convert_span_styles(match):
+            """Convert a span with combined styles to ASS tags."""
+            style_content = match.group(1)
+            text = match.group(2)
+
+            tags = []
+            closing_tags = []
+
+            # Extract color - handle both rgb() and hex formats
+            color_match = re.search(r'color:\s*(rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)|#[0-9a-fA-F]{6})', style_content)
+            if color_match:
+                color_str = color_match.group(1)
+                if color_str.startswith('#'):
+                    # Convert hex to rgb
+                    rgb_str = hex_to_rgb(color_str)
+                    if rgb_str:
+                        rgb_match = re.match(r'rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)', rgb_str)
+                        if rgb_match:
+                            r, g, b = int(rgb_match.group(1)), int(rgb_match.group(2)), int(rgb_match.group(3))
+                            tags.append(f'{{\\c&H00{b:02X}{g:02X}{r:02X}}}')
+                            closing_tags.insert(0, '{\\c&H00FFFFFF}')
+                else:
+                    # Already rgb format
+                    rgb_match = re.match(r'rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)', color_str)
+                    if rgb_match:
+                        r, g, b = int(rgb_match.group(1)), int(rgb_match.group(2)), int(rgb_match.group(3))
+                        tags.append(f'{{\\c&H00{b:02X}{g:02X}{r:02X}}}')
+                        closing_tags.insert(0, '{\\c&H00FFFFFF}')
+
+            # Extract font-weight (bold)
+            if re.search(r'font-weight:\s*(bold|700)', style_content):
+                tags.append('{\\b1}')
+                closing_tags.insert(0, '{\\b0}')
+
+            # Extract font-style (italic)
+            if re.search(r'font-style:\s*italic', style_content):
+                tags.append('{\\i1}')
+                closing_tags.insert(0, '{\\i0}')
+
+            # Extract font-size
+            size_match = re.search(r'font-size:\s*([\d.]+)\s*(em|px|%)|font-size:\s*(\w+)', style_content)
+            if size_match:
+                if size_match.group(1):  # Has unit (em, px, %)
+                    value = float(size_match.group(1))
+                    unit = size_match.group(2)
+                    if unit == 'em':
+                        size_em = value
+                    elif unit == 'px':
+                        size_em = value / self.font_size
+                    elif unit == '%':
+                        size_em = value / 100
+                elif size_match.group(3) in size_keywords:  # CSS keyword
+                    size_em = size_keywords[size_match.group(3)]
+                else:
+                    size_em = 1.0
+
+                size_px = int(self.font_size * size_em)
+                tags.append(f'{{\\fs{size_px}}}')
+                closing_tags.insert(0, '{\\r}')  # Font size needs full reset
+
+            # Build result with opening tags, text, and closing tags
+            return ''.join(tags) + text + ''.join(closing_tags)
+
+        # Convert <font color="#..."> tags to ASS color
+        def convert_font_color(m):
+            hex_color = m.group(1)
+            text = m.group(2)
+            rgb_str = hex_to_rgb(hex_color)
+            if rgb_str:
+                rgb_match = re.match(r'rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)', rgb_str)
+                if rgb_match:
+                    r, g, b = int(rgb_match.group(1)), int(rgb_match.group(2)), int(rgb_match.group(3))
+                    return f'{{\\c&H00{b:02X}{g:02X}{r:02X}}}{text}{{\\c&H00FFFFFF}}'
+            return text
+
+        result = re.sub(r'<font\s+color="(#?[0-9a-fA-F]+)">(.*?)</font>', convert_font_color, result, flags=re.DOTALL)
+
+        # Convert <font size="1-7"> tags to ASS font size
+        def convert_font_size(m):
+            size_value = m.group(1)
+            size_em = font_size_map.get(size_value, 1.0)
+            size_px = int(self.font_size * size_em)
+            return f'{{\\fs{size_px}}}{m.group(2)}{{\\r}}'
+
+        result = re.sub(r'<font\s+size="([1-7])">(.*?)</font>', convert_font_size, result, flags=re.DOTALL)
+
+        # Convert all <span style="..."> tags with any style
+        span_pattern = r'<span\s+style="([^"]*)">(.*?)</span>'
+        result = re.sub(span_pattern, convert_span_styles, result, flags=re.DOTALL)
 
         # Convert <strong> and <b> to ASS bold tags
         result = re.sub(r'<strong>(.*?)</strong>', r'{\\b1}\1{\\b0}', result, flags=re.DOTALL)
@@ -323,16 +443,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         # Convert <em> and <i> to ASS italic tags
         result = re.sub(r'<em>(.*?)</em>', r'{\\i1}\1{\\i0}', result, flags=re.DOTALL)
         result = re.sub(r'<i>(.*?)</i>', r'{\\i1}\1{\\i0}', result, flags=re.DOTALL)
-
-        # Convert font-size (e.g., "font-size: 1.2em")
-        size_pattern = r'<span\s+style="[^"]*font-size:\s*([\d.]+)em[^"]*">(.*?)</span>'
-
-        def convert_size(m):
-            size_em = float(m.group(1))
-            size_px = int(self.font_size * size_em)
-            return f'{{\\fs{size_px}}}{m.group(2)}{{\\r}}'
-
-        result = re.sub(size_pattern, convert_size, result, flags=re.DOTALL)
 
         # Remove any remaining HTML tags
         result = re.sub(r'<[^>]+>', '', result)

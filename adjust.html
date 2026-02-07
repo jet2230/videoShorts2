@@ -2431,35 +2431,10 @@
             const editor = document.getElementById('subtitle-text');
             editor.focus();
 
-            // Save current selection
-            const selection = window.getSelection();
-            if (selection.rangeCount > 0) {
-                const range = selection.getRangeAt(0);
-
-                // Only apply if there's actual text selected
-                if (range.toString().trim().length > 0) {
-                    // Create a span with the color
-                    const span = document.createElement('span');
-                    span.style.color = color;
-                    span.textContent = range.toString();
-
-                    try {
-                        // Delete the selected content and insert the colored span
-                        range.deleteContents();
-                        range.insertNode(span);
-
-                        // Restore selection to the new span
-                        range.selectNodeContents(span);
-                        selection.removeAllRanges();
-                        selection.addRange(range);
-                    } catch (e) {
-                        // Fallback to execCommand if surroundContents fails
-                        console.error('Error applying color:', e);
-                        document.execCommand('styleWithCSS', false, true);
-                        document.execCommand('foreColor', false, color);
-                    }
-                }
-            }
+            // Use execCommand which properly handles overlapping selections
+            // styleWithCSS=false gives us <b> tags instead of <span style="font-weight: bold;">
+            document.execCommand('styleWithCSS', false, false);
+            document.execCommand('foreColor', false, color);
 
             // Update the preview video overlay to show the change
             updateSubtitlePreview();
@@ -2472,29 +2447,50 @@
             const editor = document.getElementById('subtitle-text');
             editor.focus();
 
-            // Get current selection and wrap with span
             const selection = window.getSelection();
-            if (selection.rangeCount > 0) {
-                const range = selection.getRangeAt(0);
-                const span = document.createElement('span');
-                span.style.fontSize = `${multiplier}em`;
-                try {
-                    range.surroundContents(span);
-                } catch (e) {
-                    // If selection is complex, use execCommand
-                    document.execCommand('fontSize', false, '7');
-                    const fontElements = editor.querySelectorAll('font[size="7"]');
-                    fontElements.forEach(el => {
-                        el.removeAttribute('size');
-                        el.style.fontSize = `${multiplier}em`;
-                    });
+            if (selection.rangeCount === 0) return;
+            if (selection.toString().trim().length === 0) return;
+
+            // Find current font size value (1-7 scale)
+            let currentSize = 3; // Default normal size
+            let node = selection.anchorNode;
+            while (node && node !== editor) {
+                if (node.nodeType === Node.ELEMENT_NODE) {
+                    // Check for <font size="X"> tags
+                    if (node.nodeName === 'FONT' && node.getAttribute('size')) {
+                        currentSize = parseInt(node.getAttribute('size'));
+                        break;
+                    }
+                    // Check for span with font-size
+                    if (node.nodeName === 'SPAN' && node.style?.fontSize) {
+                        // Approximate conversion from em to 1-7 scale
+                        const match = node.style.fontSize.match(/([\d.]+)/);
+                        if (match) {
+                            const em = parseFloat(match[1]);
+                            if (em < 0.8) currentSize = 1;
+                            else if (em < 1.0) currentSize = 2;
+                            else if (em < 1.3) currentSize = 3;
+                            else if (em < 1.6) currentSize = 4;
+                            else if (em < 1.9) currentSize = 5;
+                            else if (em < 2.2) currentSize = 6;
+                            else currentSize = 7;
+                            break;
+                        }
+                    }
                 }
+                node = node.parentNode;
             }
 
-            // Update the preview video overlay to show the change
-            updateSubtitlePreview();
+            // Calculate new size (clamp to 1-7 range)
+            let newSize = currentSize + (multiplier > 1 ? 1 : -1);
+            if (newSize < 1) newSize = 1;
+            if (newSize > 7) newSize = 7;
 
-            // Save the formatting for the current cue
+            // Apply the size
+            document.execCommand('fontSize', false, newSize.toString());
+
+            editor.focus();
+            updateSubtitlePreview();
             saveCurrentCueFormatting();
         }
 
