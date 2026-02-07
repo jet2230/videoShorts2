@@ -507,6 +507,30 @@
             color: #aaa;
         }
 
+        .reset-timeline-btn {
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 87, 34, 0.5);
+            background: rgba(255, 87, 34, 0.1);
+            color: #ff5722;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+
+        .reset-timeline-btn:hover {
+            background: rgba(255, 87, 34, 0.2);
+            border-color: rgba(255, 87, 34, 0.8);
+            transform: translateY(-1px);
+        }
+
+        .reset-timeline-btn:active {
+            transform: translateY(0);
+            background: rgba(255, 87, 34, 0.3);
+        }
+
         .timeline-track {
             position: relative;
             height: 60px;
@@ -1016,6 +1040,7 @@
             <div class="timeline-container">
                 <div class="timeline-header">
                     <span class="buffer-label" id="buffer-display">L: ±5min | R: ±5min</span>
+                    <button id="reset-timeline-btn" class="reset-timeline-btn" title="Reset to original theme time range">↺ Reset to Original</button>
                 </div>
                 <div class="timeline-track" id="timeline-track">
                     <div class="buffer-range" id="buffer-range">
@@ -1189,6 +1214,8 @@
         let videoPath = '';
         let startSeconds = 0;
         let endSeconds = 0;
+        let originalStartSeconds = 0;  // Original theme time from themes.md (for reset)
+        let originalEndSeconds = 0;    // Original theme time from themes.md (for reset)
         let bufferLeftSeconds = 300; // 5 minutes buffer before theme
         let bufferRightSeconds = 300; // 5 minutes buffer after theme
         let isDragging = null;
@@ -1412,6 +1439,9 @@
                 // Set initial values
                 startSeconds = parseTime(themeData.start);
                 endSeconds = parseTime(themeData.end);
+                // Store original values for reset functionality
+                originalStartSeconds = startSeconds;
+                originalEndSeconds = endSeconds;
 
                 // Construct video path from folder and actual video filename
                 if (data.video_filename) {
@@ -1923,6 +1953,31 @@
                 bufferRightSeconds += 60;
                 updateUI();
             });
+
+            // Reset timeline button - reset to original theme time range
+            const resetTimelineBtn = document.getElementById('reset-timeline-btn');
+            if (resetTimelineBtn) {
+                resetTimelineBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+
+                    // Reset to original values
+                    startSeconds = originalStartSeconds;
+                    endSeconds = originalEndSeconds;
+
+                    // Update UI
+                    updateUI();
+
+                    // Auto-save the reset
+                    autoSaveTheme();
+
+                    // Visual feedback
+                    resetTimelineBtn.textContent = '✓ Reset Complete';
+                    setTimeout(() => {
+                        resetTimelineBtn.innerHTML = '↺ Reset to Original';
+                    }, 1500);
+                });
+            }
         }
 
         // Setup custom video controls
