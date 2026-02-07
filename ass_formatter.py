@@ -421,6 +421,61 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     return f'{{\\c&H00{b:02X}{g:02X}{r:02X}}}{text}{{\\c&H00FFFFFF}}'
             return text
 
+        # Convert <font color="#..."> tags to ASS color
+        def convert_font_color(m):
+            hex_color = m.group(1)
+            text = m.group(2)
+            rgb_str = hex_to_rgb(hex_color)
+            if rgb_str:
+                rgb_match = re.match(r'rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)', rgb_str)
+                if rgb_match:
+                    r, g, b = int(rgb_match.group(1)), int(rgb_match.group(2)), int(rgb_match.group(3))
+                    return f'{{\\c&H00{b:02X}{g:02X}{r:02X}}}{text}{{\\c&H00FFFFFF}}'
+            return text
+
+        # Convert <font size="1-7"> tags to ASS font size
+        def convert_font_size(m):
+            size_value = m.group(1)
+            size_em = font_size_map.get(size_value, 1.0)
+            size_px = int(self.font_size * size_em)
+            return f'{{\\fs{size_px}}}{m.group(2)}{{\\r}}'
+
+        # Convert <font color="..." size="..."> combined tags (handles both attributes)
+        def convert_font_combined(m):
+            attributes = m.group(1)
+            text = m.group(2)
+
+            tags = []
+            closers = []
+
+            # Extract color
+            color_match = re.search(r'color="([^"]+)"', attributes)
+            if color_match:
+                color_val = color_match.group(1)
+                rgb_str = hex_to_rgb(color_val)
+                if rgb_str:
+                    rgb_match = re.match(r'rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)', rgb_str)
+                    if rgb_match:
+                        r, g, b = int(rgb_match.group(1)), int(rgb_match.group(2)), int(rgb_match.group(3))
+                        tags.append(f'{{\\c&H00{b:02X}{g:02X}{r:02X}}}')
+                        closers.insert(0, '{\\c&H00FFFFFF}')
+
+            # Extract size
+            size_match = re.search(r'size="([1-7])"', attributes)
+            if size_match:
+                size_val = size_match.group(1)
+                size_em = font_size_map.get(size_val, 1.0)
+                size_px = int(self.font_size * size_em)
+                tags.append(f'{{\\fs{size_px}}}')
+                closers.insert(0, '{\\r}')
+
+            # Build result with tags, text, and closers
+            return ''.join(tags) + text + ''.join(closers)
+
+        # Process combined <font color="..." size="..."> tags first
+        result = re.sub(r'<font\s+(color="[^"]*"\s+size="[^"]*")\s*>(.*?)</font>', convert_font_combined, result, flags=re.DOTALL)
+
+        # Then process remaining <font> tags with only color
         result = re.sub(r'<font\s+color="(#?[0-9a-fA-F]+)">(.*?)</font>', convert_font_color, result, flags=re.DOTALL)
 
         # Convert <font size="1-7"> tags to ASS font size

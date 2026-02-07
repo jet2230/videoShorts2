@@ -1299,6 +1299,7 @@
         let allThemeCues = []; // Cache all theme cues
         let subtitleFormatting = { bold: false, italic: false, color: null, size: null };
         let allCueFormatting = {}; // Store formatting for all cues: {start_time: {bold, italic, color, size}}
+        let isProgrammaticUpdate = false; // Flag to prevent auto-save during programmatic updates
 
         function autoSaveTheme() {
             // Clear existing timeout
@@ -1833,6 +1834,9 @@
                     if (!currentCueInfo || currentCueInfo.start !== newCueInfo.start) {
                         currentCueInfo = newCueInfo;
 
+                        // Set flag to prevent auto-save during programmatic update
+                        isProgrammaticUpdate = true;
+
                         console.log('🎬 Cue changed:', currentCueInfo.start, currentCueInfo.text);
                         console.log('   Looking for formatting in:', Object.keys(allCueFormatting));
 
@@ -1884,6 +1888,9 @@
                         if (document.activeElement !== subtitleText) {
                             updateSubtitlePreview();
                         }
+
+                        // Reset flag after programmatic update is complete
+                        isProgrammaticUpdate = false;
                     }
                 }
             };
@@ -2690,7 +2697,10 @@
         // Event listeners for subtitle settings
         document.getElementById('subtitle-text').addEventListener('input', () => {
             updateSubtitlePreview();
-            autoSaveSubtitle(); // Auto-save subtitle edits
+            // Only auto-save if this is a user edit, not a programmatic update
+            if (!isProgrammaticUpdate) {
+                autoSaveSubtitle(); // Auto-save subtitle edits
+            }
         });
         document.getElementById('subtitle-font').addEventListener('change', updateSubtitlePreview);
         document.getElementById('subtitle-size').addEventListener('input', updateSubtitlePreview);
