@@ -1974,8 +1974,14 @@
                     startSeconds = originalStartSeconds;
                     endSeconds = originalEndSeconds;
 
-                    // Update UI
+                    // Update UI (includes original video)
                     updateUI();
+
+                    // Update preview video with new time range
+                    updatePreviewVideo();
+
+                    // Reload subtitle track with new time range
+                    reloadSubtitleTrack();
 
                     // Auto-save the reset
                     autoSaveTheme();
