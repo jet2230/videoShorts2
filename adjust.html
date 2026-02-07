@@ -1884,10 +1884,9 @@
                             subtitleFormatting = { bold: false, italic: false, color: null, size: null };
                         }
 
-                        // Only update if user is not currently typing (check focus)
-                        if (document.activeElement !== subtitleText) {
-                            updateSubtitlePreview();
-                        }
+                        // Always update preview after programmatic cue change
+                        // (Don't check focus here since we just focused the editor to apply HTML)
+                        updateSubtitlePreview();
 
                         // Reset flag after programmatic update is complete
                         isProgrammaticUpdate = false;
