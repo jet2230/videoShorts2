@@ -1591,6 +1591,16 @@
             }
         }
 
+        function updatePreviewBoundaries() {
+            // Update only the theme boundaries without resetting video
+            // This is called during timeline drag to keep preview in sync
+            if (!previewVideo || !startSeconds || !endSeconds) return;
+
+            // Update boundary markers
+            previewVideo.dataset.themeStart = startSeconds;
+            previewVideo.dataset.themeEnd = endSeconds;
+        }
+
         function updatePreviewVideo() {
             if (!videoPath || !startSeconds || !endSeconds) return;
 
@@ -1847,14 +1857,14 @@
             // Update subtitle preview
             updateSubtitlePreview();
 
-            // Update preview video boundaries and reload subtitles during drag
-            // But don't do full video reset (which causes position 0 issue)
+            // Update preview video during drag by updating boundaries
+            // Don't reset the video (which causes position 0 issue)
             if (!isDragging) {
+                // Not dragging - do full preview video update
                 updatePreviewVideo();
             } else {
-                // During drag, just update the boundary markers
-                previewVideo.dataset.themeStart = startSeconds;
-                previewVideo.dataset.themeEnd = endSeconds;
+                // During drag - only update boundaries, don't reset video
+                updatePreviewBoundaries();
             }
 
             // Reload subtitle track with current time range (reflects timeline dragging)
