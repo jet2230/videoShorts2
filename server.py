@@ -383,7 +383,8 @@ def get_themes(folder_number: str):
                     video_title = line.split(':', 1)[1].strip()
                     break
 
-    # Check for adjusted theme files and override with adjusted values
+    # Check for adjusted theme files and add adjusted values as separate fields
+    # Keep original values from themes.md intact
     for theme in themes:
         adjust_file = folder / 'shorts' / f"theme_{theme['number']:03d}_adjust.md"
         if adjust_file.exists():
@@ -395,11 +396,12 @@ def get_themes(folder_number: str):
                     title_match = re.search(r'\*\*Title:\*\*\s*(.+?)(?:\n\n|\n\*)', content)
                     time_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})', content)
 
+                    # Add adjusted values as separate fields, don't override original
                     if title_match:
-                        theme['title'] = title_match.group(1).strip()
+                        theme['adjusted_title'] = title_match.group(1).strip()
                     if time_match:
-                        theme['start'] = time_match.group(1)
-                        theme['end'] = time_match.group(2)
+                        theme['adjusted_start'] = time_match.group(1)
+                        theme['adjusted_end'] = time_match.group(2)
                     theme['adjusted'] = True
             except Exception as e:
                 print(f"Error reading adjust file {adjust_file}: {e}")

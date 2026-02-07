@@ -1291,7 +1291,7 @@
                     const updates = {
                         folder: folderNumber,
                         theme: themeNumber,
-                        title: themeData.title,
+                        title: document.getElementById('theme-name').textContent,
                         start: formatTime(startSeconds),
                         end: formatTime(endSeconds)
                     };
@@ -1436,12 +1436,21 @@
 
                 if (!themeData) throw new Error('Theme not found');
 
-                // Set initial values
-                startSeconds = parseTime(themeData.start);
-                endSeconds = parseTime(themeData.end);
-                // Store original values for reset functionality
-                originalStartSeconds = startSeconds;
-                originalEndSeconds = endSeconds;
+                // Store ORIGINAL values from themes.md (for reset button)
+                originalStartSeconds = parseTime(themeData.start);
+                originalEndSeconds = parseTime(themeData.end);
+
+                // Use ADJUSTED values for display if they exist, otherwise use original
+                if (themeData.adjusted_start && themeData.adjusted_end) {
+                    startSeconds = parseTime(themeData.adjusted_start);
+                    endSeconds = parseTime(themeData.adjusted_end);
+                } else {
+                    startSeconds = originalStartSeconds;
+                    endSeconds = originalEndSeconds;
+                }
+
+                // Use adjusted title if available
+                const displayTitle = themeData.adjusted_title || themeData.title || '';
 
                 // Construct video path from folder and actual video filename
                 if (data.video_filename) {
@@ -1453,13 +1462,13 @@
 
                 // Update info display
                 document.getElementById('theme-number').textContent = `Theme ${themeData.number}`;
-                document.getElementById('theme-name').textContent = themeData.title || '';
+                document.getElementById('theme-name').textContent = displayTitle;
                 const fullPath = `videos/${data.folder}`;
                 document.getElementById('folder-location').setAttribute('data-tooltip', fullPath);
 
                 // Update header with theme info
                 document.getElementById('header-title').textContent = `Adjust Theme ${themeData.number}`;
-                document.getElementById('header-theme-name').textContent = themeData.title || '';
+                document.getElementById('header-theme-name').textContent = displayTitle;
 
                 document.getElementById('subtitle-text').innerHTML = themeData.text || '';
 
