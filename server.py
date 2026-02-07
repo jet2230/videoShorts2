@@ -10,12 +10,36 @@ import threading
 import queue
 import os
 import sys
+import logging
 from pathlib import Path
 from typing import Dict, List
 import configparser
 from datetime import datetime
 
 from shorts_creator import YouTubeShortsCreator, load_settings
+
+# Setup logging to file
+log_handler = logging.FileHandler('server.log')
+log_handler.setLevel(logging.INFO)
+log_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+log_handler.setFormatter(log_formatter)
+
+# Get Flask's logger and add file handler
+flask_logger = logging.getLogger('werkzeug')
+flask_logger.setLevel(logging.INFO)
+flask_logger.addHandler(log_handler)
+
+# Also log our app messages
+app_logger = logging.getLogger(__name__)
+app_logger.setLevel(logging.INFO)
+app_logger.addHandler(log_handler)
+
+# Keep console output too
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(log_formatter)
+flask_logger.addHandler(console_handler)
+app_logger.addHandler(console_handler)
 
 app = Flask(__name__, static_folder='static')
 CORS(app)
@@ -1448,15 +1472,24 @@ if __name__ == '__main__':
     print(f"Video directory: {settings.get('video', 'output_dir')}")
     print("=" * 60)
 
+    # Log server startup
+    app_logger.info("=" * 60)
+    app_logger.info("YouTube Shorts Creator - Web Server STARTED")
+    app_logger.info(f"Server running at: http://localhost:5000")
+    app_logger.info(f"Video directory: {settings.get('video', 'output_dir')}")
+    app_logger.info("=" * 60)
+
     # Signal handler for graceful shutdown
     def signal_handler(sig, frame):
         print("\n\033[93mShutdown requested. Cleaning up...\033[0m")
+        app_logger.warning("Shutdown requested. Cleaning up...")
         # Cancel all running tasks
         with task_lock:
             for task_id, task in tasks.items():
                 if task.get('status') == 'running':
                     task['cancelled'] = True
         print("\033[92mServer shut down cleanly.\033[0m")
+        app_logger.info("Server shut down cleanly")
         import sys
         sys.exit(0)
 
