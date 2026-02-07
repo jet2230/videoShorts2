@@ -47,6 +47,14 @@ class ASSFormatter:
         with open(formatting_json_path, 'r', encoding='utf-8') as f:
             formatting_data = json.load(f)
 
+        # Check if any cue has a position set - if so, use that for all cues
+        # Priority: JSON position > settings.ini defaults
+        position_override = None
+        for timestamp_key, cue_data in formatting_data.items():
+            if isinstance(cue_data, dict) and cue_data.get('position'):
+                position_override = cue_data['position']
+                break
+
         # Parse SRT segments
         segments = self._parse_srt_segments(srt_path)
 
@@ -54,7 +62,7 @@ class ASSFormatter:
         with open(output_ass_path, 'w', encoding='utf-8') as f:
             # Write header
             f.write(self.create_ass_header())
-            f.write(self.create_ass_styles())
+            f.write(self.create_ass_styles(position_override))
 
             # Write events
             for segment in segments:
@@ -97,11 +105,38 @@ ScaledBorderAndShadow: yes
 
 """
 
-    def create_ass_styles(self) -> str:
-        """Generate ASS style definitions."""
+    def create_ass_styles(self, position_override=None) -> str:
+        """Generate ASS style definitions.
+
+        Args:
+            position_override: Optional position from JSON ('top', 'middle', 'bottom').
+                             If provided, overrides settings.ini defaults.
+        """
+        # Use position from JSON if available, otherwise use defaults from settings
+        alignment = 2  # Default: center
+        margin_v = 35   # Default: 35px from bottom
+
+        if position_override:
+            # Map position to ASS alignment and margin
+            # Alignment: 1=left, 2=center, 3=right, 7=left-top, 8=center-top, 9=right-top, etc.
+            # For 9:16 vertical video, we use bottom alignment for subtitles
+            if position_override == 'top':
+                alignment = 8  # Top-center
+                margin_v = 35  # From top
+            elif position_override == 'middle':
+                alignment = 2  # Center
+                margin_v = 0   # Center (no margin)
+            elif position_override == 'bottom':
+                alignment = 2  # Center
+                margin_v = 35  # From bottom (35px default)
+        else:
+            # Use values from settings.ini
+            alignment = int(self.settings.get('subtitle', {}).get('alignment', 2))
+            margin_v = int(self.settings.get('subtitle', {}).get('margin_v', 35))
+
         return f"""[V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{self.font_name},{self.font_size},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,0,1,2,1,2,10,10,20,1
+Style: Default,{self.font_name},{self.font_size},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,0,{alignment},{10},{10},{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -205,13 +240,16 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             # But other styles (bold, italic, size) can stack
             if span_text in word_styles:
                 existing = word_styles[span_text]
-                # Keep existing non-color styles, update color
+                # Update color (innermost takes precedence)
                 if color is not None:
                     existing['color'] = color
+                # Properly stack other styles (bold, italic, size)
+                if bold:
+                    existing['bold'] = True
+                if italic:
+                    existing['italic'] = True
                 if size is not None:
                     existing['size'] = size
-                existing['bold'] = existing['bold'] or bold
-                existing['italic'] = existing['italic'] or italic
             else:
                 word_styles[span_text] = {
                     'color': color,

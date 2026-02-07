@@ -2416,33 +2416,9 @@
             const editor = document.getElementById('subtitle-text');
             editor.focus();
 
-            // Save current selection
-            const selection = window.getSelection();
-            if (selection.rangeCount > 0) {
-                const range = selection.getRangeAt(0);
-
-                // Only apply if there's actual text selected
-                if (range.toString().trim().length > 0) {
-                    const tag = style === 'bold' ? 'strong' : 'em';
-                    const element = document.createElement(tag);
-                    element.textContent = range.toString();
-
-                    try {
-                        // Delete the selected content and insert the formatted element
-                        range.deleteContents();
-                        range.insertNode(element);
-
-                        // Restore selection to the new element
-                        range.selectNodeContents(element);
-                        selection.removeAllRanges();
-                        selection.addRange(range);
-                    } catch (e) {
-                        // Fallback to execCommand if surroundContents fails
-                        console.error('Error applying style:', e);
-                        document.execCommand(style === 'bold' ? 'bold' : 'italic', false, null);
-                    }
-                }
-            }
+            // Use execCommand which properly handles overlapping selections
+            // and preserves existing formatting better than manual DOM manipulation
+            document.execCommand(style === 'bold' ? 'bold' : 'italic', false, null);
 
             // Update the preview video overlay to show the change
             updateSubtitlePreview();
@@ -2561,18 +2537,53 @@
             const italic = editor.querySelector('em') !== null;
             const colorSpan = editor.querySelector('span[style*="color"]');
             const color = colorSpan ? colorSpan.style.color : null;
-            const sizeSpan = editor.querySelector('span[style*="font-size"]');
+
+            // Check for font size in multiple formats
             let size = null;
+
+            // Check span elements with font-size in em
+            const sizeSpan = editor.querySelector('span[style*="font-size"]');
             if (sizeSpan && sizeSpan.style.fontSize) {
-                const match = sizeSpan.style.fontSize.match(/([\d.]+)em/);
-                if (match) size = parseFloat(match[1]);
+                // Check for em units first
+                const emMatch = sizeSpan.style.fontSize.match(/([\d.]+)em/);
+                if (emMatch) {
+                    size = parseFloat(emMatch[1]);
+                } else {
+                    // If not em, it's probably pixels - convert back to em relative to base font size
+                    // Base font size is typically 16px in browsers
+                    const pxMatch = sizeSpan.style.fontSize.match(/([\d.]+)px/);
+                    if (pxMatch) {
+                        size = parseFloat(pxMatch[1]) / 16; // Convert to em (relative to 16px base)
+                    }
+                }
+            }
+
+            // Also check for HTML font tags (fallback from execCommand)
+            if (!size) {
+                const fontTag = editor.querySelector('font[size]');
+                if (fontTag && fontTag.size) {
+                    // HTML font size is 1-7, map to multipliers: 1=0.5, 2=0.7, 3=0.9, 4=1.0, 5=1.2, 6=1.4, 7=1.6
+                    const fontSizeMap = { '1': 0.5, '2': 0.7, '3': 0.9, '4': 1.0, '5': 1.2, '6': 1.4, '7': 1.6 };
+                    size = fontSizeMap[fontTag.size];
+                }
             }
 
             allCueFormatting[currentCueInfo.start].bold = bold;
             allCueFormatting[currentCueInfo.start].italic = italic;
             allCueFormatting[currentCueInfo.start].color = color;
             allCueFormatting[currentCueInfo.start].size = size;
+
+            // Get current position from dropdown
+            const positionSelect = document.getElementById('subtitle-position');
+            const position = positionSelect ? positionSelect.value : null;
+            allCueFormatting[currentCueInfo.start].position = position;
+
             subtitleFormatting = { ...allCueFormatting[currentCueInfo.start] };
+
+            // Debug: log what's being saved
+            console.log('💾 Saving formatting for', currentCueInfo.start);
+            console.log('  HTML:', editor.innerHTML.substring(0, 150));
+            console.log('  → bold:', bold, 'italic:', italic, 'color:', color?.substring(0, 20), 'size:', size, 'position:', position);
 
             // Show saving indicator
             const indicator = document.getElementById('preview-autosave-indicator');
@@ -2849,6 +2860,10 @@
                 }
 
                 updateSubtitlePreview();
+
+                // IMPORTANT: Save the new position so it persists
+                // This ensures the dragged position is saved to the formatting file
+                autoSaveSubtitle();
             }
         });
 
