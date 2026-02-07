@@ -1661,19 +1661,31 @@
 
         // Update preview video with clipped range
         function reloadSubtitleTrack() {
+            console.log('🔄 reloadSubtitleTrack called');
+            console.log('   startSeconds:', startSeconds);
+            console.log('   endSeconds:', endSeconds);
+
             // Reload VTT subtitle track with current time range
             if (!previewVideo || !folderNumber || !themeNumber) return;
 
-            // Clear the current cue info to prevent old subtitle from persisting
+            console.log('   Before reload - overlay:', document.getElementById('subtitle-preview-text')?.textContent);
+
+            // Clear ALL derived state FIRST to prevent stale subtitle display
             currentCueInfo = null;
 
-            // Don't clear allCueFormatting - we want saved styles to persist
-
-            // Clear the subtitle overlay text
+            // Clear the subtitle editor
             const subtitleText = document.getElementById('subtitle-text');
             if (subtitleText) {
                 subtitleText.innerHTML = '';
             }
+
+            // Clear the preview overlay
+            const previewOverlay = document.getElementById('subtitle-preview-text');
+            if (previewOverlay) {
+                previewOverlay.textContent = '';
+            }
+
+            console.log('   After clear - overlay:', document.getElementById('subtitle-preview-text')?.textContent);
 
             // Remove ALL existing track elements from the video
             const existingTracks = previewVideo.querySelectorAll('track');
@@ -1698,43 +1710,14 @@
             // Add to DOM
             previewVideo.appendChild(newTrack);
 
-            // Keep mode as 'showing' so cues are loaded and accessible for sync function
+            // Enable track after it loads - do NOT sync immediately
+            // Let the natural timeupdate event trigger syncSubtitleToTextarea
+            // when cues are actually parsed and ready
             setTimeout(() => {
                 if (previewVideo.textTracks.length > 0) {
-                    const textTrack = previewVideo.textTracks[0];
-                    if (textTrack) {
-                        textTrack.mode = 'showing';
-
-                        // Force sync immediately to show correct subtitle
-                        const activeCues = textTrack.activeCues;
-                        if (activeCues && activeCues.length > 0) {
-                            // Manually trigger the sync logic
-                            const currentCue = activeCues[0];
-                            const themeStart = parseFloat(previewVideo.dataset.themeStart);
-
-                            // Convert cue time to trimmed time
-                            const trimmedStartTime = Math.max(0, currentCue.startTime - themeStart);
-                            const vttToTimestamp = (seconds) => {
-                                const h = Math.floor(seconds / 3600);
-                                const m = Math.floor((seconds % 3600) / 60);
-                                const s = seconds % 60;
-                                return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toFixed(3).padStart(6, '0')}`;
-                            };
-
-                            // Update currentCueInfo
-                            currentCueInfo = {
-                                start: vttToTimestamp(trimmedStartTime),
-                                end: vttToTimestamp(Math.max(0, currentCue.endTime - themeStart)),
-                                text: currentCue.text
-                            };
-
-                            // Use plain text (formatting was just cleared)
-                            subtitleText.innerHTML = currentCue.text;
-                            updateSubtitlePreview();
-                        }
-                    }
+                    previewVideo.textTracks[0].mode = 'showing';
                 }
-            }, 100);
+            }, 50);
         }
 
         function updatePreviewBoundaries() {
@@ -1806,6 +1789,12 @@
                 if (activeCues.length > 0) {
                     const currentCue = activeCues[0];
                     const subtitleText = document.getElementById('subtitle-text');
+
+                    console.log('🔄 syncSubtitleToTextarea called');
+                    console.log('   currentCue.startTime:', currentCue.startTime);
+                    console.log('   currentCue.text:', currentCue.text);
+                    console.log('   previewVideo.currentTime:', previewVideo.currentTime);
+                    console.log('   currentCueInfo:', currentCueInfo);
 
                     // Convert cue time (seconds) to HH:MM:SS.mmm format for matching with API
                     const vttToTimestamp = (seconds) => {
@@ -1974,44 +1963,23 @@
                 updateTimeDisplay();
                 updatePlayButton();
 
-                // Clear current cue info and overlay
+                // Clear ALL subtitle state to prevent stale display
+                // Do NOT enable track here - let reloadSubtitleTrack() handle it
                 currentCueInfo = null;
 
-                // Don't clear allCueFormatting - we want saved styles to persist
-                // Don't clear the editor - let the cuechange handler populate it with saved styles
+                const subtitleText = document.getElementById('subtitle-text');
+                if (subtitleText) {
+                    subtitleText.innerHTML = '';
+                }
 
-                // Enable subtitle track
-                setTimeout(() => {
-                    if (previewVideo.textTracks.length > 0) {
-                        const textTrack = previewVideo.textTracks[0];
-                        if (textTrack) {
-                            textTrack.mode = 'showing';
+                const previewOverlay = document.getElementById('subtitle-preview-text');
+                if (previewOverlay) {
+                    previewOverlay.textContent = '';
+                }
 
-                            // Force sync to show subtitle at current position
-                            const activeCues = textTrack.activeCues;
-                            if (activeCues && activeCues.length > 0) {
-                                const currentCue = activeCues[0];
-                                const trimmedStartTime = Math.max(0, currentCue.startTime - themeStart);
-                                const vttToTimestamp = (seconds) => {
-                                    const h = Math.floor(seconds / 3600);
-                                    const m = Math.floor((seconds % 3600) / 60);
-                                    const s = seconds % 60;
-                                    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toFixed(3).padStart(6, '0')}`;
-                                };
-
-                                currentCueInfo = {
-                                    start: vttToTimestamp(trimmedStartTime),
-                                    end: vttToTimestamp(Math.max(0, currentCue.endTime - themeStart)),
-                                    text: currentCue.text
-                                };
-
-                                // Use plain text (formatting was just cleared)
-                                subtitleText.innerHTML = currentCue.text;
-                                updateSubtitlePreview();
-                            }
-                        }
-                    }
-                }, 200);
+                // Do NOT enable track here - reloadSubtitleTrack() will handle it
+                // Enabling the track here would cause old cues to be displayed before
+                // reloadSubtitleTrack() replaces the track with the updated one
             }, { once: true });
 
             // Fallback: Also seek after a delay in case loadedmetadata doesn't fire
@@ -2194,7 +2162,28 @@
 
             document.addEventListener('mouseup', () => {
                 if (isDragging) {
-                    // Drag ended - seek original video to new theme start position
+                    console.log('🖱️ DRAG END - Timeline extended');
+
+                    // When timeline is extended, all relative timestamps change
+                    // So we must clear all saved formatting since timestamps are now invalid
+                    console.log('   Clearing all saved formatting (timestamps shifted)');
+                    allCueFormatting = {};
+
+                    // Drag ended - clear subtitle state FIRST before any video updates
+                    // This prevents old cues from being displayed during the update process
+                    currentCueInfo = null;
+
+                    const subtitleText = document.getElementById('subtitle-text');
+                    if (subtitleText) {
+                        subtitleText.innerHTML = '';
+                    }
+
+                    const previewOverlay = document.getElementById('subtitle-preview-text');
+                    if (previewOverlay) {
+                        previewOverlay.textContent = '';
+                    }
+
+                    // Seek original video to new theme start position
                     originalVideo.currentTime = startSeconds;
 
                     // Now that drag is complete, do full preview video update with new time range
@@ -2256,6 +2245,10 @@
                     // Reset to original values
                     startSeconds = originalStartSeconds;
                     endSeconds = originalEndSeconds;
+
+                    // Clear all saved formatting since timeline is being reset
+                    allCueFormatting = {};
+                    currentCueInfo = null;
 
                     // Update UI (includes original video)
                     updateUI();
@@ -2430,6 +2423,10 @@
             const editor = document.getElementById('subtitle-text');
             let text = editor.innerText; // Get plain text for saving
             const html = editor.innerHTML; // Get HTML for display
+
+            console.log('🎨 updateSubtitlePreview called');
+            console.log('   editor HTML:', html.substring(0, 100));
+
             const fontSize = document.getElementById('subtitle-size').value;
             const fontFamily = document.getElementById('subtitle-font').value;
             const color = document.getElementById('subtitle-color').value;
