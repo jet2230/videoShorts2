@@ -20,6 +20,8 @@ import torch
 if torch.cuda.is_available():
     torch.cuda.empty_cache()
 
+from ass_formatter import ASSFormatter
+
 
 def load_settings(settings_file: str = 'settings.ini') -> configparser.ConfigParser:
     """Load settings from settings.ini file."""
@@ -1123,268 +1125,6 @@ Video Path: {video_info['video_path']}
         # If no natural ending found, return original end_idx
         return end_idx
 
-    def _apply_bidi_to_ass(self, text: str) -> str:
-        """For Arabic text in ASS - NO REVERSAL NEEDED.
-
-        ASS/libass handles RTL (right-to-left) text rendering automatically.
-        We just need to pass the text through without modification.
-
-        The original implementation that reversed words was incorrect - it assumed
-        manual reversal was needed, but ASS format already handles Arabic RTL.
-        """
-        # Just return text as-is - ASS will handle RTL rendering
-        return text
-
-    def _rgb_to_ass_color(self, rgb_string: str) -> str:
-        """Convert RGB string like 'rgb(255, 0, 0)' to ASS color format '&H00BBGGRR'."""
-        match = re.match(r'rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)', rgb_string)
-        if not match:
-            return '&H00FFFFFF'  # Default white
-
-        r, g, b = int(match.group(1)), int(match.group(2)), int(match.group(3))
-        # ASS color format: &H00BBGGRR (BGR order with alpha prefix)
-        return f'&H00{b:02X}{g:02X}{r:02X}'
-
-    def _parse_html_formatting(self, html_text: str) -> str:
-        """Parse HTML formatting and convert to ASS tags.
-
-        For Arabic with partial styling, we reverse the Arabic word order
-        BEFORE applying styling, so it displays correctly in RTL.
-        """
-        from html import unescape
-
-        # Check if we have Arabic with styling
-        has_arabic = any('\u0600' <= c <= '\u06FF' for c in html_text)
-        has_styling = '<span' in html_text or '<strong>' in html_text or '<b>' in html_text
-
-        if has_arabic and has_styling:
-            # Step 1: Get plain text and words
-            plain_text = unescape(re.sub(r'<[^>]+>', '', html_text))
-            words = plain_text.split()
-
-            # Step 2: Find Arabic word indices
-            arabic_indices = [i for i, w in enumerate(words) if any('\u0600' <= c <= '\u06FF' for c in w)]
-
-            # Step 3: Reverse Arabic words for RTL
-            arabic_words_rev = [words[i] for i in arabic_indices][::-1]
-            new_words = words[:]
-            for idx, rev_word in zip(arabic_indices, arabic_words_rev):
-                new_words[idx] = rev_word
-
-            # Step 4: Extract ALL styled segments from HTML
-            # Maps: original_word_text -> {color, bold, italic, size}
-            word_styles = {}
-
-            # Find all <span> tags with style
-            span_pattern = r'<span[^>]*style="([^"]*)"[^>]*>(.*?)</span>'
-            for match in re.finditer(span_pattern, html_text, re.DOTALL):
-                style_content = match.group(1)
-                span_text = unescape(re.sub(r'<[^>]+>', '', match.group(2)))  # Handle nested spans
-
-                # Extract styles from this span
-                color = None
-                size = None
-                bold = False
-                italic = False
-
-                # Color
-                color_match = re.search(r'color:\s*rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)', style_content)
-                if color_match:
-                    r, g, b = int(color_match.group(1)), int(color_match.group(2)), int(color_match.group(3))
-                    color = f'&H00{b:02X}{g:02X}{r:02X}'
-
-                # Font size
-                size_match = re.search(r'font-size:\s*([\d.]+)em', style_content)
-                if size_match:
-                    size = int(48 * float(size_match.group(1)))
-
-                # Bold/italic
-                if re.search(r'font-weight:\s*bold', style_content) or re.search(r'font-weight:\s*700', style_content):
-                    bold = True
-                if re.search(r'font-style:\s*italic', style_content):
-                    italic = True
-
-                # For nested spans with colors, only INNERMOST (last) color applies
-                # But other styles (bold, italic, size) can stack
-                if span_text in word_styles:
-                    existing = word_styles[span_text]
-                    # Keep existing non-color styles, update color
-                    if color is not None:
-                        existing['color'] = color
-                    if size is not None:
-                        existing['size'] = size
-                    existing['bold'] = existing['bold'] or bold
-                    existing['italic'] = existing['italic'] or italic
-                else:
-                    word_styles[span_text] = {
-                        'color': color,
-                        'size': size,
-                        'bold': bold,
-                        'italic': italic
-                    }
-
-            # Check for <strong>/<b> and <em>/<i> tags outside spans
-            for tag_text, is_bold, is_italic in [('<strong>', True, False), ('<b>', True, False),
-                                                  ('</strong>', False, False), ('</b>', False, False),
-                                                  ('<em>', False, True), ('<i>', False, True),
-                                                  ('</em>', False, False), ('</i>', False, False)]:
-                # These are harder to map to specific words, skip for now
-                pass
-
-            # Step 5: Map styled words to their NEW positions after reversal
-            # Build position -> style map for REVERSED array
-            position_styles = {}  # new_position -> {color, bold, italic, size}
-
-            for orig_idx, word in enumerate(words):
-                if word in word_styles:
-                    # Find where this word ended up after reversal
-                    if orig_idx in arabic_indices:
-                        # Arabic word was reversed
-                        # Find new position
-                        for new_idx, new_word in enumerate(new_words):
-                            if new_word == word:
-                                position_styles[new_idx] = word_styles[word]
-                                break
-                    else:
-                        # Non-Arabic word, position unchanged
-                        position_styles[orig_idx] = word_styles[word]
-
-            # Step 6: Build result with styles applied to correct positions
-            result_parts = []
-            for i, word in enumerate(new_words):
-                if i in position_styles:
-                    styles = position_styles[i]
-                    tags = []
-
-                    if styles['color'] is not None:
-                        tags.append(f'{{\\c{styles["color"]}}}')
-                    if styles['bold']:
-                        tags.append('{\\b1}')
-                    if styles['italic']:
-                        tags.append('{\\i1}')
-                    if styles['size'] is not None:
-                        tags.append(f'{{\\fs{styles["size"]}}}')
-
-                    if tags:
-                        result_parts.append(''.join(tags) + word + '{\\r}')
-                    else:
-                        result_parts.append(word)
-                else:
-                    result_parts.append(word)
-
-            return ' '.join(result_parts)
-
-        # Default: simple HTML to ASS conversion
-        decoded = unescape(html_text)
-        result = decoded
-
-        # Convert <span style="color: rgb(...)"> to ASS color tags
-        color_pattern = r'<span\s+style="[^"]*color:\s*rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)[^"]*">(.*?)</span>'
-        result = re.sub(color_pattern, lambda m: f'{{\\c&H00{int(m.group(3)):02X}{int(m.group(2)):02X}{int(m.group(1)):02X}}}{m.group(4)}{{\\r}}', result, flags=re.DOTALL)
-
-        # Convert <strong> and <b> to ASS bold tags
-        result = re.sub(r'<strong>(.*?)</strong>', r'{\\b1}\1{\\b0}', result, flags=re.DOTALL)
-        result = re.sub(r'<b>(.*?)</b>', r'{\\b1}\1{\\b0}', result, flags=re.DOTALL)
-
-        # Convert <em> and <i> to ASS italic tags
-        result = re.sub(r'<em>(.*?)</em>', r'{\\i1}\1{\\i0}', result, flags=re.DOTALL)
-        result = re.sub(r'<i>(.*?)</i>', r'{\\i1}\1{\\i0}', result, flags=re.DOTALL)
-
-        # Convert font-size (e.g., "font-size: 1.2em")
-        size_pattern = r'<span\s+style="[^"]*font-size:\s*([\d.]+)em[^"]*">(.*?)</span>'
-        def convert_size(m):
-            size_em = float(m.group(1))
-            size_px = int(48 * size_em)
-            return f'{{\\fs{size_px}}}{m.group(2)}{{\\r}}'
-        result = re.sub(size_pattern, convert_size, result, flags=re.DOTALL)
-
-        # Remove any remaining HTML tags
-        result = re.sub(r'<[^>]+>', '', result)
-
-        return result
-
-    def _create_ass_file(self, trimmed_srt_path: Path, formatting_json_path: Path, output_ass_path: Path) -> bool:
-        """Create ASS subtitle file from SRT and formatting JSON."""
-        import json
-
-        # Load formatting data
-        with open(formatting_json_path, 'r', encoding='utf-8') as f:
-            formatting_data = json.load(f)
-
-        # Parse SRT segments
-        segments = self._parse_srt_segments(trimmed_srt_path)
-
-        # Build ASS header
-        ass_header = """[Script Info]
-ScriptType: v4.00+
-Collisions: Normal
-PlayResX: 1080
-PlayResY: 1920
-Timer: 100.0000
-WrapStyle: 0
-ScaledBorderAndShadow: yes
-
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,48,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,0,1,2,1,2,10,10,20,1
-
-[Events]
-Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-"""
-
-        with open(output_ass_path, 'w', encoding='utf-8') as f:
-            f.write(ass_header)
-
-            for segment in segments:
-                start_time = segment['start']
-                end_time = segment['end']
-
-                # Format timestamps for ASS (H:MM:SS.CC)
-                start_h = int(start_time // 3600)
-                start_m = int((start_time % 3600) // 60)
-                start_s = start_time % 60
-                start_ass = f"{start_h}:{start_m:02d}:{start_s:05.2f}"
-
-                end_h = int(end_time // 3600)
-                end_m = int((end_time % 3600) // 60)
-                end_s = end_time % 60
-                end_ass = f"{end_h}:{end_m:02d}:{end_s:05.2f}"
-
-                # Find formatting for this timestamp
-                # JSON uses "HH:MM:SS.mmm" format (with dot)
-                timestamp_json = f"{int(start_time // 3600):02d}:{int((start_time % 3600) // 60):02d}:{int(start_time % 60):02d}.{int((start_time % 1) * 1000):03d}"
-                formatting = formatting_data.get(timestamp_json, {})
-
-                # Get text - use html if available, otherwise plain text
-                text = formatting.get('html', segment['text'])
-
-                # Parse HTML formatting to ASS tags
-                text = self._parse_html_formatting(text)
-
-                # Apply Arabic RTL word reversal
-                text = self._apply_bidi_to_ass(text)
-
-                # Escape special ASS characters (but not backslashes in tags)
-                # First protect ASS tags
-                ass_tags = re.findall(r'{\\[^}]+}', text)
-                temp_text = text
-                for i, tag in enumerate(ass_tags):
-                    temp_text = temp_text.replace(tag, f"__ASS_TAG_{i}__")
-
-                # Escape special characters in the remaining text
-                temp_text = temp_text.replace('{', '\\{').replace('}', '\\}')
-
-                # Restore ASS tags
-                for i, tag in enumerate(ass_tags):
-                    temp_text = temp_text.replace(f"__ASS_TAG_{i}__", tag)
-
-                text = temp_text
-
-                # Write dialogue line
-                f.write(f"Dialogue: 0,{start_ass},{end_ass},Default,,0,0,0,,{text}\n")
-
-        return True
-
     def create_trimmed_srt(self, original_srt: Path, start_seconds: float, end_seconds: float, output_path: Path) -> Path:
         """Create a trimmed SRT file with timestamps offset to start from 0."""
         segments = self._parse_srt_segments(original_srt)
@@ -1433,10 +1173,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
         if formatting_json_path.exists():
             print(f"    Found subtitle formatting - creating ASS file...")
-            # Create ASS file from trimmed SRT and formatting JSON
+            # Create ASS file from trimmed SRT and formatting JSON using ASSFormatter
             ass_output_path = output_dir / f"theme_{theme['number']:03d}.ass"
             try:
-                self._create_ass_file(trimmed_srt_path, formatting_json_path, ass_output_path)
+                # Convert settings to dict for ASSFormatter
+                settings_dict = {section: dict(settings.items(section)) for section in settings.sections()}
+                ass_formatter = ASSFormatter(settings_dict)
+                ass_formatter.create_ass_file(trimmed_srt_path, formatting_json_path, ass_output_path)
                 print(f"    Created ASS subtitles: {ass_output_path.name}")
                 subtitle_file_for_ffmpeg = str(ass_output_path).replace(':', '\\:').replace('\\', '\\\\').replace("'", "\\'")
                 use_ass = True
