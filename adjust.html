@@ -1371,7 +1371,14 @@
                     // Reload the subtitle track to show changes
                     const previewSubtitleTrack = document.getElementById('preview-subtitle-track');
                     if (previewSubtitleTrack) {
-                        previewSubtitleTrack.src = `/api/subtitles/${folderNumber}/${themeNumber}.vtt?start=${startSeconds}&end=${endSeconds}&t=${Date.now()}`;
+                        const newTrack = document.createElement('track');
+                        newTrack.id = 'preview-subtitle-track';
+                        newTrack.kind = 'subtitles';
+                        newTrack.srclang = 'en';
+                        newTrack.label = 'English';
+                        newTrack.default = true;
+                        newTrack.src = `/api/subtitles/${folderNumber}/${themeNumber}.vtt?start=${startSeconds}&end=${endSeconds}&t=${Date.now()}`;
+                        previewSubtitleTrack.replaceWith(newTrack);
                     }
 
                     indicator.textContent = '✓ Saved';
@@ -1524,8 +1531,24 @@
             // Reload VTT subtitle track with current time range
             const previewSubtitleTrack = document.getElementById('preview-subtitle-track');
             if (previewSubtitleTrack && folderNumber && themeNumber) {
-                // Add timestamp to prevent caching
-                previewSubtitleTrack.src = `/api/subtitles/${folderNumber}/${themeNumber}.vtt?start=${startSeconds}&end=${endSeconds}&t=${Date.now()}`;
+                // Remove old track and create new one to force reload (browser caching fix)
+                const newTrack = document.createElement('track');
+                newTrack.id = 'preview-subtitle-track';
+                newTrack.kind = 'subtitles';
+                newTrack.srclang = 'en';
+                newTrack.label = 'English';
+                newTrack.default = true;
+                newTrack.src = `/api/subtitles/${folderNumber}/${themeNumber}.vtt?start=${startSeconds}&end=${endSeconds}&t=${Date.now()}`;
+
+                // Replace the old track with the new one
+                previewSubtitleTrack.replaceWith(newTrack);
+
+                // Hide the textTrack (we use custom overlay for display)
+                newTrack.addEventListener('load', () => {
+                    if (previewVideo.textTracks.length > 0) {
+                        previewVideo.textTracks[0].mode = 'hidden';
+                    }
+                });
             }
         }
 
@@ -1726,8 +1749,16 @@
 
             // Load VTT subtitles for preview - use adjusted subtitles if available
             const previewSubtitleTrack = document.getElementById('preview-subtitle-track');
-            if (previewSubtitleTrack) {
-                previewSubtitleTrack.src = `/api/subtitles/${folderNumber}/${themeNumber}.vtt?start=${startSeconds}&end=${endSeconds}`;
+            if (previewSubtitleTrack && folderNumber && themeNumber) {
+                // Replace track to force clean load
+                const newTrack = document.createElement('track');
+                newTrack.id = 'preview-subtitle-track';
+                newTrack.kind = 'subtitles';
+                newTrack.srclang = 'en';
+                newTrack.label = 'English';
+                newTrack.default = true;
+                newTrack.src = `/api/subtitles/${folderNumber}/${themeNumber}.vtt?start=${startSeconds}&end=${endSeconds}`;
+                previewSubtitleTrack.replaceWith(newTrack);
             }
 
             // Don't autoplay
