@@ -1847,8 +1847,15 @@
             // Update subtitle preview
             updateSubtitlePreview();
 
-            // Update preview video when range changes
-            updatePreviewVideo();
+            // Update preview video boundaries and reload subtitles during drag
+            // But don't do full video reset (which causes position 0 issue)
+            if (!isDragging) {
+                updatePreviewVideo();
+            } else {
+                // During drag, just update the boundary markers
+                previewVideo.dataset.themeStart = startSeconds;
+                previewVideo.dataset.themeEnd = endSeconds;
+            }
 
             // Reload subtitle track with current time range (reflects timeline dragging)
             reloadSubtitleTrack();
