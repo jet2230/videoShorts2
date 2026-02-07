@@ -1148,76 +1148,131 @@ Video Path: {video_info['video_path']}
     def _parse_html_formatting(self, html_text: str) -> str:
         """Parse HTML formatting and convert to ASS tags.
 
-        When styling is applied to PART of an Arabic phrase, we reverse the Arabic
-        word order BEFORE applying styling, so it displays correctly in RTL.
+        For Arabic with partial styling, we reverse the Arabic word order
+        BEFORE applying styling, so it displays correctly in RTL.
         """
         from html import unescape
 
-        # Check if we have Arabic with partial styling
+        # Check if we have Arabic with styling
         has_arabic = any('\u0600' <= c <= '\u06FF' for c in html_text)
         has_styling = '<span' in html_text or '<strong>' in html_text or '<b>' in html_text
 
         if has_arabic and has_styling:
-            # Get plain text (no HTML)
+            # Step 1: Get plain text and words
             plain_text = unescape(re.sub(r'<[^>]+>', '', html_text))
             words = plain_text.split()
 
-            # Find Arabic words
+            # Step 2: Find Arabic word indices
             arabic_indices = [i for i, w in enumerate(words) if any('\u0600' <= c <= '\u06FF' for c in w)]
 
-            # Reverse Arabic words
+            # Step 3: Reverse Arabic words for RTL
             arabic_words_rev = [words[i] for i in arabic_indices][::-1]
-
-            # Rebuild with reversed Arabic
             new_words = words[:]
             for idx, rev_word in zip(arabic_indices, arabic_words_rev):
                 new_words[idx] = rev_word
 
-            # The HTML tags in original now apply to the reversed positions
-            # We need to map: original styled content -> new position
-            # For now, simpler: work with reversed plain text and skip original HTML
-            # We'll apply the styles extracted from original to the reversed text
+            # Step 4: Extract ALL styled segments from HTML
+            # Maps: original_word_text -> {color, bold, italic, size}
+            word_styles = {}
 
-            # Extract styles from original HTML
-            styles = []
-            color_match = re.search(r'<span[^>]*style="[^"]*color:\s*rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)[^"]*"', html_text)
-            if color_match:
-                r, g, b = int(color_match.group(1)), int(color_match.group(2)), int(color_match.group(3))
-                styles.append(('color', f'&H00{b:02X}{g:02X}{r:02X}'))
+            # Find all <span> tags with style
+            span_pattern = r'<span[^>]*style="([^"]*)"[^>]*>(.*?)</span>'
+            for match in re.finditer(span_pattern, html_text, re.DOTALL):
+                style_content = match.group(1)
+                span_text = unescape(re.sub(r'<[^>]+>', '', match.group(2)))  # Handle nested spans
 
-            size_match = re.search(r'font-size:\s*([\d.]+)em', html_text)
-            if size_match:
-                styles.append(('size', int(48 * float(size_match.group(1)))))
+                # Extract styles from this span
+                color = None
+                size = None
+                bold = False
+                italic = False
 
-            # Check for bold/italic
-            if '<strong>' in html_text or '<b>' in html_text:
-                styles.append(('bold', True))
+                # Color
+                color_match = re.search(r'color:\s*rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)', style_content)
+                if color_match:
+                    r, g, b = int(color_match.group(1)), int(color_match.group(2)), int(color_match.group(3))
+                    color = f'&H00{b:02X}{g:02X}{r:02X}'
 
-            # Apply styles to first Arabic word only (the one that was styled in original)
-            if styles:
-                result_parts = []
-                styled_word_idx = arabic_indices[0] if arabic_indices else -1
+                # Font size
+                size_match = re.search(r'font-size:\s*([\d.]+)em', style_content)
+                if size_match:
+                    size = int(48 * float(size_match.group(1)))
 
-                for i, word in enumerate(new_words):
-                    word_has_arabic = any('\u0600' <= c <= '\u06FF' for c in word)
+                # Bold/italic
+                if re.search(r'font-weight:\s*bold', style_content) or re.search(r'font-weight:\s*700', style_content):
+                    bold = True
+                if re.search(r'font-style:\s*italic', style_content):
+                    italic = True
 
-                    if i == styled_word_idx and word_has_arabic:
-                        # This is the styled word - add tags + word + resets together
-                        tags = []
-                        for style_type, style_val in styles:
-                            if style_type == 'color':
-                                tags.append(f'{{\\c{style_val}}}')
-                            elif style_type == 'size':
-                                tags.append(f'{{\\fs{style_val}}}')
-                            elif style_type == 'bold':
-                                tags.append('{\\b1}')
-                        # tags + word + resets all together without space
-                        result_parts.append(''.join(tags) + word + '{\\r}{\\r}')
+                # For nested spans with colors, only INNERMOST (last) color applies
+                # But other styles (bold, italic, size) can stack
+                if span_text in word_styles:
+                    existing = word_styles[span_text]
+                    # Keep existing non-color styles, update color
+                    if color is not None:
+                        existing['color'] = color
+                    if size is not None:
+                        existing['size'] = size
+                    existing['bold'] = existing['bold'] or bold
+                    existing['italic'] = existing['italic'] or italic
+                else:
+                    word_styles[span_text] = {
+                        'color': color,
+                        'size': size,
+                        'bold': bold,
+                        'italic': italic
+                    }
+
+            # Check for <strong>/<b> and <em>/<i> tags outside spans
+            for tag_text, is_bold, is_italic in [('<strong>', True, False), ('<b>', True, False),
+                                                  ('</strong>', False, False), ('</b>', False, False),
+                                                  ('<em>', False, True), ('<i>', False, True),
+                                                  ('</em>', False, False), ('</i>', False, False)]:
+                # These are harder to map to specific words, skip for now
+                pass
+
+            # Step 5: Map styled words to their NEW positions after reversal
+            # Build position -> style map for REVERSED array
+            position_styles = {}  # new_position -> {color, bold, italic, size}
+
+            for orig_idx, word in enumerate(words):
+                if word in word_styles:
+                    # Find where this word ended up after reversal
+                    if orig_idx in arabic_indices:
+                        # Arabic word was reversed
+                        # Find new position
+                        for new_idx, new_word in enumerate(new_words):
+                            if new_word == word:
+                                position_styles[new_idx] = word_styles[word]
+                                break
+                    else:
+                        # Non-Arabic word, position unchanged
+                        position_styles[orig_idx] = word_styles[word]
+
+            # Step 6: Build result with styles applied to correct positions
+            result_parts = []
+            for i, word in enumerate(new_words):
+                if i in position_styles:
+                    styles = position_styles[i]
+                    tags = []
+
+                    if styles['color'] is not None:
+                        tags.append(f'{{\\c{styles["color"]}}}')
+                    if styles['bold']:
+                        tags.append('{\\b1}')
+                    if styles['italic']:
+                        tags.append('{\\i1}')
+                    if styles['size'] is not None:
+                        tags.append(f'{{\\fs{styles["size"]}}}')
+
+                    if tags:
+                        result_parts.append(''.join(tags) + word + '{\\r}')
                     else:
                         result_parts.append(word)
+                else:
+                    result_parts.append(word)
 
-                # Join with spaces between elements
-                return ' '.join(result_parts)
+            return ' '.join(result_parts)
 
         # Default: simple HTML to ASS conversion
         decoded = unescape(html_text)
