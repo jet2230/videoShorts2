@@ -1123,6 +1123,213 @@ Video Path: {video_info['video_path']}
         # If no natural ending found, return original end_idx
         return end_idx
 
+    def _apply_bidi_to_ass(self, text: str) -> str:
+        """For Arabic text in ASS - NO REVERSAL NEEDED.
+
+        ASS/libass handles RTL (right-to-left) text rendering automatically.
+        We just need to pass the text through without modification.
+
+        The original implementation that reversed words was incorrect - it assumed
+        manual reversal was needed, but ASS format already handles Arabic RTL.
+        """
+        # Just return text as-is - ASS will handle RTL rendering
+        return text
+
+    def _rgb_to_ass_color(self, rgb_string: str) -> str:
+        """Convert RGB string like 'rgb(255, 0, 0)' to ASS color format '&H00BBGGRR'."""
+        match = re.match(r'rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)', rgb_string)
+        if not match:
+            return '&H00FFFFFF'  # Default white
+
+        r, g, b = int(match.group(1)), int(match.group(2)), int(match.group(3))
+        # ASS color format: &H00BBGGRR (BGR order with alpha prefix)
+        return f'&H00{b:02X}{g:02X}{r:02X}'
+
+    def _parse_html_formatting(self, html_text: str) -> str:
+        """Parse HTML formatting and convert to ASS tags.
+
+        When styling is applied to PART of an Arabic phrase, we reverse the Arabic
+        word order BEFORE applying styling, so it displays correctly in RTL.
+        """
+        from html import unescape
+
+        # Check if we have Arabic with partial styling
+        has_arabic = any('\u0600' <= c <= '\u06FF' for c in html_text)
+        has_styling = '<span' in html_text or '<strong>' in html_text or '<b>' in html_text
+
+        if has_arabic and has_styling:
+            # Get plain text (no HTML)
+            plain_text = unescape(re.sub(r'<[^>]+>', '', html_text))
+            words = plain_text.split()
+
+            # Find Arabic words
+            arabic_indices = [i for i, w in enumerate(words) if any('\u0600' <= c <= '\u06FF' for c in w)]
+
+            # Reverse Arabic words
+            arabic_words_rev = [words[i] for i in arabic_indices][::-1]
+
+            # Rebuild with reversed Arabic
+            new_words = words[:]
+            for idx, rev_word in zip(arabic_indices, arabic_words_rev):
+                new_words[idx] = rev_word
+
+            # The HTML tags in original now apply to the reversed positions
+            # We need to map: original styled content -> new position
+            # For now, simpler: work with reversed plain text and skip original HTML
+            # We'll apply the styles extracted from original to the reversed text
+
+            # Extract styles from original HTML
+            styles = []
+            color_match = re.search(r'<span[^>]*style="[^"]*color:\s*rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)[^"]*"', html_text)
+            if color_match:
+                r, g, b = int(color_match.group(1)), int(color_match.group(2)), int(color_match.group(3))
+                styles.append(('color', f'&H00{b:02X}{g:02X}{r:02X}'))
+
+            size_match = re.search(r'font-size:\s*([\d.]+)em', html_text)
+            if size_match:
+                styles.append(('size', int(48 * float(size_match.group(1)))))
+
+            # Check for bold/italic
+            if '<strong>' in html_text or '<b>' in html_text:
+                styles.append(('bold', True))
+
+            # Apply styles to first Arabic word only (the one that was styled in original)
+            if styles:
+                result_parts = []
+                styled_word_idx = arabic_indices[0] if arabic_indices else -1
+
+                for i, word in enumerate(new_words):
+                    word_has_arabic = any('\u0600' <= c <= '\u06FF' for c in word)
+
+                    if i == styled_word_idx and word_has_arabic:
+                        # This is the styled word - add tags + word + resets together
+                        tags = []
+                        for style_type, style_val in styles:
+                            if style_type == 'color':
+                                tags.append(f'{{\\c{style_val}}}')
+                            elif style_type == 'size':
+                                tags.append(f'{{\\fs{style_val}}}')
+                            elif style_type == 'bold':
+                                tags.append('{\\b1}')
+                        # tags + word + resets all together without space
+                        result_parts.append(''.join(tags) + word + '{\\r}{\\r}')
+                    else:
+                        result_parts.append(word)
+
+                # Join with spaces between elements
+                return ' '.join(result_parts)
+
+        # Default: simple HTML to ASS conversion
+        decoded = unescape(html_text)
+        result = decoded
+
+        # Convert <span style="color: rgb(...)"> to ASS color tags
+        color_pattern = r'<span\s+style="[^"]*color:\s*rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)[^"]*">(.*?)</span>'
+        result = re.sub(color_pattern, lambda m: f'{{\\c&H00{int(m.group(3)):02X}{int(m.group(2)):02X}{int(m.group(1)):02X}}}{m.group(4)}{{\\r}}', result, flags=re.DOTALL)
+
+        # Convert <strong> and <b> to ASS bold tags
+        result = re.sub(r'<strong>(.*?)</strong>', r'{\\b1}\1{\\b0}', result, flags=re.DOTALL)
+        result = re.sub(r'<b>(.*?)</b>', r'{\\b1}\1{\\b0}', result, flags=re.DOTALL)
+
+        # Convert <em> and <i> to ASS italic tags
+        result = re.sub(r'<em>(.*?)</em>', r'{\\i1}\1{\\i0}', result, flags=re.DOTALL)
+        result = re.sub(r'<i>(.*?)</i>', r'{\\i1}\1{\\i0}', result, flags=re.DOTALL)
+
+        # Convert font-size (e.g., "font-size: 1.2em")
+        size_pattern = r'<span\s+style="[^"]*font-size:\s*([\d.]+)em[^"]*">(.*?)</span>'
+        def convert_size(m):
+            size_em = float(m.group(1))
+            size_px = int(48 * size_em)
+            return f'{{\\fs{size_px}}}{m.group(2)}{{\\r}}'
+        result = re.sub(size_pattern, convert_size, result, flags=re.DOTALL)
+
+        # Remove any remaining HTML tags
+        result = re.sub(r'<[^>]+>', '', result)
+
+        return result
+
+    def _create_ass_file(self, trimmed_srt_path: Path, formatting_json_path: Path, output_ass_path: Path) -> bool:
+        """Create ASS subtitle file from SRT and formatting JSON."""
+        import json
+
+        # Load formatting data
+        with open(formatting_json_path, 'r', encoding='utf-8') as f:
+            formatting_data = json.load(f)
+
+        # Parse SRT segments
+        segments = self._parse_srt_segments(trimmed_srt_path)
+
+        # Build ASS header
+        ass_header = """[Script Info]
+ScriptType: v4.00+
+Collisions: Normal
+PlayResX: 1080
+PlayResY: 1920
+Timer: 100.0000
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,48,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,0,1,2,1,2,10,10,20,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+
+        with open(output_ass_path, 'w', encoding='utf-8') as f:
+            f.write(ass_header)
+
+            for segment in segments:
+                start_time = segment['start']
+                end_time = segment['end']
+
+                # Format timestamps for ASS (H:MM:SS.CC)
+                start_h = int(start_time // 3600)
+                start_m = int((start_time % 3600) // 60)
+                start_s = start_time % 60
+                start_ass = f"{start_h}:{start_m:02d}:{start_s:05.2f}"
+
+                end_h = int(end_time // 3600)
+                end_m = int((end_time % 3600) // 60)
+                end_s = end_time % 60
+                end_ass = f"{end_h}:{end_m:02d}:{end_s:05.2f}"
+
+                # Find formatting for this timestamp
+                # JSON uses "HH:MM:SS.mmm" format (with dot)
+                timestamp_json = f"{int(start_time // 3600):02d}:{int((start_time % 3600) // 60):02d}:{int(start_time % 60):02d}.{int((start_time % 1) * 1000):03d}"
+                formatting = formatting_data.get(timestamp_json, {})
+
+                # Get text - use html if available, otherwise plain text
+                text = formatting.get('html', segment['text'])
+
+                # Parse HTML formatting to ASS tags
+                text = self._parse_html_formatting(text)
+
+                # Apply Arabic RTL word reversal
+                text = self._apply_bidi_to_ass(text)
+
+                # Escape special ASS characters (but not backslashes in tags)
+                # First protect ASS tags
+                ass_tags = re.findall(r'{\\[^}]+}', text)
+                temp_text = text
+                for i, tag in enumerate(ass_tags):
+                    temp_text = temp_text.replace(tag, f"__ASS_TAG_{i}__")
+
+                # Escape special characters in the remaining text
+                temp_text = temp_text.replace('{', '\\{').replace('}', '\\}')
+
+                # Restore ASS tags
+                for i, tag in enumerate(ass_tags):
+                    temp_text = temp_text.replace(f"__ASS_TAG_{i}__", tag)
+
+                text = temp_text
+
+                # Write dialogue line
+                f.write(f"Dialogue: 0,{start_ass},{end_ass},Default,,0,0,0,,{text}\n")
+
+        return True
+
     def create_trimmed_srt(self, original_srt: Path, start_seconds: float, end_seconds: float, output_path: Path) -> Path:
         """Create a trimmed SRT file with timestamps offset to start from 0."""
         segments = self._parse_srt_segments(original_srt)
@@ -1164,10 +1371,25 @@ Video Path: {video_info['video_path']}
         self.create_trimmed_srt(srt_path, start_seconds, end_seconds, trimmed_srt_path)
         print(f"    Created trimmed subtitles: {trimmed_srt_name}")
 
+        # Check if formatting JSON exists for this theme
+        formatting_json_path = output_dir / f"theme_{theme['number']:03d}_formatting.json"
+        subtitle_file_for_ffmpeg = str(trimmed_srt_path).replace(':', '\\:').replace('\\', '\\\\').replace("'", "\\'")
+        use_ass = False
+
+        if formatting_json_path.exists():
+            print(f"    Found subtitle formatting - creating ASS file...")
+            # Create ASS file from trimmed SRT and formatting JSON
+            ass_output_path = output_dir / f"theme_{theme['number']:03d}.ass"
+            try:
+                self._create_ass_file(trimmed_srt_path, formatting_json_path, ass_output_path)
+                print(f"    Created ASS subtitles: {ass_output_path.name}")
+                subtitle_file_for_ffmpeg = str(ass_output_path).replace(':', '\\:').replace('\\', '\\\\').replace("'", "\\'")
+                use_ass = True
+            except Exception as e:
+                print(f"    Warning: Failed to create ASS file, using SRT: {e}")
+
         # YouTube Shorts format: 9:16 aspect ratio
         # Scale and crop (not pad) to achieve proper 9:16 ratio
-        # For ffmpeg subtitles, we need to escape colons and backslashes in the path
-        trimmed_srt_for_ffmpeg = str(trimmed_srt_path).replace(':', '\\:').replace('\\', '\\\\').replace("'", "\\'")
 
         print(f"    Burning subtitles...")
 
@@ -1184,7 +1406,12 @@ Video Path: {video_info['video_path']}
 
         # Filter chain:
         # Scale and crop to target resolution, then burn in subtitles
-        vf_filter = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}:(iw-ow)/2:(ih-oh)/2,subtitles={trimmed_srt_for_ffmpeg}:force_style='FontSize={font_size},MarginV={margin_v},Alignment={alignment},FontName={font_name}'"
+        # For ASS files, don't apply force_style (formatting is embedded)
+        # For SRT files, apply force_style settings
+        if use_ass:
+            vf_filter = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}:(iw-ow)/2:(ih-oh)/2,subtitles={subtitle_file_for_ffmpeg}"
+        else:
+            vf_filter = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}:(iw-ow)/2:(ih-oh)/2,subtitles={subtitle_file_for_ffmpeg}:force_style='FontSize={font_size},MarginV={margin_v},Alignment={alignment},FontName={font_name}'"
 
         cmd = [
             'ffmpeg',
