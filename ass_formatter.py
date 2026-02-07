@@ -27,7 +27,8 @@ class ASSFormatter:
         self.width = int(self.settings.get('video', {}).get('resolution_width', 1080))
         self.height = int(self.settings.get('video', {}).get('resolution_height', 1920))
         self.font_name = self.settings.get('subtitle', {}).get('font_name', 'Arial')
-        self.font_size = int(self.settings.get('subtitle', {}).get('font_size', 48))
+        # Use ass_font_size for ASS files (separate from SRT font_size)
+        self.font_size = int(self.settings.get('subtitle', {}).get('ass_font_size', 48))
 
     # === File Generation ===
 
