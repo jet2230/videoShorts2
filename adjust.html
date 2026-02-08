@@ -3323,7 +3323,8 @@
                 textEl.innerHTML = displayText;
                 textEl.style.fontSize = `${fontSize}px`;
                 textEl.style.fontFamily = fontFamily;
-                textEl.style.color = color;
+                // Don't set global color - let HTML inline styles handle individual word/phrase colors
+                // Only set background color
                 textEl.style.backgroundColor = `rgba(${hexToRgb(bgColor)}, ${bgOpacity})`;
                 overlay.style.display = 'block';
                 overlay.style.left = '50%';

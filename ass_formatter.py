@@ -58,6 +58,14 @@ class ASSFormatter:
         # Parse SRT segments
         segments = self._parse_srt_segments(srt_path)
 
+        # Build a mapping of text to formatting for quick lookup
+        # JSON keys are sequence numbers, values contain 'html', 'timestamp', '_text', etc.
+        text_to_formatting = {}
+        for seq_key, fmt_data in formatting_data.items():
+            if isinstance(fmt_data, dict) and '_text' in fmt_data:
+                # Store formatting keyed by plain text
+                text_to_formatting[fmt_data['_text']] = fmt_data
+
         # Build ASS file
         with open(output_ass_path, 'w', encoding='utf-8') as f:
             # Write header
@@ -68,27 +76,39 @@ class ASSFormatter:
             for segment in segments:
                 start_time = segment['start']
                 end_time = segment['end']
+                text = segment['text']
 
                 # Format timestamps for ASS (H:MM:SS.CC)
                 start_ass = self._format_timestamp_ass(start_time)
                 end_ass = self._format_timestamp_ass(end_time)
 
-                # Find formatting for this timestamp
-                # JSON uses "HH:MM:SS.mmm" format (with dot)
-                timestamp_json = self._format_timestamp_json(start_time)
-                formatting = formatting_data.get(timestamp_json, {})
+                # Find formatting by matching text
+                formatting = None
 
-                # Get text - use html if available, otherwise plain text
-                text = formatting.get('html', segment['text'])
+                # Try exact match first
+                if text in text_to_formatting:
+                    formatting = text_to_formatting[text]
+                else:
+                    # Try partial match - check if JSON text is contained in SRT text or vice versa
+                    text_normalized = text.strip().lower()
+                    for json_text, fmt in text_to_formatting.items():
+                        json_normalized = json_text.strip().lower()
+                        # Check if JSON text is a substring of SRT text
+                        if json_normalized in text_normalized or text_normalized in json_normalized:
+                            formatting = fmt
+                            break
+
+                # Get HTML if available, otherwise use plain text
+                display_text = formatting.get('html', text) if formatting else text
 
                 # Parse HTML formatting to ASS tags
-                text = self.parse_html_to_ass(text)
+                display_text = self.parse_html_to_ass(display_text)
 
                 # Escape special ASS characters (but not backslashes in tags)
-                text = self._escape_ass_special_chars(text)
+                display_text = self._escape_ass_special_chars(display_text)
 
                 # Write dialogue line
-                f.write(f"Dialogue: 0,{start_ass},{end_ass},Default,,0,0,0,,{text}\n")
+                f.write(f"Dialogue: 0,{start_ass},{end_ass},Default,,0,0,0,,{display_text}\n")
 
         return True
 
