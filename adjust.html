@@ -1353,16 +1353,24 @@
         // Load all theme cues for editing
         async function loadThemeCues() {
             try {
+                console.log('🔄 Loading all theme cues from original SRT...');
+
                 // Load ALL cues from original SRT (not filtered by theme range)
                 // This allows styling subtitles in expanded timeline areas
-                const response = await fetch(`/api/all-subtitles/${folderNumber}`);
+                // Add cache-buster to ensure we get fresh response
+                const cacheBuster = Date.now();
+                const response = await fetch(`/api/all-subtitles/${folderNumber}?_=${cacheBuster}`);
+
+                console.log(`   Response status: ${response.status} ${response.statusText}`);
+
                 if (!response.ok) {
-                    console.warn('Failed to load all subtitles, falling back to theme-filtered');
+                    console.warn('❌ Failed to load all subtitles, falling back to theme-filtered');
                     // Fallback to theme-filtered API
                     const fallbackResponse = await fetch(`/api/theme-subtitles/${folderNumber}/${themeNumber}`);
                     if (!fallbackResponse.ok) return [];
                     const data = await fallbackResponse.json();
                     allThemeCues = data.cues;
+                    console.log(`   ✓ Fallback: loaded ${allThemeCues.length} theme-filtered cues`);
                     return allThemeCues;
                 }
 
@@ -1371,7 +1379,7 @@
                 console.log(`✓ Loaded ${allThemeCues.length} cues from original SRT`);
                 return allThemeCues;
             } catch (error) {
-// console.error('Failed to load theme cues:', error);
+                console.error('❌ Failed to load theme cues:', error);
                 return [];
             }
         }
