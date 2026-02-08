@@ -1295,10 +1295,10 @@
         // Auto-save theme adjustment
         let autoSaveTimeout = null;
         let subtitleAutoSaveTimeout = null;
-        let currentCueInfo = null; // Track current cue {start, end, text, sequence}
+        let currentCueInfo = null; // Track current cue {sequence, timestamp, start, end, text}
         let allThemeCues = []; // Cache all theme cues
         let subtitleFormatting = { bold: false, italic: false, color: null, size: null };
-        let allCueFormatting = {}; // Store formatting for all cues: {start_time: {bold, italic, color, size}}
+        let allCueFormatting = {}; // Store formatting for all cues: {sequence: {sequence, timestamp, html, _text}}
         let isProgrammaticUpdate = false; // Flag to prevent auto-save during programmatic updates
         let themeStartBeforeDrag = null; // Track theme start before drag to calculate timestamp shift
         let themeEndBeforeDrag = null; // Track theme end before drag
@@ -1514,6 +1514,82 @@
                     }).then(() => {}); // console.log('   ✓ Saved cleaned formatting')
                 }
 
+                // MIGRATION: Detect old format (timestamp_hash keys) and migrate to sequence keys
+                // Old format keys contain ':' or '_' (e.g., "00:00:00.000_364d")
+                // New format keys are simple numbers (e.g., "1", "2", "3")
+                const formattingKeys = Object.keys(allCueFormatting);
+                const hasOldFormatKeys = formattingKeys.some(key => key.includes(':') || key.includes('_'));
+
+                if (hasOldFormatKeys && formattingKeys.length > 0) {
+                    console.log('🔄 Detected old format keys, migrating to sequence numbers...');
+
+                    // Ensure allThemeCues is loaded
+                    if (allThemeCues.length === 0) {
+                        await loadThemeCues();
+                    }
+
+                    // Helper to extract timestamp from old key (handle both "timestamp" and "timestamp_hash")
+                    const extractTimestamp = (key) => {
+                        if (key.includes('_')) {
+                            return key.split('_')[0]; // "00:00:00.000_364d" → "00:00:00.000"
+                        }
+                        return key; // Already just timestamp
+                    };
+
+                    // Create new formatting with sequence keys
+                    const newFormatting = {};
+                    let migratedCount = 0;
+
+                    for (const [oldKey, formatting] of Object.entries(allCueFormatting)) {
+                        const timestamp = extractTimestamp(oldKey);
+
+                        // Find matching cue by timestamp and text
+                        const matchingCue = allThemeCues.find(cue => {
+                            // Match by timestamp and optionally by text if available
+                            const timestampMatch = cue.start === timestamp;
+                            const textMatch = !formatting._text || cue.text === formatting._text;
+                            return timestampMatch && textMatch;
+                        });
+
+                        if (matchingCue && matchingCue.sequence) {
+                            // Migrate to new format with sequence key
+                            newFormatting[matchingCue.sequence] = {
+                                sequence: matchingCue.sequence,
+                                timestamp: timestamp,
+                                html: formatting.html,
+                                _text: formatting._text || matchingCue.text
+                            };
+                            migratedCount++;
+                            console.log(`   ✓ Migrated "${oldKey}" → sequence "${matchingCue.sequence}"`);
+                        } else {
+                            // Couldn't find match, keep old entry (will be cleaned up later)
+                            console.log(`   ⚠️ Could not find match for "${oldKey}", keeping as-is`);
+                            newFormatting[oldKey] = formatting;
+                        }
+                    }
+
+                    // Update allCueFormatting with migrated data
+                    allCueFormatting = newFormatting;
+
+                    // Save migrated format to server
+                    if (migratedCount > 0) {
+                        console.log(`   ✅ Migrated ${migratedCount} entries to sequence keys`);
+                        fetch('/api/save-subtitle-formatting', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                folder: folderNumber,
+                                theme: themeNumber,
+                                formatting: allCueFormatting
+                            })
+                        }).then(() => {
+                            console.log('   💾 Saved migrated formatting to server');
+                        }).catch(err => {
+                            console.error('   ✗ Failed to save migrated formatting:', err);
+                        });
+                    }
+                }
+
                 // Convert <font> tags to <span style="..."> for better CSS compatibility
                 const fontSizeMap = { '1': 0.6, '2': 0.8, '3': 1.0, '4': 1.2, '5': 1.4, '6': 1.6, '7': 1.8 };
 
@@ -1707,8 +1783,8 @@
 
                 document.getElementById('subtitle-text').innerHTML = themeData.text || '';
 
-                // Load all theme cues for subtitle editing
-                loadThemeCues();
+                // Load all theme cues for subtitle editing (must be awaited for sequence matching)
+                await loadThemeCues();
 
                 // Load subtitle formatting metadata and apply to editor
                 await loadSubtitleFormatting();
@@ -1985,22 +2061,78 @@
                     const trimmedStartTime = currentCue.startTime - themeStart;
                     const trimmedEndTime = currentCue.endTime - themeStart;
 
-                    // Create a simple hash of the text for unique identification
-                    // This prevents different subtitles with the same timestamp from overwriting each other
-                    const textHash = currentCue.text.split('').reduce((a, b) => {
-                        a = ((a << 5) - a) + b.charCodeAt(0);
-                        return a & a;
-                    }, 0);
-                    const textHashShort = Math.abs(textHash).toString(16).substring(0, 4);
+                    // Match VTT cue to allThemeCues to get the sequence number
+                    // The sequence number is the stable SRT sequence (1, 2, 3, ...)
+                    let sequence = null;
 
-                    // Use composite key: timestamp_textHash to prevent collisions
+                    // IMPORTANT: The API returns absolute timestamps from the SRT file
+                    // But currentCue.startTime/endTime are also absolute (from original video)
+                    // So we should match using absolute timestamps, not relative ones
+                    const absoluteTimestampKey = vttToTimestamp(currentCue.startTime);
+                    const absoluteEndTimeKey = vttToTimestamp(currentCue.endTime);
+
+                    // timestampKey/endKey are relative (for storage in JSON)
                     const timestampKey = vttToTimestamp(trimmedStartTime);
-                    const compositeKey = `${timestampKey}_${textHashShort}`;
+                    const endTimeKey = vttToTimestamp(trimmedEndTime);
+
+                    // Find matching cue by timestamp and text
+                    // Use more lenient text matching (normalize whitespace and newlines)
+                    const normalizeText = (text) => text.trim().replace(/[\s\n\r]+/g, ' ');
+                    let matchingCue = allThemeCues.find(cue => {
+                        const timestampsMatch = cue.start === absoluteTimestampKey && cue.end === absoluteEndTimeKey;
+                        if (!timestampsMatch) return false;
+                        // Try exact match first, then normalized match
+                        return cue.text === currentCue.text || normalizeText(cue.text) === normalizeText(currentCue.text);
+                    });
+
+                    // Fallback: match by timestamp only if text matching fails
+                    // (handles cases where text has subtle differences)
+                    if (!matchingCue) {
+                        matchingCue = allThemeCues.find(cue =>
+                            cue.start === absoluteTimestampKey && cue.end === absoluteEndTimeKey
+                        );
+                        if (matchingCue) {
+                            console.warn('⚠️ Matched by timestamp only (text differs):');
+                            console.warn('   VTT text:', currentCue.text);
+                            console.warn('   API text:', matchingCue.text);
+                        }
+                    }
+
+                    if (matchingCue && matchingCue.sequence) {
+                        sequence = matchingCue.sequence;
+                    } else {
+                        // Debug: log why matching failed
+                        console.warn('⚠️ Could not match cue to sequence number');
+                        console.warn('   Looking for (ABSOLUTE):', { start: absoluteTimestampKey, end: absoluteEndTimeKey, text: `"${currentCue.text}"` });
+                        console.warn('   Looking for (RELATIVE):', { start: timestampKey, end: endTimeKey, text: `"${currentCue.text}"` });
+                        console.warn('   allThemeCues.length:', allThemeCues.length);
+
+                        // Find cues with matching timestamp (using absolute)
+                        const timestampMatches = allThemeCues.filter(c => c.start === absoluteTimestampKey);
+                        console.warn(`   Found ${timestampMatches.length} cues with matching absolute timestamp:`, timestampMatches.map(c => ({
+                            sequence: c.sequence,
+                            start: c.start,
+                            end: c.end,
+                            text: `"${c.text}"`
+                        })));
+
+                        // Find cues with similar text (substring match)
+                        const textMatches = allThemeCues.filter(c => c.text.includes(currentCue.text) || currentCue.text.includes(c.text));
+                        if (textMatches.length > 0) {
+                            console.warn(`   Found ${textMatches.length} cues with similar text:`, textMatches.map(c => ({
+                                sequence: c.sequence,
+                                start: c.start,
+                                end: c.end,
+                                text: `"${c.text}"`
+                            })));
+                        }
+                    }
 
                     const newCueInfo = {
+                        sequence: sequence,
+                        timestamp: timestampKey,
                         start: timestampKey,
-                        compositeKey: compositeKey,
-                        end: vttToTimestamp(trimmedEndTime),
+                        end: endTimeKey,
                         text: currentCue.text
                     };
 
@@ -2011,13 +2143,12 @@
                         // Set flag to prevent auto-save during programmatic update
                         isProgrammaticUpdate = true;
 
-                        console.log('🎬 Cue changed:', currentCueInfo.start, currentCueInfo.text);
+                        console.log('🎬 Cue changed:', currentCueInfo.sequence, currentCueInfo.timestamp, currentCueInfo.text);
                         console.log('   Looking for formatting in:', Object.keys(allCueFormatting));
 
-                        // Load saved formatting for this cue
-                        // Try composite key first, then fall back to timestamp-only key (legacy)
-                        const key = currentCueInfo.compositeKey || currentCueInfo.start;
-                        const formatting = allCueFormatting[key] || allCueFormatting[currentCueInfo.start];
+                        // Load saved formatting for this cue using sequence as key
+                        const key = currentCueInfo.sequence;
+                        const formatting = key !== null ? allCueFormatting[key] : null;
 
                         if (formatting && formatting.html) {
                             // Use the saved HTML which has selective formatting preserved
@@ -2353,25 +2484,67 @@
 
             document.addEventListener('mouseup', () => {
                 if (isDragging) {
-// console.log('🖱️ DRAG END - Timeline extended');
+                        console.log('🖱️ DRAG END - Timeline extended');
 
                     // Calculate theme start offset when dragging left handle
                     const timeOffset = startSeconds - themeStartBeforeDrag;
 
                     if (isDragging === 'left' && timeOffset !== 0) {
-// console.log(`   Theme start shifted by ${timeOffset}s`);
-// console.log(`   Old theme start: ${themeStartBeforeDrag}s`);
-// console.log(`   New theme start: ${startSeconds}s`);
-// console.log(`   Formatting keys kept as-is (no shifting)`);
-// console.log(`   Keys:`, Object.keys(allCueFormatting));
+                        console.log(`   Theme start shifted by ${timeOffset}s`);
+                        console.log(`   Old theme start: ${themeStartBeforeDrag}s`);
+                        console.log(`   New theme start: ${startSeconds}s`);
+                        console.log(`   Keys before:`, Object.keys(allCueFormatting));
 
-                        // IMPORTANT: Don't shift formatting keys!
-                        // Formatting keys represent "X seconds from ORIGINAL theme start"
-                        // They should remain stable regardless of timeline dragging
-// console.log('   Saving to server to update theme boundaries only...');
-// console.log(`   (Keys remain: ${Object.keys(allCueFormatting).join(', ')})`);
+                        // CRITICAL: Update timestamps only, don't regenerate keys
+                        // Sequence keys are stable and don't change
+                        const vttToSeconds = (vttTimestamp) => {
+                            const [time, millis] = vttTimestamp.split('.');
+                            const isNegative = time.startsWith('-');
+                            const [h, m, s] = time.replace('-', '').split(':').map(Number);
+                            const result = h * 3600 + m * 60 + s + (millis || 0) / 1000;
+                            return isNegative ? -result : result;
+                        };
 
-                        // Save formatting to server (without shifting) to update theme boundaries in adjust file
+                        const secondsToVtt = (totalSeconds) => {
+                            const EPSILON = 0.001;
+                            if (Math.abs(totalSeconds) < EPSILON) {
+                                totalSeconds = 0;
+                            }
+                            const isNegative = totalSeconds < 0;
+                            const absSeconds = Math.abs(totalSeconds);
+                            let h = Math.floor(absSeconds / 3600);
+                            let m = Math.floor((absSeconds % 3600) / 60);
+                            let s = absSeconds % 60;
+                            let sInt = Math.floor(s);
+                            let msInt = Math.round((s - sInt) * 1000);
+                            if (msInt >= 1000) {
+                                msInt = 0;
+                                sInt += 1;
+                                if (sInt >= 60) {
+                                    sInt = 0;
+                                    m += 1;
+                                    if (m >= 60) {
+                                        m = 0;
+                                        h += 1;
+                                    }
+                                }
+                            }
+                            const sign = isNegative ? '-' : '';
+                            return `${sign}${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${sInt.toString().padStart(2, '0')}.${msInt.toString().padStart(3, '0')}`;
+                        };
+
+                        // Update timestamp field for each sequence key
+                        for (const [seqKey, formatting] of Object.entries(allCueFormatting)) {
+                            const oldSeconds = vttToSeconds(formatting.timestamp);
+                            const newSeconds = oldSeconds - timeOffset;  // Subtract offset
+                            allCueFormatting[seqKey].timestamp = secondsToVtt(newSeconds);
+                            console.log(`   Sequence ${seqKey}: ${formatting.timestamp} → ${allCueFormatting[seqKey].timestamp}`);
+                        }
+
+                        console.log(`   Keys after (unchanged):`, Object.keys(allCueFormatting));
+
+                        // Save formatting to server with updated timestamps
+                        console.log('   Saving to server...');
                         fetch('/api/save-subtitle-formatting', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -2381,8 +2554,8 @@
                                 formatting: allCueFormatting
                             })
                         }).then(res => res.json())
-                          .then(data => {}); // console.log('   ✓ Formatting saved:', data)
-                          //.catch(err => console.error('   ✗ Failed to save formatting:', err));
+                          .then(data => console.log('   ✓ Formatting saved:', data))
+                          .catch(err => console.error('   ✗ Failed to save formatting:', err));
                     }
 
                     // Handle right-side drag (theme end changes)
@@ -2392,14 +2565,14 @@
                         const themeEndOffset = endSeconds - themeEndBeforeDrag;
 
                         if (themeEndOffset !== 0) {
-// console.log(`   Theme end shifted by ${themeEndOffset}s`);
-// console.log(`   Old theme end: ${themeEndBeforeDrag}s`);
-// console.log(`   New theme end: ${endSeconds}s`);
-// console.log(`   Formatting keys (no shift needed, relative to themeStart):`, Object.keys(allCueFormatting));
+                            console.log(`   Theme end shifted by ${themeEndOffset}s`);
+                            console.log(`   Old theme end: ${themeEndBeforeDrag}s`);
+                            console.log(`   New theme end: ${endSeconds}s`);
+                            console.log(`   Formatting keys (no shift needed, relative to themeStart):`, Object.keys(allCueFormatting));
 
                             // For right-side drag, we don't shift keys (they're relative to themeStart)
                             // But we save to ensure styles are preserved even if subtitles are now out of bounds
-// console.log('   Saving formatting to preserve styles...');
+                            console.log('   Saving formatting to preserve styles...');
                             fetch('/api/save-subtitle-formatting', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
@@ -2409,8 +2582,8 @@
                                     formatting: allCueFormatting
                                 })
                             }).then(res => res.json())
-                              .then(data => {}); // console.log('   ✓ Formatting saved:', data)
-                              //.catch(err => console.error('   ✗ Failed to save formatting:', err));
+                              .then(data => console.log('   ✓ Formatting saved:', data))
+                              .catch(err => console.error('   ✗ Failed to save formatting:', err));
                         }
                     }
 
@@ -2530,34 +2703,81 @@
                     e.stopPropagation();
                     e.preventDefault();
 
-// console.log('🔄 Reset to original');
-// console.log(`   Current start: ${startSeconds}s → Original: ${originalStartSeconds}s`);
-// console.log(`   Formatting keys kept as-is (no shifting)`);
-// console.log(`   Keys:`, Object.keys(allCueFormatting));
+                    const currentStart = startSeconds;
+                    const timeOffset = originalStartSeconds - currentStart;
 
-                    // IMPORTANT: Don't shift formatting keys!
-                    // Formatting keys represent "X seconds from ORIGINAL theme start"
-                    // They should remain stable regardless of timeline dragging
-// console.log('   Saving to server to update theme boundaries only...');
+                    console.log('🔄 Reset to original');
+                    console.log(`   Current start: ${currentStart}s → Original: ${originalStartSeconds}s`);
+                    console.log(`   Time offset: ${timeOffset}s`);
+                    console.log(`   Keys before:`, Object.keys(allCueFormatting));
 
-                    // Save formatting to server (without shifting) to update theme boundaries in adjust file
-                    if (Object.keys(allCueFormatting).length > 0) {
-                        const saveResponse = await fetch('/api/save-subtitle-formatting', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                folder: folderNumber,
-                                theme: themeNumber,
-                                formatting: allCueFormatting  // NOT shifted!
-                            })
-                        });
+                    // CRITICAL: Update timestamps only, don't regenerate keys
+                    // Sequence keys are stable and don't change
+                    if (Object.keys(allCueFormatting).length > 0 && timeOffset !== 0) {
+                        const vttToSeconds = (vttTimestamp) => {
+                            const [time, millis] = vttTimestamp.split('.');
+                            const isNegative = time.startsWith('-');
+                            const [h, m, s] = time.replace('-', '').split(':').map(Number);
+                            const result = h * 3600 + m * 60 + s + (millis || 0) / 1000;
+                            return isNegative ? -result : result;
+                        };
 
-                        if (!saveResponse.ok) {
-// console.error('   ✗ Failed to save formatting:', saveResponse.status);
-                        } else {
-                            const saveData = await saveResponse.json();
-// console.log('   ✓ Formatting saved:', saveData);
+                        const secondsToVtt = (totalSeconds) => {
+                            const EPSILON = 0.001;
+                            if (Math.abs(totalSeconds) < EPSILON) {
+                                totalSeconds = 0;
+                            }
+                            const isNegative = totalSeconds < 0;
+                            const absSeconds = Math.abs(totalSeconds);
+                            let h = Math.floor(absSeconds / 3600);
+                            let m = Math.floor((absSeconds % 3600) / 60);
+                            let s = absSeconds % 60;
+                            let sInt = Math.floor(s);
+                            let msInt = Math.round((s - sInt) * 1000);
+                            if (msInt >= 1000) {
+                                msInt = 0;
+                                sInt += 1;
+                                if (sInt >= 60) {
+                                    sInt = 0;
+                                    m += 1;
+                                    if (m >= 60) {
+                                        m = 0;
+                                        h += 1;
+                                    }
+                                }
+                            }
+                            const sign = isNegative ? '-' : '';
+                            return `${sign}${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${sInt.toString().padStart(2, '0')}.${msInt.toString().padStart(3, '0')}`;
+                        };
+
+                        // Update timestamp field for each sequence key
+                        for (const [seqKey, formatting] of Object.entries(allCueFormatting)) {
+                            const oldSeconds = vttToSeconds(formatting.timestamp);
+                            const newSeconds = oldSeconds - timeOffset;  // Subtract offset
+                            allCueFormatting[seqKey].timestamp = secondsToVtt(newSeconds);
+                            console.log(`   Sequence ${seqKey}: ${formatting.timestamp} → ${allCueFormatting[seqKey].timestamp}`);
                         }
+
+                        console.log(`   Keys after (unchanged):`, Object.keys(allCueFormatting));
+                    }
+
+                    // Save formatting to server with updated keys
+                    console.log('   Saving to server...');
+                    const saveResponse = await fetch('/api/save-subtitle-formatting', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            folder: folderNumber,
+                            theme: themeNumber,
+                            formatting: allCueFormatting
+                        })
+                    });
+
+                    if (!saveResponse.ok) {
+                        console.error('   ✗ Failed to save formatting:', saveResponse.status);
+                    } else {
+                        const saveData = await saveResponse.json();
+                        console.log('   ✓ Formatting saved:', saveData);
                     }
 
                     // Reset to original values
@@ -2912,17 +3132,44 @@
 
             // Save the actual HTML as the source of truth
             // We'll store the HTML and parse it when needed
-            // Use composite key (timestamp + text hash) to prevent collisions
-            const key = currentCueInfo.compositeKey || currentCueInfo.start;
+            // Use sequence as key (stable SRT sequence number)
+            const key = currentCueInfo.sequence;
+
+            // CRITICAL: Cannot save without sequence number (cue matching failed)
+            if (key === null) {
+                console.error('❌ Cannot save formatting: sequence number is null');
+                console.error('   allThemeCues.length:', allThemeCues.length);
+                console.error('   currentCueInfo:', currentCueInfo);
+                // Try to reload cues and retry once
+                if (allThemeCues.length === 0) {
+                    console.warn('⚠️ allThemeCues is empty, attempting to load...');
+                    await loadThemeCues();
+                    // Retry after loading
+                    const retryCue = allThemeCues.find(cue =>
+                        cue.start === currentCueInfo.timestamp &&
+                        cue.end === currentCueInfo.end &&
+                        cue.text === currentCueInfo.text
+                    );
+                    if (retryCue && retryCue.sequence) {
+                        currentCueInfo.sequence = retryCue.sequence;
+                        console.log('✅ Found sequence after reload:', retryCue.sequence);
+                        // Recursively call save after updating sequence
+                        return await saveCurrentCueFormatting();
+                    }
+                }
+                return; // Cannot save without sequence
+            }
+
             allCueFormatting[key] = {
+                sequence: key,
+                timestamp: currentCueInfo.timestamp,
                 html: editor.innerHTML,
-                _timestamp: currentCueInfo.start,  // Store timestamp for easy lookup
                 _text: currentCueInfo.text  // Store text for debugging
             };
 
-                        console.log('💾 Saved formatting for', key, `(${currentCueInfo.start})`);
-                        console.log('   Text:', currentCueInfo.text.substring(0, 50));
-                        console.log('   HTML:', editor.innerHTML.substring(0, 100));
+            console.log('💾 Saved formatting for sequence', key, `(${currentCueInfo.timestamp})`);
+            console.log('   Text:', currentCueInfo.text.substring(0, 50));
+            console.log('   HTML:', editor.innerHTML.substring(0, 100));
 
             // Also extract simplified formatting info for preview
             const bold = editor.querySelector('strong') !== null;
