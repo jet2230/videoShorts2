@@ -1984,14 +1984,28 @@
                     // Allow negative values to preserve formatting for subtitles before theme start
                     const trimmedStartTime = currentCue.startTime - themeStart;
                     const trimmedEndTime = currentCue.endTime - themeStart;
+
+                    // Create a simple hash of the text for unique identification
+                    // This prevents different subtitles with the same timestamp from overwriting each other
+                    const textHash = currentCue.text.split('').reduce((a, b) => {
+                        a = ((a << 5) - a) + b.charCodeAt(0);
+                        return a & a;
+                    }, 0);
+                    const textHashShort = Math.abs(textHash).toString(16).substring(0, 4);
+
+                    // Use composite key: timestamp_textHash to prevent collisions
+                    const timestampKey = vttToTimestamp(trimmedStartTime);
+                    const compositeKey = `${timestampKey}_${textHashShort}`;
+
                     const newCueInfo = {
-                        start: vttToTimestamp(trimmedStartTime),
+                        start: timestampKey,
+                        compositeKey: compositeKey,
                         end: vttToTimestamp(trimmedEndTime),
                         text: currentCue.text
                     };
 
-                    // Only update if we've moved to a different cue
-                    if (!currentCueInfo || currentCueInfo.start !== newCueInfo.start) {
+                    // Only update if we've moved to a different cue (different timestamp OR different text)
+                    if (!currentCueInfo || currentCueInfo.start !== newCueInfo.start || currentCueInfo.text !== newCueInfo.text) {
                         currentCueInfo = newCueInfo;
 
                         // Set flag to prevent auto-save during programmatic update
@@ -2001,12 +2015,16 @@
                         console.log('   Looking for formatting in:', Object.keys(allCueFormatting));
 
                         // Load saved formatting for this cue
-                        if (allCueFormatting[currentCueInfo.start] && allCueFormatting[currentCueInfo.start].html) {
+                        // Try composite key first, then fall back to timestamp-only key (legacy)
+                        const key = currentCueInfo.compositeKey || currentCueInfo.start;
+                        const formatting = allCueFormatting[key] || allCueFormatting[currentCueInfo.start];
+
+                        if (formatting && formatting.html) {
                             // Use the saved HTML which has selective formatting preserved
                             console.log('   ✅ Found saved HTML, applying...');
-                            console.log('   HTML to apply:', allCueFormatting[currentCueInfo.start].html);
+                            console.log('   HTML to apply:', formatting.html);
 
-                            const html = allCueFormatting[currentCueInfo.start].html;
+                            const html = formatting.html;
 
                             // Apply HTML directly using insertHTML (bypasses contenteditable sanitization)
                             subtitleText.focus();
@@ -2032,10 +2050,10 @@
 
                             // Update subtitleFormatting for preview
                             subtitleFormatting = {
-                                bold: allCueFormatting[currentCueInfo.start].bold || false,
-                                italic: allCueFormatting[currentCueInfo.start].italic || false,
-                                color: allCueFormatting[currentCueInfo.start].color || null,
-                                size: allCueFormatting[currentCueInfo.start].size || null
+                                bold: formatting.bold || false,
+                                italic: formatting.italic || false,
+                                color: formatting.color || null,
+                                size: formatting.size || null
                             };
                         } else {
                             console.log('   ❌ No saved formatting for this cue');
@@ -2894,11 +2912,16 @@
 
             // Save the actual HTML as the source of truth
             // We'll store the HTML and parse it when needed
-            allCueFormatting[currentCueInfo.start] = {
-                html: editor.innerHTML
+            // Use composite key (timestamp + text hash) to prevent collisions
+            const key = currentCueInfo.compositeKey || currentCueInfo.start;
+            allCueFormatting[key] = {
+                html: editor.innerHTML,
+                _timestamp: currentCueInfo.start,  // Store timestamp for easy lookup
+                _text: currentCueInfo.text  // Store text for debugging
             };
 
-                        console.log('💾 Saved formatting for', currentCueInfo.start);
+                        console.log('💾 Saved formatting for', key, `(${currentCueInfo.start})`);
+                        console.log('   Text:', currentCueInfo.text.substring(0, 50));
                         console.log('   HTML:', editor.innerHTML.substring(0, 100));
 
             // Also extract simplified formatting info for preview
@@ -2948,17 +2971,17 @@
                 }
             }
 
-            allCueFormatting[currentCueInfo.start].bold = bold;
-            allCueFormatting[currentCueInfo.start].italic = italic;
-            allCueFormatting[currentCueInfo.start].color = color;
-            allCueFormatting[currentCueInfo.start].size = size;
+            allCueFormatting[key].bold = bold;
+            allCueFormatting[key].italic = italic;
+            allCueFormatting[key].color = color;
+            allCueFormatting[key].size = size;
 
             // Get current position from dropdown
             const positionSelect = document.getElementById('subtitle-position');
             const position = positionSelect ? positionSelect.value : null;
-            allCueFormatting[currentCueInfo.start].position = position;
+            allCueFormatting[key].position = position;
 
-            subtitleFormatting = { ...allCueFormatting[currentCueInfo.start] };
+            subtitleFormatting = { ...allCueFormatting[key] };
 
             // Debug: log what's being saved
 // console.log('💾 Saving formatting for', currentCueInfo.start);
