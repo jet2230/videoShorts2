@@ -5637,3 +5637,17 @@ Exists: True
 2026-02-08 12:36:30,034 - INFO - 127.0.0.1 - - [08/Feb/2026 12:36:30] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
 2026-02-08 12:36:30,039 - INFO - 127.0.0.1 - - [08/Feb/2026 12:36:30] "GET /api/subtitles/001/3.vtt?start=162&end=350 HTTP/1.1" 200 -
 2026-02-08 12:36:30,071 - INFO - 127.0.0.1 - - [08/Feb/2026 12:36:30] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770554190023 HTTP/1.1[0m" 206 -
+2026-02-08 12:37:29,483 - INFO - 127.0.0.1 - - [08/Feb/2026 12:37:29] "GET /adjust.html?folder=001&theme=3 HTTP/1.1" 200 -
+2026-02-08 12:37:29,540 - INFO - 127.0.0.1 - - [08/Feb/2026 12:37:29] "GET /api/folder/001/themes HTTP/1.1" 200 -
+2026-02-08 12:37:29,547 - INFO - 127.0.0.1 - - [08/Feb/2026 12:37:29] "GET /api/subtitle-formatting/001/3 HTTP/1.1" 200 -
+2026-02-08 12:37:29,558 - INFO - 127.0.0.1 - - [08/Feb/2026 12:37:29] "GET /api/theme-subtitles/001/3 HTTP/1.1" 200 -
+2026-02-08 12:37:29,561 - INFO - 127.0.0.1 - - [08/Feb/2026 12:37:29] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-08 12:37:29,564 - INFO - 127.0.0.1 - - [08/Feb/2026 12:37:29] "GET /api/subtitles/001.vtt HTTP/1.1" 200 -
+2026-02-08 12:37:29,593 - INFO - 127.0.0.1 - - [08/Feb/2026 12:37:29] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-08 12:37:29,595 - INFO - 127.0.0.1 - - [08/Feb/2026 12:37:29] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-08 12:37:29,617 - INFO - 127.0.0.1 - - [08/Feb/2026 12:37:29] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-08 12:37:29,622 - INFO - 127.0.0.1 - - [08/Feb/2026 12:37:29] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-08 12:37:29,652 - INFO - 127.0.0.1 - - [08/Feb/2026 12:37:29] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770554249643 HTTP/1.1[0m" 206 -
+2026-02-08 12:37:29,656 - INFO - 127.0.0.1 - - [08/Feb/2026 12:37:29] "GET /api/subtitles/001/3.vtt?start=162&end=350 HTTP/1.1" 200 -
+2026-02-08 12:37:29,658 - INFO - 127.0.0.1 - - [08/Feb/2026 12:37:29] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-08 12:37:29,687 - INFO - 127.0.0.1 - - [08/Feb/2026 12:37:29] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770554249643 HTTP/1.1[0m" 206 -

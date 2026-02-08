@@ -1375,11 +1375,6 @@
                 const data = await response.json();
                 allCueFormatting = data.formatting || {};
 
-                // Clean up duplicate entries (caused by Math.max(0, ...) bug fix)
-                // Remove entries like "00:00:00.000" if "-00:00:00.001" exists (same subtitle)
-                const keysToRemove = [];
-                const keys = Object.keys(allCueFormatting);
-
                 // Helper to parse timestamp to seconds
                 const vttToSeconds = (ts) => {
                     const [time, millis] = ts.split('.');
@@ -1388,6 +1383,96 @@
                     const result = h * 3600 + m * 60 + s + (millis || 0) / 1000;
                     return isNeg ? -result : result;
                 };
+
+                // Helper to convert seconds to timestamp (supports negative values)
+                const secondsToVtt = (totalSeconds) => {
+                    const EPSILON = 0.001;
+                    if (Math.abs(totalSeconds) < EPSILON) {
+                        totalSeconds = 0;
+                    }
+
+                    const isNegative = totalSeconds < 0;
+                    const absSeconds = Math.abs(totalSeconds);
+
+                    let h = Math.floor(absSeconds / 3600);
+                    let m = Math.floor((absSeconds % 3600) / 60);
+                    let s = absSeconds % 60;
+                    let sInt = Math.floor(s);
+                    let msInt = Math.round((s - sInt) * 1000);
+
+                    if (msInt >= 1000) {
+                        msInt = 0;
+                        sInt += 1;
+                        if (sInt >= 60) {
+                            sInt = 0;
+                            m += 1;
+                            if (m >= 60) {
+                                m = 0;
+                                h += 1;
+                            }
+                        }
+                    }
+
+                    const sign = isNegative ? '-' : '';
+                    return `${sign}${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${sInt.toString().padStart(2, '0')}.${msInt.toString().padStart(3, '0')}`;
+                };
+
+                // CRITICAL FIX: Convert absolute timestamps to relative timestamps
+                // If the JSON has entries with absolute VTT times (e.g., "00:00:10.000")
+                // convert them to relative times (e.g., "00:00:00.000") by subtracting themeStart
+                if (startSeconds !== null && startSeconds !== undefined && Object.keys(allCueFormatting).length > 0) {
+                    const absoluteKeysToRemove = [];
+                    const newEntries = {};
+
+                    for (const [timestamp, formatting] of Object.entries(allCueFormatting)) {
+                        const timestampSeconds = vttToSeconds(timestamp);
+
+                        // Check if this looks like an absolute timestamp (>= theme start)
+                        // Absolute timestamps are typically large (e.g., 10s = theme start, 26s = later in video)
+                        // Relative timestamps should be small (e.g., 0s, 0.754s, etc.)
+                        if (timestampSeconds >= startSeconds - 0.5) { // Allow 0.5s tolerance
+                            // This looks like an absolute timestamp, convert to relative
+                            const relativeSeconds = timestampSeconds - startSeconds;
+                            const relativeTimestamp = secondsToVtt(relativeSeconds);
+
+                            // Check if a relative version already exists
+                            if (allCueFormatting[relativeTimestamp]) {
+                                // Relative version exists, keep it and remove absolute
+                                absoluteKeysToRemove.push(timestamp);
+                            } else {
+                                // No relative version exists, move the formatting
+                                newEntries[relativeTimestamp] = formatting;
+                                absoluteKeysToRemove.push(timestamp);
+                            }
+                        }
+                    }
+
+                    // Remove absolute timestamp entries
+                    for (const key of absoluteKeysToRemove) {
+                        delete allCueFormatting[key];
+                    }
+
+                    // Add converted entries
+                    Object.assign(allCueFormatting, newEntries);
+
+                    if (absoluteKeysToRemove.length > 0) {
+                        // Save the corrected version
+                        fetch('/api/save-subtitle-formatting', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                folder: folderNumber,
+                                theme: themeNumber,
+                                formatting: allCueFormatting
+                            })
+                        }).then(() => {}); // console.log('   ✓ Saved corrected formatting')
+                    }
+                }
+
+                // Clean up duplicate entries (caused by Math.max(0, ...) bug fix)
+                // Remove entries like "00:00:00.000" if "-00:00:00.001" exists (same subtitle)
+                const keysToRemove = [];
+                const keys = Object.keys(allCueFormatting);
 
                 // Find duplicates: positive and negative versions of ~same time
                 for (const key of keys) {
