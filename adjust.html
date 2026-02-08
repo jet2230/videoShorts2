@@ -1997,14 +1997,14 @@
                         // Set flag to prevent auto-save during programmatic update
                         isProgrammaticUpdate = true;
 
-// console.log('🎬 Cue changed:', currentCueInfo.start, currentCueInfo.text);
-// console.log('   Looking for formatting in:', Object.keys(allCueFormatting));
+                        console.log('🎬 Cue changed:', currentCueInfo.start, currentCueInfo.text);
+                        console.log('   Looking for formatting in:', Object.keys(allCueFormatting));
 
                         // Load saved formatting for this cue
                         if (allCueFormatting[currentCueInfo.start] && allCueFormatting[currentCueInfo.start].html) {
                             // Use the saved HTML which has selective formatting preserved
-// console.log('   ✅ Found saved HTML, applying...');
-// console.log('   HTML to apply:', allCueFormatting[currentCueInfo.start].html);
+                            console.log('   ✅ Found saved HTML, applying...');
+                            console.log('   HTML to apply:', allCueFormatting[currentCueInfo.start].html);
 
                             const html = allCueFormatting[currentCueInfo.start].html;
 
@@ -2038,7 +2038,7 @@
                                 size: allCueFormatting[currentCueInfo.start].size || null
                             };
                         } else {
-// console.log('   ❌ No saved formatting for this cue');
+                            console.log('   ❌ No saved formatting for this cue');
                             // No saved formatting, use plain text
                             subtitleText.innerHTML = currentCue.text;
                             subtitleFormatting = { bold: false, italic: false, color: null, size: null };
@@ -2898,8 +2898,8 @@
                 html: editor.innerHTML
             };
 
-// console.log('💾 Saved formatting for', currentCueInfo.start);
-// console.log('   HTML:', editor.innerHTML.substring(0, 100));
+                        console.log('💾 Saved formatting for', currentCueInfo.start);
+                        console.log('   HTML:', editor.innerHTML.substring(0, 100));
 
             // Also extract simplified formatting info for preview
             const bold = editor.querySelector('strong') !== null;
