@@ -766,6 +766,43 @@
             padding: 4px;
         }
 
+        .position-mode-group {
+            display: flex;
+            gap: 2px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 2px;
+        }
+
+        .position-mode-btn {
+            flex: 1;
+            padding: 8px 12px;
+            background: transparent;
+            border: none;
+            border-radius: 4px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .position-mode-btn:hover {
+            color: rgba(255, 255, 255, 0.8);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .position-mode-btn.active {
+            background: #00ff9d;
+            color: #000;
+            font-weight: 600;
+        }
+
+        .position-mode-btn.active:hover {
+            background: #00cc7d;
+        }
+
         .subtitle-text-area {
             width: 100%;
             min-height: 150px;
@@ -1321,6 +1358,13 @@
                     </div>
                     <div class="form-row">
                         <div class="form-group">
+                            <label>Position Mode</label>
+                            <div class="position-mode-group">
+                                <button class="position-mode-btn active" data-mode="global">Global Subs</button>
+                                <button class="position-mode-btn" data-mode="current">Current Sub</button>
+                            </div>
+                        </div>
+                        <div class="form-group">
                             <label>Position</label>
                             <select id="subtitle-position">
                                 <option value="bottom">Bottom</option>
@@ -1433,6 +1477,10 @@
         let themeStartBeforeDrag = null; // Track theme start before drag to calculate timestamp shift
         let themeEndBeforeDrag = null; // Track theme end before drag
 
+        // Position mode: 'global' (all subtitles) or 'current' (individual subtitle)
+        let positionMode = 'global';
+        let globalPosition = 'bottom'; // Default global position for all subtitles
+
         function autoSaveTheme() {
             // Clear existing timeout
             if (autoSaveTimeout) {
@@ -1533,6 +1581,135 @@
                 console.log(`   ✅ Updated: extLeftEnd.value=${extLeftEnd.value}, extRightEnd.value=${extRightEnd.value}`);
             } else {
                 console.warn('   ⚠️ Cannot update - missing elements or values');
+            }
+        }
+
+        // ============================================
+        // Position Mode Functions (Global vs Current)
+        // ============================================
+
+        // Switch position mode (global or current)
+        function setPositionMode(mode) {
+            console.log('📍 Setting position mode:', mode);
+            positionMode = mode;
+
+            // Update button UI
+            const buttons = document.querySelectorAll('.position-mode-btn');
+            buttons.forEach(btn => {
+                if (btn.dataset.mode === mode) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+
+            // Update position dropdown to match current value for the mode
+            const positionSelect = document.getElementById('subtitle-position');
+            if (mode === 'global') {
+                // Show global position
+                positionSelect.value = globalPosition;
+                console.log('   → Switched to global mode, position =', globalPosition);
+            } else {
+                // Show current cue's individual position (if exists)
+                if (currentCueInfo && currentCueInfo.sequence) {
+                    const formatting = allCueFormatting[currentCueInfo.sequence];
+                    if (formatting && formatting.position) {
+                        positionSelect.value = formatting.position;
+                        console.log('   → Switched to current mode, position =', formatting.position);
+                    } else {
+                        // No individual position set, use global
+                        positionSelect.value = globalPosition;
+                        console.log('   → Switched to current mode, using global =', globalPosition);
+                    }
+                } else {
+                    positionSelect.value = globalPosition;
+                    console.log('   → Switched to current mode, no cue, using global =', globalPosition);
+                }
+            }
+
+            updateSubtitlePreview();
+        }
+
+        // Save global position to server
+        async function saveGlobalPosition(position) {
+            console.log('💾 Saving global position:', position);
+            console.log('   folder:', folderNumber, 'theme:', themeNumber);
+
+            try {
+                const response = await fetch('/api/save-global-position', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        folder: folderNumber,
+                        theme: themeNumber,
+                        position: position
+                    })
+                });
+
+                console.log('   Response status:', response.status);
+
+                if (!response.ok) {
+                    console.error('❌ Failed to save global position, status:', response.status);
+                    const errorText = await response.text();
+                    console.error('   Error:', errorText);
+                    return false;
+                }
+
+                const result = await response.json();
+                console.log('   Server response:', result);
+
+                globalPosition = position;
+                console.log('   ✅ Global position saved:', globalPosition);
+                return true;
+            } catch (error) {
+                console.error('❌ Error saving global position:', error);
+                return false;
+            }
+        }
+
+        // Load global position from server
+        async function loadGlobalPosition() {
+            console.log('🔄 Loading global position...');
+
+            try {
+                const response = await fetch(`/api/get-global-position?folder=${folderNumber}&theme=${themeNumber}`);
+
+                if (!response.ok) {
+                    console.warn('   ⚠️ No global position found, using default');
+                    globalPosition = 'bottom';
+                    return 'bottom';
+                }
+
+                const data = await response.json();
+                globalPosition = data.position || 'bottom';
+                console.log('   ✅ Global position loaded:', globalPosition);
+
+                // Update dropdown to match global position
+                const positionSelect = document.getElementById('subtitle-position');
+                if (positionSelect && positionMode === 'global') {
+                    positionSelect.value = globalPosition;
+                }
+
+                return globalPosition;
+            } catch (error) {
+                console.warn('   ⚠️ Error loading global position:', error);
+                globalPosition = 'bottom';
+                return 'bottom';
+            }
+        }
+
+        // Handle position dropdown change based on current mode
+        async function handlePositionChange(newPosition) {
+            console.log('📍 Position changed to:', newPosition, 'mode:', positionMode);
+
+            if (positionMode === 'global') {
+                // Save to global (adjust.md)
+                await saveGlobalPosition(newPosition);
+            } else {
+                // Save to current cue (JSON)
+                hasManualPosition = false;
+                updateSubtitlePreview();
+                await saveCurrentCueFormatting();
             }
         }
 
@@ -1984,6 +2161,9 @@
                 // Load subtitle formatting metadata and apply to editor
                 await loadSubtitleFormatting();
 
+                // Load global position from adjust.md
+                await loadGlobalPosition();
+
                 // Load VTT subtitles
                 const subtitleTrack = document.getElementById('subtitle-track');
                 subtitleTrack.src = `/api/subtitles/${folderNumber}.vtt`;
@@ -2382,13 +2562,14 @@
                                 bold: formatting.bold || false,
                                 italic: formatting.italic || false,
                                 color: formatting.color || null,
-                                size: formatting.size || null
+                                size: formatting.size || null,
+                                position: formatting.position || null  // Load individual position
                             };
                         } else {
                             console.log('   ❌ No saved formatting for this cue');
                             // No saved formatting, use plain text
                             subtitleText.innerHTML = currentCue.text;
-                            subtitleFormatting = { bold: false, italic: false, color: null, size: null };
+                            subtitleFormatting = { bold: false, italic: false, color: null, size: null, position: null };
                         }
 
                         // Always update preview after programmatic cue change
@@ -3293,7 +3474,14 @@
             const color = document.getElementById('subtitle-color').value;
             const bgColor = document.getElementById('subtitle-bg').value;
             const bgOpacity = document.getElementById('subtitle-bg-opacity').value / 100;
-            const position = document.getElementById('subtitle-position').value;
+
+            // Check individual position first, then use dropdown/global
+            let effectivePosition = document.getElementById('subtitle-position').value;
+            if (subtitleFormatting.position) {
+                effectivePosition = subtitleFormatting.position;
+            } else if (globalPosition) {
+                effectivePosition = globalPosition;
+            }
 
             const overlay = document.getElementById('subtitle-overlay');
             const textEl = document.getElementById('subtitle-preview-text');
@@ -3315,12 +3503,12 @@
                 // Only update position if NOT manually positioned
                 // When user has dragged the subtitle, keep their manual position
                 if (!hasManualPosition) {
-                    // Position overlay
-                    if (position === 'bottom') {
+                    // Position overlay using effective position (individual > global > dropdown)
+                    if (effectivePosition === 'bottom') {
                         overlay.style.bottom = '40px';
                         overlay.style.top = 'auto';
                         overlay.style.transform = 'translateX(-50%)';
-                    } else if (position === 'top') {
+                    } else if (effectivePosition === 'top') {
                         overlay.style.top = '20px';
                         overlay.style.bottom = 'auto';
                         overlay.style.transform = 'translateX(-50%)';
@@ -3608,9 +3796,17 @@
         document.getElementById('subtitle-color').addEventListener('input', updateSubtitlePreview);
         document.getElementById('subtitle-bg').addEventListener('input', updateSubtitlePreview);
         document.getElementById('subtitle-bg-opacity').addEventListener('input', updateSubtitlePreview);
-        document.getElementById('subtitle-position').addEventListener('change', () => {
-            hasManualPosition = false; // Clear manual position when user changes dropdown
-            updateSubtitlePreview();
+        document.getElementById('subtitle-position').addEventListener('change', async () => {
+            const newPosition = document.getElementById('subtitle-position').value;
+            await handlePositionChange(newPosition);
+        });
+
+        // Position mode button event listeners
+        document.querySelectorAll('.position-mode-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const mode = btn.dataset.mode;
+                setPositionMode(mode);
+            });
         });
 
         // Theme name editing
@@ -3811,7 +4007,7 @@
             subtitleOverlay.style.border = '2px solid yellow';
         });
 
-        document.addEventListener('mouseup', () => {
+        document.addEventListener('mouseup', async () => {
             if (isDraggingSubtitle) {
                 isDraggingSubtitle = false;
 
@@ -3839,9 +4035,17 @@
 
                 updateSubtitlePreview();
 
-                // IMPORTANT: Save the new position so it persists
-                // This ensures the dragged position is saved to the formatting file
-                autoSaveSubtitle();
+                // Save based on current position mode
+                const newPosition = positionSelect.value;
+                console.log('🖱️ Drag ended, position:', newPosition, 'mode:', positionMode);
+
+                if (positionMode === 'global') {
+                    // Save to global (adjust.md)
+                    await saveGlobalPosition(newPosition);
+                } else {
+                    // Save to current cue (JSON)
+                    await saveCurrentCueFormatting();
+                }
             }
         });
 
@@ -3977,7 +4181,10 @@
 
         // Initialize
         if (folderNumber && themeNumber) {
-            loadTheme();
+            loadTheme().then(() => {
+                // Initialize position mode buttons after theme loads
+                setPositionMode('global'); // Default to global mode
+            });
         } else {
             document.getElementById('loading').classList.add('hidden');
             document.getElementById('error').textContent = 'Missing folder or theme number';

@@ -484,25 +484,34 @@ def update_theme():
     seconds = int(duration_secs % 60)
     duration_str = f"{minutes}m {seconds}s"
 
+    # Read existing adjust.md file if it exists (to preserve Position field)
+    existing_position = None
+    if adjust_file.exists():
+        with open(adjust_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+            # Extract existing Position line
+            import re
+            position_match = re.search(r'\*\*Position:\*\*\s*(top|middle|bottom)', content)
+            if position_match:
+                existing_position = position_match.group(1)
+
+    # Write adjust file with all fields including position
     with open(adjust_file, 'w', encoding='utf-8') as f:
-        f.write(f"# Theme {theme_number} - Adjusted\n\n")
+        f.write(f"# Theme {theme_number}\n\n")
         f.write(f"**Title:** {new_title}\n\n")
-        f.write(f"**Time Range:** {new_start} - {new_end} ({duration_str})\n\n")
-        f.write(f"**Folder:** {folder.name}\n\n")
-        f.write(f"**Last Modified:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-        f.write(f"---\n\n")
-        f.write(f"## Adjusted Settings\n\n")
-        f.write(f"- Theme Number: {theme_number}\n")
-        f.write(f"- Original Start: {new_start}\n")
-        f.write(f"- Original End: {new_end}\n")
-        f.write(f"- Duration: {duration_str}\n")
+        f.write(f"**Time Range:** {new_start} - {new_end} ({duration_str})\n")
+        if existing_position:
+            f.write(f"**Position:** {existing_position}\n")
+        f.write(f"\n**Folder:** {folder.name}\n")
+        f.write(f"**Last Modified:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
 
     return jsonify({'success': True, 'message': 'Theme updated successfully'})
 
 
 @app.route('/api/reset-theme', methods=['POST'])
 def reset_theme():
-    """Reset theme adjustment by deleting the adjust file."""
+    """Reset theme time adjustment but preserve Position setting."""
+    import re
     data = request.json
     folder_number = data.get('folder')
     theme_number = int(data.get('theme'))
@@ -521,15 +530,59 @@ def reset_theme():
     if not folder:
         return jsonify({'error': 'Folder not found'}), 404
 
-    # Delete the adjust file if it exists
+    # Check adjust file and preserve Position
     shorts_dir = folder / 'shorts'
     adjust_file = shorts_dir / f'theme_{theme_number:03d}_adjust.md'
 
+    existing_position = None
     if adjust_file.exists():
-        adjust_file.unlink()
-        return jsonify({'success': True, 'message': 'Theme reset successfully', 'deleted': True})
-    else:
-        return jsonify({'success': True, 'message': 'No adjust file to delete', 'deleted': False})
+        with open(adjust_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+            # Extract existing Position line
+            position_match = re.search(r'\*\*Position:\*\*\s*(top|middle|bottom)', content)
+            if position_match:
+                existing_position = position_match.group(1)
+
+    # Get original theme data from themes.md
+    themes_file = folder / 'themes.md'
+    if not themes_file.exists():
+        return jsonify({'error': 'Themes file not found'}), 404
+
+    themes = creator.parse_themes_file(themes_file)
+    theme_found = False
+    theme_title = None
+    theme_start = None
+    theme_end = None
+
+    for theme in themes:
+        if theme['number'] == theme_number:
+            theme_title = theme.get('title', '')
+            theme_start = theme['start']
+            theme_end = theme['end']
+            theme_found = True
+            break
+
+    if not theme_found:
+        return jsonify({'error': 'Theme not found'}), 404
+
+    # Rebuild adjust.md with original time range but preserve Position
+    start_secs = creator.parse_timestamp_to_seconds(theme_start)
+    end_secs = creator.parse_timestamp_to_seconds(theme_end)
+    duration_secs = end_secs - start_secs
+    minutes = int(duration_secs // 60)
+    seconds = int(duration_secs % 60)
+    duration_str = f"{minutes}m {seconds}s"
+
+    with open(adjust_file, 'w', encoding='utf-8') as f:
+        f.write(f"# Theme {theme_number}\n\n")
+        f.write(f"**Title:** {theme_title}\n\n")
+        f.write(f"**Time Range:** {theme_start} - {theme_end} ({duration_str})\n")
+        if existing_position:
+            f.write(f"**Position:** {existing_position}\n")
+        f.write(f"\n**Folder:** {folder.name}\n")
+        f.write(f"**Last Modified:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+
+    return jsonify({'success': True, 'message': 'Theme reset successfully'})
 
 
 @app.route('/api/subtitles/<folder_number>.vtt', methods=['GET'])
@@ -907,6 +960,136 @@ def get_subtitle_formatting(folder_number: str, theme_number: str):
         return jsonify({'formatting': formatting})
     else:
         return jsonify({'formatting': {}})
+
+
+@app.route('/api/save-global-position', methods=['POST'])
+def save_global_position():
+    """Save global subtitle position for a theme to the adjust.md file."""
+    import re
+    data = request.json
+    folder_number = data.get('folder')
+    theme_number = data.get('theme')
+    position = data.get('position', 'bottom')
+
+    if not all([folder_number, theme_number]):
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    # Find the folder
+    base_dir = Path(settings.get('video', 'output_dir'))
+    folder = None
+    for f in base_dir.iterdir():
+        if f.is_dir() and f.name.startswith(f"{folder_number}_"):
+            folder = f
+            break
+
+    if not folder:
+        return jsonify({'error': 'Folder not found'}), 404
+
+    # Path to adjust.md file
+    adjust_file = folder / 'shorts' / f'theme_{int(theme_number):03d}_adjust.md'
+    shorts_dir = folder / 'shorts'
+    shorts_dir.mkdir(exist_ok=True)
+
+    # Read existing content or create new
+    existing_title = None
+    existing_time_range = None
+    existing_folder = None
+
+    if adjust_file.exists():
+        with open(adjust_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+            # Extract existing fields
+            title_match = re.search(r'\*\*Title:\*\*\s*(.+)', content)
+            time_match = re.search(r'\*\*Time Range:\*\*\s*(.+)', content)
+            folder_match = re.search(r'\*\*Folder:\*\*\s*(.+)', content)
+            if title_match:
+                existing_title = title_match.group(1).strip()
+            if time_match:
+                existing_time_range = time_match.group(1).strip()
+            if folder_match:
+                existing_folder = folder_match.group(1).strip()
+    else:
+        # No existing file, fetch theme data from themes.md
+        themes_file = folder / 'themes.md'
+        if themes_file.exists():
+            themes = creator.parse_themes_file(themes_file)
+            for theme in themes:
+                if theme['number'] == int(theme_number):
+                    existing_title = theme.get('title', 'Theme Title')
+                    # Calculate duration
+                    start_secs = creator.parse_timestamp_to_seconds(theme['start'])
+                    end_secs = creator.parse_timestamp_to_seconds(theme['end'])
+                    duration_secs = end_secs - start_secs
+                    minutes = int(duration_secs // 60)
+                    seconds = int(duration_secs % 60)
+                    duration_str = f"{minutes}m {seconds}s"
+                    existing_time_range = f"{theme['start']} - {theme['end']} ({duration_str})"
+                    break
+        # Set defaults if not found in themes.md
+        if not existing_title:
+            existing_title = "Theme Title"
+        if not existing_time_range:
+            existing_time_range = "--:--:-- - --:--:--"
+        existing_folder = folder.name
+
+    # Rebuild file with updated position
+    with open(adjust_file, 'w', encoding='utf-8') as f:
+        f.write(f"# Theme {int(theme_number)}\n\n")
+        if existing_title:
+            f.write(f"**Title:** {existing_title}\n\n")
+        f.write(f"**Time Range:** {existing_time_range}\n")
+        f.write(f"**Position:** {position}\n")
+        if existing_folder:
+            f.write(f"\n**Folder:** {existing_folder}\n")
+        f.write(f"**Last Modified:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+
+    print(f"[DEBUG] Saved global position: folder={folder_number}, theme={theme_number}, position={position}")
+
+    return jsonify({
+        'success': True,
+        'message': f'Saved global position for theme {theme_number}',
+        'position': position
+    })
+
+
+@app.route('/api/get-global-position', methods=['GET'])
+def get_global_position():
+    """Get global subtitle position for a theme from the adjust.md file."""
+    import re
+    folder_number = request.args.get('folder')
+    theme_number = request.args.get('theme')
+
+    if not all([folder_number, theme_number]):
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    # Find the folder
+    base_dir = Path(settings.get('video', 'output_dir'))
+    folder = None
+    for f in base_dir.iterdir():
+        if f.is_dir() and f.name.startswith(f"{folder_number}_"):
+            folder = f
+            break
+
+    if not folder:
+        return jsonify({'error': 'Folder not found'}), 404
+
+    # Path to adjust.md file
+    adjust_file = folder / 'shorts' / f'theme_{int(theme_number):03d}_adjust.md'
+
+    # Read position from file
+    if adjust_file.exists():
+        with open(adjust_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        position_match = re.search(r'\*\*Position:\*\*\s*(top|middle|bottom)', content)
+        if position_match:
+            position = position_match.group(1)
+            print(f"[DEBUG] Found global position: folder={folder_number}, theme={theme_number}, position={position}")
+            return jsonify({'position': position})
+
+    # No position found, return default
+    print(f"[DEBUG] No global position found: folder={folder_number}, theme={theme_number}, using default='bottom'")
+    return jsonify({'position': 'bottom'})
 
 
 @app.route('/api/subtitles/<folder_number>/<theme_number>.vtt', methods=['GET'])
