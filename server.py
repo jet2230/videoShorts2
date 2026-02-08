@@ -758,6 +758,83 @@ def get_theme_subtitles(folder_number: str, theme_number: str):
     })
 
 
+@app.route('/api/all-subtitles/<folder_number>', methods=['GET'])
+def get_all_subtitles(folder_number: str):
+    """Get ALL subtitles from the original SRT file with sequence numbers (no theme filtering)."""
+    import re
+
+    base_dir = Path(settings.get('video', 'output_dir'))
+    folder = None
+
+    for f in base_dir.iterdir():
+        if f.is_dir() and f.name.startswith(f"{folder_number}_"):
+            folder = f
+            break
+
+    if not folder:
+        return "Folder not found", 404
+
+    # Read the original SRT file
+    srt_file = folder / f'{folder_number}.srt'
+    if not srt_file.exists():
+        return jsonify({'error': 'SRT file not found'}), 404
+
+    with open(srt_file, 'r', encoding='utf-8') as f:
+        srt_content = f.read()
+
+    # Parse SRT into JSON format (no time filtering)
+    all_cues = []
+    lines = srt_content.strip().split('\n')
+    i = 0
+
+    while i < len(lines):
+        line = lines[i].strip()
+
+        # Skip empty lines
+        if not line:
+            i += 1
+            continue
+
+        # Sequence number
+        if line.isdigit():
+            seq_num = int(line)
+            i += 1
+
+            # Timestamp line
+            if i < len(lines) and '-->' in lines[i]:
+                timestamp_line = lines[i].strip()
+                # Parse timestamps: 00:00:00,000 --> 00:00:05,000
+                match = re.match(r'(\d{2}:\d{2}:\d{2}),(\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}),(\d{3})', timestamp_line)
+                if match:
+                    # Convert to VTT format (period instead of comma)
+                    start_vtt = f"{match.group(1)}.{match.group(2)}"
+                    end_vtt = f"{match.group(3)}.{match.group(4)}"
+
+                    # Get subtitle text (may be multiple lines)
+                    i += 1
+                    text_lines = []
+                    while i < len(lines) and lines[i].strip() and not lines[i].strip().isdigit():
+                        text_lines.append(lines[i].strip())
+                        i += 1
+
+                    all_cues.append({
+                        'sequence': seq_num,
+                        'start': start_vtt,
+                        'end': end_vtt,
+                        'text': '\n'.join(text_lines)
+                    })
+                    continue
+            else:
+                i += 1
+        else:
+            i += 1
+
+    return jsonify({
+        'cues': all_cues,
+        'total': len(all_cues)
+    })
+
+
 @app.route('/api/save-theme-subtitles', methods=['POST'])
 def save_theme_subtitles():
     """Save adjusted subtitles for a specific theme."""
