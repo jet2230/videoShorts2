@@ -114,7 +114,7 @@ ScaledBorderAndShadow: yes
         """
         # Use position from JSON if available, otherwise use defaults from settings
         alignment = 2  # Default: center
-        margin_v = 35   # Default: 35px from bottom
+        margin_v = 10   # Default: 10px from bottom
 
         if position_override:
             # Map position to ASS alignment and margin

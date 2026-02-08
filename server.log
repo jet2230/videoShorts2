@@ -4468,3 +4468,126 @@ kill: cannot find process "server.py"
 2026-02-07 23:42:08,923 - INFO - 127.0.0.1 - - [07/Feb/2026 23:42:08] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770507726466 HTTP/1.1[0m" 206 -
 2026-02-07 23:44:41,931 - INFO - 127.0.0.1 - - [07/Feb/2026 23:44:41] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770507726466 HTTP/1.1[0m" 206 -
 2026-02-07 23:44:41,945 - INFO - 127.0.0.1 - - [07/Feb/2026 23:44:41] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770507726466 HTTP/1.1[0m" 206 -
+2026-02-07 23:45:50,172 - INFO - ============================================================
+2026-02-07 23:45:50,172 - INFO - YouTube Shorts Creator - Web Server STARTED
+2026-02-07 23:45:50,172 - INFO - Server running at: http://localhost:5000
+2026-02-07 23:45:50,172 - INFO - Video directory: videos
+2026-02-07 23:45:50,172 - INFO - ============================================================
+2026-02-07 23:45:50,175 - WARNING -  * Debugger is active!
+2026-02-07 23:45:50,177 - INFO -  * Debugger PIN: 600-389-780
+2026-02-07 23:48:40,525 - INFO -  * Detected change in '/home/obo/playground/videoShorts2/ass_formatter.py.tmp.486324.1770508120524', reloading
+2026-02-07 23:48:41,894 - INFO - ============================================================
+2026-02-07 23:48:41,894 - INFO - YouTube Shorts Creator - Web Server STARTED
+2026-02-07 23:48:41,894 - INFO - Server running at: http://localhost:5000
+2026-02-07 23:48:41,895 - INFO - Video directory: videos
+2026-02-07 23:48:41,895 - INFO - ============================================================
+2026-02-07 23:48:41,897 - WARNING -  * Debugger is active!
+2026-02-07 23:48:41,900 - INFO -  * Debugger PIN: 600-389-780
+2026-02-07 23:55:09,555 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:09] "GET /adjust.html?folder=001&theme=3 HTTP/1.1" 200 -
+2026-02-07 23:55:09,611 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:09] "GET /api/folder/001/themes HTTP/1.1" 200 -
+2026-02-07 23:55:09,613 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:09] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-02-07 23:55:09,624 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:09] "GET /api/subtitle-formatting/001/3 HTTP/1.1" 200 -
+2026-02-07 23:55:09,630 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:09] "GET /api/theme-subtitles/001/3 HTTP/1.1" 200 -
+2026-02-07 23:55:09,639 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:09] "GET /api/subtitles/001.vtt HTTP/1.1" 200 -
+2026-02-07 23:55:09,639 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:09] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 23:55:09,664 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:09] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 23:55:09,666 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:09] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 23:55:09,692 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:09] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 23:55:09,698 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:09] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 23:55:09,722 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:09] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770508509716 HTTP/1.1[0m" 206 -
+2026-02-07 23:55:09,728 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:09] "GET /api/subtitles/001/3.vtt?start=212&end=350 HTTP/1.1" 200 -
+2026-02-07 23:55:09,730 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:09] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4 HTTP/1.1[0m" 206 -
+2026-02-07 23:55:09,762 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:09] "[35m[1mGET /videos/001_The_Hereafter_Shaikh_Abul_Abbaas_Unbreakable_Session_6/The%20Hereafter%20｜%20Shaikh%20Abul%20Abbaas%20｜%20Unbreakable%20｜%20Session%206.mp4?t=1770508509716 HTTP/1.1[0m" 206 -
+2026-02-07 23:55:13,151 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:13] "GET / HTTP/1.1" 200 -
+2026-02-07 23:55:13,181 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:13] "GET /api/folders HTTP/1.1" 200 -
+2026-02-07 23:55:13,189 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:13] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-02-07 23:55:14,309 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:14] "GET /api/folder/001/themes HTTP/1.1" 200 -
+2026-02-07 23:55:17,268 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:17] "OPTIONS /api/create-shorts HTTP/1.1" 200 -
+2026-02-07 23:55:17,272 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:17] "POST /api/create-shorts HTTP/1.1" 200 -
+2026-02-07 23:55:18,282 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:18] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:19,281 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:19] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:20,278 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:20] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:21,282 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:21] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:22,278 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:22] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:23,281 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:23] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:24,279 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:24] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:25,281 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:25] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:26,279 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:26] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:27,279 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:27] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:28,296 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:28] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:29,280 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:29] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:30,279 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:30] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:31,279 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:31] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:32,281 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:32] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:33,279 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:33] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:34,280 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:34] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:35,279 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:35] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:36,281 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:36] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:37,279 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:37] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:38,279 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:38] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:39,319 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:39] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:40,280 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:40] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:41,282 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:41] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:42,279 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:42] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:43,282 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:43] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:44,285 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:44] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:45,281 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:45] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:46,278 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:46] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:47,280 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:47] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:48,279 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:48] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:49,279 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:49] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:50,300 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:50] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:51,280 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:51] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:52,280 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:52] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:53,279 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:53] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:54,285 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:54] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:55,278 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:55] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:56,280 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:56] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:57,280 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:57] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:58,279 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:58] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:55:59,279 - INFO - 127.0.0.1 - - [07/Feb/2026 23:55:59] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:56:00,280 - INFO - 127.0.0.1 - - [07/Feb/2026 23:56:00] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:56:01,291 - INFO - 127.0.0.1 - - [07/Feb/2026 23:56:01] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:56:02,279 - INFO - 127.0.0.1 - - [07/Feb/2026 23:56:02] "GET /api/task/task_1 HTTP/1.1" 200 -
+2026-02-07 23:56:02,290 - INFO - 127.0.0.1 - - [07/Feb/2026 23:56:02] "GET /api/folder/001/themes HTTP/1.1" 200 -
+2026-02-07 23:56:02,293 - INFO - 127.0.0.1 - - [07/Feb/2026 23:56:02] "GET /api/folders HTTP/1.1" 200 -
+2026-02-07 23:59:31,001 - INFO -  * Detected change in '/home/obo/playground/videoShorts2/test_ass_position.py.tmp.486324.1770508770999', reloading
+2026-02-07 23:59:32,981 - INFO - ============================================================
+2026-02-07 23:59:32,981 - INFO - YouTube Shorts Creator - Web Server STARTED
+2026-02-07 23:59:32,981 - INFO - Server running at: http://localhost:5000
+2026-02-07 23:59:32,981 - INFO - Video directory: videos
+2026-02-07 23:59:32,981 - INFO - ============================================================
+2026-02-07 23:59:32,986 - WARNING -  * Debugger is active!
+2026-02-07 23:59:32,989 - INFO -  * Debugger PIN: 600-389-780
+2026-02-08 00:05:49,362 - INFO -  * Detected change in '/home/obo/playground/videoShorts2/shorts_creator.py.tmp.486324.1770509149361', reloading
+2026-02-08 00:05:50,730 - INFO - ============================================================
+2026-02-08 00:05:50,730 - INFO - YouTube Shorts Creator - Web Server STARTED
+2026-02-08 00:05:50,730 - INFO - Server running at: http://localhost:5000
+2026-02-08 00:05:50,730 - INFO - Video directory: videos
+2026-02-08 00:05:50,730 - INFO - ============================================================
+2026-02-08 00:05:50,733 - WARNING -  * Debugger is active!
+2026-02-08 00:05:50,735 - INFO -  * Debugger PIN: 600-389-780
+2026-02-08 00:07:27,651 - INFO -  * Detected change in '/home/obo/playground/videoShorts2/shorts_creator.py.tmp.486324.1770509247650', reloading
+2026-02-08 00:07:29,000 - INFO - ============================================================
+2026-02-08 00:07:29,000 - INFO - YouTube Shorts Creator - Web Server STARTED
+2026-02-08 00:07:29,000 - INFO - Server running at: http://localhost:5000
+2026-02-08 00:07:29,000 - INFO - Video directory: videos
+2026-02-08 00:07:29,000 - INFO - ============================================================
+2026-02-08 00:07:29,003 - WARNING -  * Debugger is active!
+2026-02-08 00:07:29,005 - INFO -  * Debugger PIN: 600-389-780
+2026-02-08 00:08:53,151 - INFO -  * Detected change in '/home/obo/playground/videoShorts2/test_actual_pipeline.py.tmp.486324.1770509333150', reloading
+2026-02-08 00:08:54,505 - INFO - ============================================================
+2026-02-08 00:08:54,505 - INFO - YouTube Shorts Creator - Web Server STARTED
+2026-02-08 00:08:54,505 - INFO - Server running at: http://localhost:5000
+2026-02-08 00:08:54,505 - INFO - Video directory: videos
+2026-02-08 00:08:54,505 - INFO - ============================================================
+2026-02-08 00:08:54,508 - WARNING -  * Debugger is active!
+2026-02-08 00:08:54,510 - INFO -  * Debugger PIN: 600-389-780
+2026-02-08 00:09:23,878 - INFO -  * Detected change in '/home/obo/playground/videoShorts2/test_actual_pipeline.py.tmp.486324.1770509363877', reloading
+2026-02-08 00:09:25,245 - INFO - ============================================================
+2026-02-08 00:09:25,245 - INFO - YouTube Shorts Creator - Web Server STARTED
+2026-02-08 00:09:25,245 - INFO - Server running at: http://localhost:5000
+2026-02-08 00:09:25,245 - INFO - Video directory: videos
+2026-02-08 00:09:25,245 - INFO - ============================================================
+2026-02-08 00:09:25,248 - WARNING -  * Debugger is active!
+2026-02-08 00:09:25,250 - INFO -  * Debugger PIN: 600-389-780
