@@ -1300,6 +1300,8 @@
         let subtitleFormatting = { bold: false, italic: false, color: null, size: null };
         let allCueFormatting = {}; // Store formatting for all cues: {start_time: {bold, italic, color, size}}
         let isProgrammaticUpdate = false; // Flag to prevent auto-save during programmatic updates
+        let themeStartBeforeDrag = null; // Track theme start before drag to calculate timestamp shift
+        let themeEndBeforeDrag = null; // Track theme end before drag
 
         function autoSaveTheme() {
             // Clear existing timeout
@@ -1373,6 +1375,60 @@
                 const data = await response.json();
                 allCueFormatting = data.formatting || {};
 
+                // Clean up duplicate entries (caused by Math.max(0, ...) bug fix)
+                // Remove entries like "00:00:00.000" if "-00:00:00.001" exists (same subtitle)
+                const keysToRemove = [];
+                const keys = Object.keys(allCueFormatting);
+
+                // Helper to parse timestamp to seconds
+                const vttToSeconds = (ts) => {
+                    const [time, millis] = ts.split('.');
+                    const isNeg = time.startsWith('-');
+                    const [h, m, s] = time.replace('-', '').split(':').map(Number);
+                    const result = h * 3600 + m * 60 + s + (millis || 0) / 1000;
+                    return isNeg ? -result : result;
+                };
+
+                // Find duplicates: positive and negative versions of ~same time
+                for (const key of keys) {
+                    if (key.startsWith('-')) {
+                        const absSeconds = Math.abs(vttToSeconds(key));
+                        // Check if there's a corresponding positive key
+                        for (const otherKey of keys) {
+                            if (!otherKey.startsWith('-')) {
+                                const otherSeconds = vttToSeconds(otherKey);
+                                // If positive key is within 1 second of absolute negative key
+                                if (Math.abs(otherSeconds - absSeconds) < 0.01) {
+                                    // Mark positive key for removal (keep negative version)
+                                    if (!keysToRemove.includes(otherKey)) {
+                                        keysToRemove.push(otherKey);
+                                        console.log(`   🧹 Removing duplicate: ${otherKey} (kept: ${key})`);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Remove duplicates
+                for (const key of keysToRemove) {
+                    delete allCueFormatting[key];
+                }
+
+                if (keysToRemove.length > 0) {
+                    console.log(`   🧹 Cleaned up ${keysToRemove.length} duplicate entries`);
+                    // Save cleaned up version
+                    fetch('/api/save-subtitle-formatting', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            folder: folderNumber,
+                            theme: themeNumber,
+                            formatting: allCueFormatting
+                        })
+                    }).then(() => console.log('   ✓ Saved cleaned formatting'));
+                }
+
                 // Convert <font> tags to <span style="..."> for better CSS compatibility
                 const fontSizeMap = { '1': 0.6, '2': 0.8, '3': 1.0, '4': 1.2, '5': 1.4, '6': 1.6, '7': 1.8 };
 
@@ -1406,7 +1462,7 @@
                         const originalHtml = cueData.html;
                         cueData.html = convertFontTags(cueData.html);
                         if (originalHtml !== cueData.html) {
-                            console.log('   Converted:', originalHtml, '→', cueData.html);
+                            // console.log("   Converted:", originalHtml, →, cueData.html);', originalHtml, '→', cueData.html);
                         }
                     }
                 }
@@ -1661,14 +1717,14 @@
 
         // Update preview video with clipped range
         function reloadSubtitleTrack() {
-            console.log('🔄 reloadSubtitleTrack called');
-            console.log('   startSeconds:', startSeconds);
-            console.log('   endSeconds:', endSeconds);
+//             console.log('🔄 reloadSubtitleTrack called');
+            // console.log("   startSeconds:", startSeconds);', startSeconds);
+            // console.log("   endSeconds:", endSeconds);', endSeconds);
 
             // Reload VTT subtitle track with current time range
             if (!previewVideo || !folderNumber || !themeNumber) return;
 
-            console.log('   Before reload - overlay:', document.getElementById('subtitle-preview-text')?.textContent);
+            // console.log("   Before reload - overlay:", document.getElementById(subtitle-preview-text)?.textContent);', document.getElementById('subtitle-preview-text')?.textContent);
 
             // Clear ALL derived state FIRST to prevent stale subtitle display
             currentCueInfo = null;
@@ -1685,7 +1741,7 @@
                 previewOverlay.textContent = '';
             }
 
-            console.log('   After clear - overlay:', document.getElementById('subtitle-preview-text')?.textContent);
+            // console.log("   After clear - overlay:", document.getElementById(subtitle-preview-text)?.textContent);', document.getElementById('subtitle-preview-text')?.textContent);
 
             // Remove ALL existing track elements from the video
             const existingTracks = previewVideo.querySelectorAll('track');
@@ -1790,18 +1846,47 @@
                     const currentCue = activeCues[0];
                     const subtitleText = document.getElementById('subtitle-text');
 
-                    console.log('🔄 syncSubtitleToTextarea called');
-                    console.log('   currentCue.startTime:', currentCue.startTime);
-                    console.log('   currentCue.text:', currentCue.text);
-                    console.log('   previewVideo.currentTime:', previewVideo.currentTime);
-                    console.log('   currentCueInfo:', currentCueInfo);
+//                     console.log('🔄 syncSubtitleToTextarea called');
+                    // console.log("   currentCue.startTime:", currentCue.startTime);', currentCue.startTime);
+                    // console.log("   currentCue.text:", currentCue.text);', currentCue.text);
+                    // console.log("   previewVideo.currentTime:", previewVideo.currentTime);', previewVideo.currentTime);
+                    // console.log("   currentCueInfo:", currentCueInfo);', currentCueInfo);
 
                     // Convert cue time (seconds) to HH:MM:SS.mmm format for matching with API
+                    // Supports negative values for subtitles before theme start
                     const vttToTimestamp = (seconds) => {
-                        const h = Math.floor(seconds / 3600);
-                        const m = Math.floor((seconds % 3600) / 60);
-                        const s = seconds % 60;
-                        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toFixed(3).padStart(6, '0')}`;
+                        // Round near-zero values to exactly 0 to avoid floating point precision issues
+                        // This prevents -0.000353 from becoming "-00:00:00.000" which won't match "00:00:00.000"
+                        const EPSILON = 0.001; // 1ms threshold (increased from 0.0005)
+                        if (Math.abs(seconds) < EPSILON) {
+                            seconds = 0;
+                        }
+
+                        const isNegative = seconds < 0;
+                        const absSeconds = Math.abs(seconds);
+
+                        const h = Math.floor(absSeconds / 3600);
+                        const m = Math.floor((absSeconds % 3600) / 60);
+                        let s = absSeconds % 60;
+                        let sInt = Math.floor(s);
+                        let msInt = Math.round((s - sInt) * 1000);
+
+                        // Handle millisecond rollover (e.g., 15.999 → 16.000)
+                        if (msInt >= 1000) {
+                            msInt = 0;
+                            sInt += 1;
+                            if (sInt >= 60) {
+                                sInt = 0;
+                                m += 1;
+                                if (m >= 60) {
+                                    m = 0;
+                                    h += 1;
+                                }
+                            }
+                        }
+
+                        const sign = isNegative ? '-' : '';
+                        return `${sign}${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${sInt.toString().padStart(2, '0')}.${msInt.toString().padStart(3, '0')}`;
                     };
 
                     // IMPORTANT: Use themeStart from dataset, not closure variable
@@ -1811,8 +1896,9 @@
                     // Track current cue info with matching format
                     // Convert VTT time (original video time) to trimmed time (relative to theme start)
                     // This ensures JSON keys match the trimmed SRT timestamps used for export
-                    const trimmedStartTime = Math.max(0, currentCue.startTime - themeStart);
-                    const trimmedEndTime = Math.max(0, currentCue.endTime - themeStart);
+                    // Allow negative values to preserve formatting for subtitles before theme start
+                    const trimmedStartTime = currentCue.startTime - themeStart;
+                    const trimmedEndTime = currentCue.endTime - themeStart;
                     const newCueInfo = {
                         start: vttToTimestamp(trimmedStartTime),
                         end: vttToTimestamp(trimmedEndTime),
@@ -1848,8 +1934,8 @@
                             const observer = new MutationObserver((mutations) => {
                                 mutations.forEach((mutation) => {
                                     if (mutation.type === 'childList' || mutation.type === 'characterData') {
-                                        console.log('   ⚠️ Editor was modified! New content:', subtitleText.innerHTML);
-                                        console.trace('   Call stack:');
+//                                         console.log('   ⚠️ Editor was modified! New content:', subtitleText.innerHTML);
+//                                         console.trace('   Call stack:');
                                     }
                                 });
                             });
@@ -2110,6 +2196,7 @@
                 isDragging = 'left';
                 dragStartX = e.clientX;
                 dragStartValue = startSeconds;
+                themeStartBeforeDrag = startSeconds; // Track theme start before drag
                 e.preventDefault();
                 e.stopPropagation();
             });
@@ -2119,6 +2206,7 @@
                 isDragging = 'right';
                 dragStartX = e.clientX;
                 dragStartValue = endSeconds;
+                themeEndBeforeDrag = endSeconds; // Track theme end before drag
                 e.preventDefault();
                 e.stopPropagation();
             });
@@ -2164,10 +2252,64 @@
                 if (isDragging) {
                     console.log('🖱️ DRAG END - Timeline extended');
 
-                    // When timeline is extended, all relative timestamps change
-                    // So we must clear all saved formatting since timestamps are now invalid
-                    console.log('   Clearing all saved formatting (timestamps shifted)');
-                    allCueFormatting = {};
+                    // Calculate theme start offset when dragging left handle
+                    const timeOffset = startSeconds - themeStartBeforeDrag;
+
+                    if (isDragging === 'left' && timeOffset !== 0) {
+                        console.log(`   Theme start shifted by ${timeOffset}s`);
+                        console.log(`   Old theme start: ${themeStartBeforeDrag}s`);
+                        console.log(`   New theme start: ${startSeconds}s`);
+                        console.log(`   Formatting keys kept as-is (no shifting)`);
+                        console.log(`   Keys:`, Object.keys(allCueFormatting));
+
+                        // IMPORTANT: Don't shift formatting keys!
+                        // Formatting keys represent "X seconds from ORIGINAL theme start"
+                        // They should remain stable regardless of timeline dragging
+                        console.log('   Saving to server to update theme boundaries only...');
+                        console.log(`   (Keys remain: ${Object.keys(allCueFormatting).join(', ')})`);
+
+                        // Save formatting to server (without shifting) to update theme boundaries in adjust file
+                        fetch('/api/save-subtitle-formatting', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                folder: folderNumber,
+                                theme: themeNumber,
+                                formatting: allCueFormatting
+                            })
+                        }).then(res => res.json())
+                          .then(data => console.log('   ✓ Formatting saved:', data))
+                          .catch(err => console.error('   ✗ Failed to save formatting:', err));
+                    }
+
+                    // Handle right-side drag (theme end changes)
+                    // Formatting keys are relative to themeStart, so they don't need to shift
+                    // But we need to save to ensure styles are preserved
+                    if (isDragging === 'right') {
+                        const themeEndOffset = endSeconds - themeEndBeforeDrag;
+
+                        if (themeEndOffset !== 0) {
+                            console.log(`   Theme end shifted by ${themeEndOffset}s`);
+                            console.log(`   Old theme end: ${themeEndBeforeDrag}s`);
+                            console.log(`   New theme end: ${endSeconds}s`);
+                            console.log(`   Formatting keys (no shift needed, relative to themeStart):`, Object.keys(allCueFormatting));
+
+                            // For right-side drag, we don't shift keys (they're relative to themeStart)
+                            // But we save to ensure styles are preserved even if subtitles are now out of bounds
+                            console.log('   Saving formatting to preserve styles...');
+                            fetch('/api/save-subtitle-formatting', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    folder: folderNumber,
+                                    theme: themeNumber,
+                                    formatting: allCueFormatting
+                                })
+                            }).then(res => res.json())
+                              .then(data => console.log('   ✓ Formatting saved:', data))
+                              .catch(err => console.error('   ✗ Failed to save formatting:', err));
+                        }
+                    }
 
                     // Drag ended - clear subtitle state FIRST before any video updates
                     // This prevents old cues from being displayed during the update process
@@ -2191,6 +2333,49 @@
 
                     // Reload subtitle track with new time range
                     reloadSubtitleTrack();
+
+                    // Regenerate the adjust.srt file with new theme boundaries
+                    // This converts absolute timestamps to relative timestamps
+                    console.log('   Regenerating adjust.srt with new theme boundaries...');
+
+                    // Helper to parse VTT timestamp string to seconds
+                    const vttToSeconds = (vttTimestamp) => {
+                        const [time, millis] = vttTimestamp.split('.');
+                        const [h, m, s] = time.split(':').map(Number);
+                        return h * 3600 + m * 60 + s + (millis || 0) / 1000;
+                    };
+
+                    // Helper to convert seconds to VTT timestamp string
+                    const secondsToVtt = (totalSeconds) => {
+                        const h = Math.floor(totalSeconds / 3600);
+                        const m = Math.floor((totalSeconds % 3600) / 60);
+                        const s = totalSeconds % 60;
+                        const sInt = Math.floor(s);
+                        const ms = Math.round((s - sInt) * 1000);
+                        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${sInt.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
+                    };
+
+                    const adjustedCues = allThemeCues.map((cue, index) => {
+                        const cueStartSec = vttToSeconds(cue.start);
+                        const cueEndSec = vttToSeconds(cue.end);
+
+                        return {
+                            sequence: index + 1,
+                            start: secondsToVtt(Math.max(0, cueStartSec - startSeconds)),
+                            end: secondsToVtt(Math.max(0, cueEndSec - startSeconds)),
+                            text: cue.text
+                        };
+                    });
+
+                    fetch('/api/save-theme-subtitles', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            folder: folderNumber,
+                            theme: themeNumber,
+                            cues: adjustedCues
+                        })
+                    }).catch(err => console.error('Failed to regenerate adjust.srt:', err));
 
                     // Auto-save theme adjustment
                     autoSaveTheme();
@@ -2242,12 +2427,41 @@
                     e.stopPropagation();
                     e.preventDefault();
 
+                    console.log('🔄 Reset to original');
+                    console.log(`   Current start: ${startSeconds}s → Original: ${originalStartSeconds}s`);
+                    console.log(`   Formatting keys kept as-is (no shifting)`);
+                    console.log(`   Keys:`, Object.keys(allCueFormatting));
+
+                    // IMPORTANT: Don't shift formatting keys!
+                    // Formatting keys represent "X seconds from ORIGINAL theme start"
+                    // They should remain stable regardless of timeline dragging
+                    console.log('   Saving to server to update theme boundaries only...');
+
+                    // Save formatting to server (without shifting) to update theme boundaries in adjust file
+                    if (Object.keys(allCueFormatting).length > 0) {
+                        const saveResponse = await fetch('/api/save-subtitle-formatting', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                folder: folderNumber,
+                                theme: themeNumber,
+                                formatting: allCueFormatting  // NOT shifted!
+                            })
+                        });
+
+                        if (!saveResponse.ok) {
+                            console.error('   ✗ Failed to save formatting:', saveResponse.status);
+                        } else {
+                            const saveData = await saveResponse.json();
+                            console.log('   ✓ Formatting saved:', saveData);
+                        }
+                    }
+
                     // Reset to original values
                     startSeconds = originalStartSeconds;
                     endSeconds = originalEndSeconds;
 
-                    // Clear all saved formatting since timeline is being reset
-                    allCueFormatting = {};
+                    // Keep currentCueInfo but don't clear formatting - styles should be preserved
                     currentCueInfo = null;
 
                     // Update UI (includes original video)
@@ -2424,8 +2638,8 @@
             let text = editor.innerText; // Get plain text for saving
             const html = editor.innerHTML; // Get HTML for display
 
-            console.log('🎨 updateSubtitlePreview called');
-            console.log('   editor HTML:', html.substring(0, 100));
+//             console.log('🎨 updateSubtitlePreview called');
+//             console.log('   editor HTML:', html.substring(0, 100));
 
             const fontSize = document.getElementById('subtitle-size').value;
             const fontFamily = document.getElementById('subtitle-font').value;
@@ -2605,8 +2819,19 @@
             // Also extract simplified formatting info for preview
             const bold = editor.querySelector('strong') !== null;
             const italic = editor.querySelector('em') !== null;
+
+            // Extract color - check both font tags and span styles
+            let color = null;
             const colorSpan = editor.querySelector('span[style*="color"]');
-            const color = colorSpan ? colorSpan.style.color : null;
+            if (colorSpan && colorSpan.style.color) {
+                color = colorSpan.style.color;
+            } else {
+                // Check for font tag with color attribute
+                const fontTag = editor.querySelector('font[color]');
+                if (fontTag && fontTag.color) {
+                    color = fontTag.color;
+                }
+            }
 
             // Check for font size in multiple formats
             let size = null;
