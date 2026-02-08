@@ -87,6 +87,43 @@ test.describe('Theme Drag Operations', () => {
     expect(keysMatch, `Sequence keys changed!\nBefore: ${beforeKeys.join(', ')}\nAfter: ${afterKeys.join(', ')}`).toBeTruthy();
   });
 
+  test('should preserve sequence keys during right-side drag (theme end)', async ({ page }) => {
+    // Apply formatting first
+    await page.locator('button[onclick*="applyColor(\'#ffff00\'"]').click();
+    const beforeJson = await waitForFormattingSave(TEST_FOLDER, TEST_THEME);
+
+    // Get initial sequence keys
+    const initialKeys = Object.keys(beforeJson).sort();
+
+    // Drag right handle to shrink/extend theme end
+    const timeline = page.locator('.theme-box');
+    await expect(timeline).toBeVisible();
+
+    // Get right handle position and drag it
+    const rightHandle = page.locator('#handle-right');
+    if (await rightHandle.count() > 0) {
+      const box = await rightHandle.boundingBox();
+      if (box) {
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(box.x - 50, box.y + box.height / 2); // Move left to shrink
+        await page.mouse.up();
+        await page.waitForTimeout(1500); // Wait for auto-save
+      }
+    }
+
+    // Read JSON after drag
+    const afterJson = readFormattingJson(TEST_FOLDER, TEST_THEME);
+
+    // Verify sequence keys are stable (right drag shouldn't affect keys)
+    const { keysMatch, beforeKeys, afterKeys } = verifyStableSequenceKeys(beforeJson, afterJson);
+    expect(keysMatch, `Sequence keys changed during right drag!\nBefore: ${beforeKeys.join(', ')}\nAfter: ${afterKeys.join(', ')}`).toBeTruthy();
+
+    // Verify formatting is preserved
+    const firstKey = Object.keys(beforeJson)[0];
+    expect(afterJson[firstKey].color).toBe(beforeJson[firstKey].color);
+  });
+
   test('should update timestamps during timeline drag', async ({ page }) => {
     // Apply formatting
     await page.locator('button[onclick*="applyColor(\'#ffff00\'"]').click();
