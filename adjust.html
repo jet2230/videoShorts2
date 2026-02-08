@@ -1360,7 +1360,7 @@
                 allThemeCues = data.cues;
                 return allThemeCues;
             } catch (error) {
-                console.error('Failed to load theme cues:', error);
+// console.error('Failed to load theme cues:', error);
                 return [];
             }
         }
@@ -1426,7 +1426,7 @@
                             theme: themeNumber,
                             formatting: allCueFormatting
                         })
-                    }).then(() => // console.log('   ✓ Saved cleaned formatting'));
+                    }).then(() => {}); // console.log('   ✓ Saved cleaned formatting')
                 }
 
                 // Convert <font> tags to <span style="..."> for better CSS compatibility
@@ -1472,7 +1472,7 @@
                 // Don't apply formatting here - let the cuechange handler apply it
                 // when each cue becomes active (avoids applying wrong cue's formatting)
             } catch (error) {
-                console.error('Failed to load subtitle formatting:', error);
+// console.error('Failed to load subtitle formatting:', error);
             }
         }
 
@@ -2278,8 +2278,8 @@
                                 formatting: allCueFormatting
                             })
                         }).then(res => res.json())
-                          .then(data => // console.log('   ✓ Formatting saved:', data))
-                          .catch(err => console.error('   ✗ Failed to save formatting:', err));
+                          .then(data => {}); // console.log('   ✓ Formatting saved:', data)
+                          //.catch(err => console.error('   ✗ Failed to save formatting:', err));
                     }
 
                     // Handle right-side drag (theme end changes)
@@ -2306,8 +2306,8 @@
                                     formatting: allCueFormatting
                                 })
                             }).then(res => res.json())
-                              .then(data => // console.log('   ✓ Formatting saved:', data))
-                              .catch(err => console.error('   ✗ Failed to save formatting:', err));
+                              .then(data => {}); // console.log('   ✓ Formatting saved:', data)
+                              //.catch(err => console.error('   ✗ Failed to save formatting:', err));
                         }
                     }
 
@@ -2450,7 +2450,7 @@
                         });
 
                         if (!saveResponse.ok) {
-                            console.error('   ✗ Failed to save formatting:', saveResponse.status);
+// console.error('   ✗ Failed to save formatting:', saveResponse.status);
                         } else {
                             const saveData = await saveResponse.json();
 // console.log('   ✓ Formatting saved:', saveData);
@@ -2496,7 +2496,7 @@
                             resetTimelineBtn.innerHTML = '↺ Reset to Original';
                         }, 1500);
                     } catch (error) {
-                        console.error('Error resetting theme:', error);
+// console.error('Error resetting theme:', error);
                         resetTimelineBtn.textContent = '✗ Reset Failed';
                         setTimeout(() => {
                             resetTimelineBtn.innerHTML = '↺ Reset to Original';
@@ -2906,7 +2906,7 @@
                     indicator.classList.remove('show');
                 }, 2000);
             } catch (error) {
-                console.error('Failed to save formatting:', error);
+// console.error('Failed to save formatting:', error);
                 indicator.textContent = '✗ Save failed';
                 indicator.classList.remove('saving');
                 setTimeout(() => {
