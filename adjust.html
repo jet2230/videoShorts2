@@ -1368,7 +1368,7 @@
         // Load subtitle formatting metadata
         async function loadSubtitleFormatting() {
             try {
-                console.log('📂 Loading subtitle formatting...');
+// console.log('📂 Loading subtitle formatting...');
                 const response = await fetch(`/api/subtitle-formatting/${folderNumber}/${themeNumber}`);
                 if (!response.ok) return;
 
@@ -1402,7 +1402,7 @@
                                     // Mark positive key for removal (keep negative version)
                                     if (!keysToRemove.includes(otherKey)) {
                                         keysToRemove.push(otherKey);
-                                        console.log(`   🧹 Removing duplicate: ${otherKey} (kept: ${key})`);
+// console.log(`   🧹 Removing duplicate: ${otherKey} (kept: ${key})`);
                                     }
                                 }
                             }
@@ -1416,7 +1416,7 @@
                 }
 
                 if (keysToRemove.length > 0) {
-                    console.log(`   🧹 Cleaned up ${keysToRemove.length} duplicate entries`);
+// console.log(`   🧹 Cleaned up ${keysToRemove.length} duplicate entries`);
                     // Save cleaned up version
                     fetch('/api/save-subtitle-formatting', {
                         method: 'POST',
@@ -1426,7 +1426,7 @@
                             theme: themeNumber,
                             formatting: allCueFormatting
                         })
-                    }).then(() => console.log('   ✓ Saved cleaned formatting'));
+                    }).then(() => // console.log('   ✓ Saved cleaned formatting'));
                 }
 
                 // Convert <font> tags to <span style="..."> for better CSS compatibility
@@ -1467,7 +1467,7 @@
                     }
                 }
 
-                console.log('📝 Loaded formatting for', Object.keys(allCueFormatting).length, 'cues:', Object.keys(allCueFormatting));
+// console.log('📝 Loaded formatting for', Object.keys(allCueFormatting).length, 'cues:', Object.keys(allCueFormatting));
 
                 // Don't apply formatting here - let the cuechange handler apply it
                 // when each cue becomes active (avoids applying wrong cue's formatting)
@@ -1912,14 +1912,14 @@
                         // Set flag to prevent auto-save during programmatic update
                         isProgrammaticUpdate = true;
 
-                        console.log('🎬 Cue changed:', currentCueInfo.start, currentCueInfo.text);
-                        console.log('   Looking for formatting in:', Object.keys(allCueFormatting));
+// console.log('🎬 Cue changed:', currentCueInfo.start, currentCueInfo.text);
+// console.log('   Looking for formatting in:', Object.keys(allCueFormatting));
 
                         // Load saved formatting for this cue
                         if (allCueFormatting[currentCueInfo.start] && allCueFormatting[currentCueInfo.start].html) {
                             // Use the saved HTML which has selective formatting preserved
-                            console.log('   ✅ Found saved HTML, applying...');
-                            console.log('   HTML to apply:', allCueFormatting[currentCueInfo.start].html);
+// console.log('   ✅ Found saved HTML, applying...');
+// console.log('   HTML to apply:', allCueFormatting[currentCueInfo.start].html);
 
                             const html = allCueFormatting[currentCueInfo.start].html;
 
@@ -1928,7 +1928,7 @@
                             document.execCommand('selectAll', false, null);
                             document.execCommand('insertHTML', false, html);
 
-                            console.log('   HTML after apply:', subtitleText.innerHTML);
+// console.log('   HTML after apply:', subtitleText.innerHTML);
 
                             // Set up observer to detect what's modifying the editor
                             const observer = new MutationObserver((mutations) => {
@@ -1953,7 +1953,7 @@
                                 size: allCueFormatting[currentCueInfo.start].size || null
                             };
                         } else {
-                            console.log('   ❌ No saved formatting for this cue');
+// console.log('   ❌ No saved formatting for this cue');
                             // No saved formatting, use plain text
                             subtitleText.innerHTML = currentCue.text;
                             subtitleFormatting = { bold: false, italic: false, color: null, size: null };
@@ -2250,23 +2250,23 @@
 
             document.addEventListener('mouseup', () => {
                 if (isDragging) {
-                    console.log('🖱️ DRAG END - Timeline extended');
+// console.log('🖱️ DRAG END - Timeline extended');
 
                     // Calculate theme start offset when dragging left handle
                     const timeOffset = startSeconds - themeStartBeforeDrag;
 
                     if (isDragging === 'left' && timeOffset !== 0) {
-                        console.log(`   Theme start shifted by ${timeOffset}s`);
-                        console.log(`   Old theme start: ${themeStartBeforeDrag}s`);
-                        console.log(`   New theme start: ${startSeconds}s`);
-                        console.log(`   Formatting keys kept as-is (no shifting)`);
-                        console.log(`   Keys:`, Object.keys(allCueFormatting));
+// console.log(`   Theme start shifted by ${timeOffset}s`);
+// console.log(`   Old theme start: ${themeStartBeforeDrag}s`);
+// console.log(`   New theme start: ${startSeconds}s`);
+// console.log(`   Formatting keys kept as-is (no shifting)`);
+// console.log(`   Keys:`, Object.keys(allCueFormatting));
 
                         // IMPORTANT: Don't shift formatting keys!
                         // Formatting keys represent "X seconds from ORIGINAL theme start"
                         // They should remain stable regardless of timeline dragging
-                        console.log('   Saving to server to update theme boundaries only...');
-                        console.log(`   (Keys remain: ${Object.keys(allCueFormatting).join(', ')})`);
+// console.log('   Saving to server to update theme boundaries only...');
+// console.log(`   (Keys remain: ${Object.keys(allCueFormatting).join(', ')})`);
 
                         // Save formatting to server (without shifting) to update theme boundaries in adjust file
                         fetch('/api/save-subtitle-formatting', {
@@ -2278,7 +2278,7 @@
                                 formatting: allCueFormatting
                             })
                         }).then(res => res.json())
-                          .then(data => console.log('   ✓ Formatting saved:', data))
+                          .then(data => // console.log('   ✓ Formatting saved:', data))
                           .catch(err => console.error('   ✗ Failed to save formatting:', err));
                     }
 
@@ -2289,14 +2289,14 @@
                         const themeEndOffset = endSeconds - themeEndBeforeDrag;
 
                         if (themeEndOffset !== 0) {
-                            console.log(`   Theme end shifted by ${themeEndOffset}s`);
-                            console.log(`   Old theme end: ${themeEndBeforeDrag}s`);
-                            console.log(`   New theme end: ${endSeconds}s`);
-                            console.log(`   Formatting keys (no shift needed, relative to themeStart):`, Object.keys(allCueFormatting));
+// console.log(`   Theme end shifted by ${themeEndOffset}s`);
+// console.log(`   Old theme end: ${themeEndBeforeDrag}s`);
+// console.log(`   New theme end: ${endSeconds}s`);
+// console.log(`   Formatting keys (no shift needed, relative to themeStart):`, Object.keys(allCueFormatting));
 
                             // For right-side drag, we don't shift keys (they're relative to themeStart)
                             // But we save to ensure styles are preserved even if subtitles are now out of bounds
-                            console.log('   Saving formatting to preserve styles...');
+// console.log('   Saving formatting to preserve styles...');
                             fetch('/api/save-subtitle-formatting', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
@@ -2306,7 +2306,7 @@
                                     formatting: allCueFormatting
                                 })
                             }).then(res => res.json())
-                              .then(data => console.log('   ✓ Formatting saved:', data))
+                              .then(data => // console.log('   ✓ Formatting saved:', data))
                               .catch(err => console.error('   ✗ Failed to save formatting:', err));
                         }
                     }
@@ -2336,7 +2336,7 @@
 
                     // Regenerate the adjust.srt file with new theme boundaries
                     // This converts absolute timestamps to relative timestamps
-                    console.log('   Regenerating adjust.srt with new theme boundaries...');
+// console.log('   Regenerating adjust.srt with new theme boundaries...');
 
                     // Helper to parse VTT timestamp string to seconds
                     const vttToSeconds = (vttTimestamp) => {
@@ -2427,15 +2427,15 @@
                     e.stopPropagation();
                     e.preventDefault();
 
-                    console.log('🔄 Reset to original');
-                    console.log(`   Current start: ${startSeconds}s → Original: ${originalStartSeconds}s`);
-                    console.log(`   Formatting keys kept as-is (no shifting)`);
-                    console.log(`   Keys:`, Object.keys(allCueFormatting));
+// console.log('🔄 Reset to original');
+// console.log(`   Current start: ${startSeconds}s → Original: ${originalStartSeconds}s`);
+// console.log(`   Formatting keys kept as-is (no shifting)`);
+// console.log(`   Keys:`, Object.keys(allCueFormatting));
 
                     // IMPORTANT: Don't shift formatting keys!
                     // Formatting keys represent "X seconds from ORIGINAL theme start"
                     // They should remain stable regardless of timeline dragging
-                    console.log('   Saving to server to update theme boundaries only...');
+// console.log('   Saving to server to update theme boundaries only...');
 
                     // Save formatting to server (without shifting) to update theme boundaries in adjust file
                     if (Object.keys(allCueFormatting).length > 0) {
@@ -2453,7 +2453,7 @@
                             console.error('   ✗ Failed to save formatting:', saveResponse.status);
                         } else {
                             const saveData = await saveResponse.json();
-                            console.log('   ✓ Formatting saved:', saveData);
+// console.log('   ✓ Formatting saved:', saveData);
                         }
                     }
 
@@ -2801,7 +2801,7 @@
         // Save formatting for the current cue
         async function saveCurrentCueFormatting() {
             if (!currentCueInfo) {
-                console.log('❌ saveCurrentCueFormatting: No currentCueInfo');
+// console.log('❌ saveCurrentCueFormatting: No currentCueInfo');
                 return;
             }
 
@@ -2813,8 +2813,8 @@
                 html: editor.innerHTML
             };
 
-            console.log('💾 Saved formatting for', currentCueInfo.start);
-            console.log('   HTML:', editor.innerHTML.substring(0, 100));
+// console.log('💾 Saved formatting for', currentCueInfo.start);
+// console.log('   HTML:', editor.innerHTML.substring(0, 100));
 
             // Also extract simplified formatting info for preview
             const bold = editor.querySelector('strong') !== null;
@@ -2876,9 +2876,9 @@
             subtitleFormatting = { ...allCueFormatting[currentCueInfo.start] };
 
             // Debug: log what's being saved
-            console.log('💾 Saving formatting for', currentCueInfo.start);
-            console.log('  HTML:', editor.innerHTML.substring(0, 150));
-            console.log('  → bold:', bold, 'italic:', italic, 'color:', color?.substring(0, 20), 'size:', size, 'position:', position);
+// console.log('💾 Saving formatting for', currentCueInfo.start);
+// console.log('  HTML:', editor.innerHTML.substring(0, 150));
+// console.log('  → bold:', bold, 'italic:', italic, 'color:', color?.substring(0, 20), 'size:', size, 'position:', position);
 
             // Show saving indicator
             const indicator = document.getElementById('preview-autosave-indicator');
