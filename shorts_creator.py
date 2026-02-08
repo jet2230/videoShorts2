@@ -1205,10 +1205,10 @@ Video Path: {video_info['video_path']}
         # Filter chain:
         # Scale and crop to target resolution, then burn in subtitles
         # Apply subtitles AFTER crop, with force_style to ensure correct positioning
-        # For ASS files, we still need force_style to override positioning when video dimensions don't match PlayRes
+        # For ASS files, use force_style to override positioning (but keep embedded styling)
         # For SRT files, apply force_style settings
         if use_ass:
-            vf_filter = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}:(iw-ow)/2:(ih-oh)/2,subtitles={subtitle_file_for_ffmpeg}:force_style='Alignment={alignment},MarginV={margin_v}'"
+            vf_filter = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}:(iw-ow)/2:(ih-oh)/2,subtitles={subtitle_file_for_ffmpeg}:force_style='Alignment={alignment},MarginV={margin_v},FontName={font_name}'"
         else:
             vf_filter = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}:(iw-ow)/2:(ih-oh)/2,subtitles={subtitle_file_for_ffmpeg}:force_style='FontSize={font_size},MarginV={margin_v},Alignment={alignment},FontName={font_name}'"
 
