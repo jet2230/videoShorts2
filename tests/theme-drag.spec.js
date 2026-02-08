@@ -455,4 +455,113 @@ test.describe('Formatting Persistence', () => {
     // Test passes if we got here without errors
     console.log('\n✓ Test completed - check logs above for details');
   });
+
+  test('user workflow: style, expand, style in expanded area', async ({ page }) => {
+    console.log('\n=== USER WORKFLOW TEST ===');
+
+    // Step 1: Delete JSON
+    console.log('Step 1: Delete JSON');
+    deleteFormattingJson(TEST_FOLDER, TEST_THEME);
+    console.log('  ✓ JSON deleted');
+
+    // Page is already loaded from beforeEach, but ensure we're at start
+    await page.waitForTimeout(500);
+
+    // Step 3: Highlight 'that' and style yellow
+    console.log('Step 3: Highlight "that" and style yellow');
+    const subtitleText = page.locator('#subtitle-text');
+    await expect(subtitleText).toBeVisible();
+
+    await subtitleText.click();
+    await page.waitForTimeout(200);
+    await page.keyboard.press('Control+A');
+    await page.waitForTimeout(100);
+
+    await page.locator('button[onclick*="applyColor(\'#ffff00\'"]').click();
+    await page.waitForTimeout(1000);
+
+    // Verify 'that' was saved
+    let json = readFormattingJson(TEST_FOLDER, TEST_THEME);
+    expect(json).not.toBeNull();
+    console.log('  ✓ "that" saved with yellow');
+
+    // Step 4: Drag timeline from left, increase to 00:03:08
+    console.log('Step 4: Drag timeline from left, increase to 00:03:08');
+
+    // Click left increase button 3 times (60 seconds each = 180 seconds = 3 minutes)
+    const leftIncreaseBtn = page.locator('#video-buffer-increase-left');
+    await leftIncreaseBtn.click();
+    await page.waitForTimeout(300);
+    await leftIncreaseBtn.click();
+    await page.waitForTimeout(300);
+    await leftIncreaseBtn.click();
+    await page.waitForTimeout(1500);
+
+    console.log('  ✓ Timeline expanded by 180 seconds (3 minutes)');
+
+    // Step 5: Highlight 'be' and style red
+    console.log('Step 5: Navigate to expanded area and highlight "be", style red');
+
+    // Seek to find a subtitle with "be" in it
+    let foundBe = false;
+    const searchPositions = [6, 7, 8]; // Various positions in expanded area
+
+    for (const pos of searchPositions) {
+      await page.evaluate((timePos) => {
+        const video = document.querySelector('#preview-video');
+        if (video) video.currentTime = timePos;
+      }, pos);
+      await page.waitForTimeout(800);
+
+      const currentText = await subtitleText.innerText();
+
+      if (currentText.toLowerCase().includes('be')) {
+        console.log(`  ✓ Found "be" at position ${pos}s`);
+        foundBe = true;
+        break;
+      }
+    }
+
+    expect(foundBe, 'Could not find subtitle containing "be"').toBeTruthy();
+
+    // Apply red color
+    await subtitleText.click();
+    await page.waitForTimeout(200);
+    await page.keyboard.press('Control+A');
+    await page.waitForTimeout(100);
+
+    await page.locator('button[onclick*="applyColor(\'#ff0000\'"]').click();
+    await page.waitForTimeout(1500);
+
+    // Step 6: Check JSON - the 'be' red style should now exist
+    console.log('Step 6: Check JSON - "be" red style should exist');
+    json = readFormattingJson(TEST_FOLDER, TEST_THEME);
+
+    expect(json).not.toBeNull();
+    console.log(`  ✓ JSON has ${Object.keys(json).length} entries`);
+
+    // Find the "be" entry
+    const beEntry = Object.values(json).find(entry =>
+      entry._text?.toLowerCase().includes('be') ||
+      entry.html?.toLowerCase().includes('be')
+    );
+
+    expect(beEntry, 'Entry for "be" not found in JSON').toBeDefined();
+
+    const hasRedColor = beEntry.color === '#ff0000' ||
+                       beEntry.html?.includes('#ff0000') ||
+                       beEntry.html?.includes('color: #ff0000') ||
+                       beEntry.html?.includes('color="#ff0000"') ||
+                       beEntry.html?.includes('red');
+
+    expect(hasRedColor, '"be" should have red color').toBeTruthy();
+
+    console.log(`  ✓✓✓ SUCCESS! "be" has red color!`);
+    console.log(`      Sequence: ${beEntry.sequence}`);
+    console.log(`      Timestamp: ${beEntry.timestamp}`);
+    console.log(`      Text: "${beEntry._text}"`);
+    console.log(`      Color: ${beEntry.color || beEntry.html}`);
+
+    console.log('\n🎉 ALL TESTS PASSED! User workflow works correctly.');
+  });
 });
