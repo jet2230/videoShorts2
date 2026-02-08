@@ -9,6 +9,12 @@ __pycache__/
 *.swp
 *.kate-swp
 
+# Node.js / Playwright
+node_modules/
+test-results/
+playwright-report/
+playwright/.cache/
+
 # Project-specific
 videos/
 TODO.txt

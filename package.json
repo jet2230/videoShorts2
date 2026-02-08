@@ -1,0 +1,27 @@
+{
+  "name": "videoshorts2",
+  "version": "1.0.0",
+  "description": "Automatically download YouTube videos, generate subtitles, and identify themes for creating YouTube Shorts.",
+  "main": "index.js",
+  "scripts": {
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "test:report": "playwright show-report"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jet2230/videoShorts2.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/jet2230/videoShorts2/issues"
+  },
+  "homepage": "https://github.com/jet2230/videoShorts2#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.58.2"
+  }
+}
