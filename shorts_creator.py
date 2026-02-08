@@ -1166,9 +1166,11 @@ Video Path: {video_info['video_path']}
         self.create_trimmed_srt(srt_path, start_seconds, end_seconds, trimmed_srt_path)
         print(f"    Created trimmed subtitles: {trimmed_srt_name}")
 
+        # Use the trimmed SRT for subtitle burning (it's already adjusted)
+        subtitle_file_for_ffmpeg = str(trimmed_srt_path).replace(':', '\\:').replace('\\', '\\\\').replace("'", "\\'")
+
         # Check if formatting JSON exists for this theme
         formatting_json_path = output_dir / f"theme_{theme['number']:03d}_formatting.json"
-        subtitle_file_for_ffmpeg = str(trimmed_srt_path).replace(':', '\\:').replace('\\', '\\\\').replace("'", "\\'")
         use_ass = False
 
         if formatting_json_path.exists():
@@ -1179,6 +1181,8 @@ Video Path: {video_info['video_path']}
                 # Convert settings to dict for ASSFormatter
                 settings_dict = {section: dict(settings.items(section)) for section in settings.sections()}
                 ass_formatter = ASSFormatter(settings_dict)
+                # Use the trimmed SRT for ASS generation (it contains the adjusted subtitle sequence)
+                print(f"    Using trimmed.srt (sequence {trimmed_srt_name}) for ASS generation")
                 ass_formatter.create_ass_file(trimmed_srt_path, formatting_json_path, ass_output_path)
                 print(f"    Created ASS subtitles: {ass_output_path.name}")
                 subtitle_file_for_ffmpeg = str(ass_output_path).replace(':', '\\:').replace('\\', '\\\\').replace("'", "\\'")
@@ -1400,14 +1404,6 @@ Video Path: {video_info['video_path']}
         else:
             _log_msg("Warning: No SRT subtitle file found in folder")
 
-        # Check if there are adjusted subtitle files for any of the selected themes
-        has_adjusted_subs = any(
-            (folder / 'shorts' / f"theme_{t['number']:03d}_adjust.srt").exists()
-            for t in selected_themes
-        )
-
-        if has_adjusted_subs:
-            _log_msg("Note: Some themes have adjusted subtitle files (theme_XXX_adjust.srt)")
         shorts_dir = folder / 'shorts'
         shorts_dir.mkdir(exist_ok=True)
 
@@ -1424,16 +1420,10 @@ Video Path: {video_info['video_path']}
 
             _log_msg(f"Short {idx + 1}/{total_themes}: Theme {theme_num} - {theme_title}...")
 
-            # Check for adjusted subtitle file for this specific theme
-            theme_adjust_srt = shorts_dir / f"theme_{theme_num:03d}_adjust.srt"
-            if theme_adjust_srt.exists():
-                _log_msg(f"  Using adjusted subtitles: {theme_adjust_srt.name}")
-                srt_path_for_theme = theme_adjust_srt
-            else:
-                # Use the default SRT file (already set above)
-                srt_path_for_theme = original_srt_path
-                if not srt_path_for_theme:
-                    _log_msg(f"  Warning: No SRT file found for theme {theme_num}")
+            # Use the original SRT file (already set in srt_path_for_theme above)
+            srt_path_for_theme = original_srt_path
+            if not srt_path_for_theme:
+                _log_msg(f"  Warning: No SRT file found for theme {theme_num}")
 
             # Create wrapper callback that adds overall progress
             def make_progress_callback(current_idx, total):

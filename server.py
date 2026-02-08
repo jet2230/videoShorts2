@@ -838,52 +838,6 @@ def get_all_subtitles(folder_number: str):
     })
 
 
-@app.route('/api/save-theme-subtitles', methods=['POST'])
-def save_theme_subtitles():
-    """Save adjusted subtitles for a specific theme."""
-    import re
-
-    data = request.json
-    folder_number = data.get('folder')
-    theme_number = data.get('theme')
-    cues = data.get('cues', [])  # Array of {sequence, start, end, text}
-
-    if not all([folder_number, theme_number, cues]):
-        return jsonify({'error': 'Missing required fields'}), 400
-
-    # Find the folder
-    base_dir = Path(settings.get('video', 'output_dir'))
-    folder = None
-    for f in base_dir.iterdir():
-        if f.is_dir() and f.name.startswith(f"{folder_number}_"):
-            folder = f
-            break
-
-    if not folder:
-        return jsonify({'error': 'Folder not found'}), 404
-
-    # Convert VTT timestamps back to SRT format and save to shorts folder
-    # VTT uses periods, SRT uses commas for milliseconds
-    shorts_dir = folder / 'shorts'
-    shorts_dir.mkdir(exist_ok=True)
-    adjust_srt_path = shorts_dir / f'theme_{int(theme_number):03d}_adjust.srt'
-
-    with open(adjust_srt_path, 'w', encoding='utf-8') as f:
-        for cue in cues:
-            # Convert timestamp from VTT (00:00:00.000) to SRT (00:00:00,000)
-            def vtt_to_srt(ts):
-                return ts.replace('.', ',')
-
-            f.write(f"{cue['sequence']}\n")
-            f.write(f"{vtt_to_srt(cue['start'])} --> {vtt_to_srt(cue['end'])}\n")
-            f.write(f"{cue['text']}\n\n")
-
-    return jsonify({
-        'success': True,
-        'message': f'Saved {len(cues)} subtitle cues to theme_{int(theme_number):03d}_adjust.srt'
-    })
-
-
 @app.route('/api/save-subtitle-formatting', methods=['POST'])
 def save_subtitle_formatting():
     """Save subtitle formatting metadata for a theme."""

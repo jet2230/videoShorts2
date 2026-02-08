@@ -1875,18 +1875,8 @@
                         }
                     }
 
-                    // Save to server
-                    const response = await fetch('/api/save-theme-subtitles', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            folder: folderNumber,
-                            theme: themeNumber,
-                            cues: allThemeCues
-                        })
-                    });
-
-                    if (!response.ok) throw new Error('Failed to save subtitle');
+                    // Note: Cue text edits are kept in memory only (allThemeCues)
+                    // The shorts_creator will create its own trimmed SRT from original source
 
                     // Reload the subtitle track to show changes
                     if (previewVideo) {
@@ -2851,15 +2841,8 @@
                         };
                     });
 
-                    fetch('/api/save-theme-subtitles', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            folder: folderNumber,
-                            theme: themeNumber,
-                            cues: adjustedCues
-                        })
-                    }).catch(err => console.error('Failed to regenerate adjust.srt:', err));
+                    // Note: adjustedCues are no longer saved to adjust.srt
+                    // The shorts_creator will create its own trimmed SRT from original source
 
                     // Auto-save theme adjustment
                     autoSaveTheme();
@@ -3982,40 +3965,14 @@
         // Save subtitles
         saveSubsBtn.addEventListener('click', async () => {
             const messageDiv = document.getElementById('message');
-            messageDiv.textContent = 'Saving subtitles...';
-            messageDiv.className = '';
+            messageDiv.textContent = 'Subtitles are saved automatically when timeline is adjusted';
+            messageDiv.className = 'success';
+            subtitleModal.style.display = 'none';
 
-            try {
-                const response = await fetch('/api/save-theme-subtitles', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        folder: folderNumber,
-                        theme: themeNumber,
-                        cues: themeSubtitles
-                    })
-                });
-
-                if (!response.ok) throw new Error('Failed to save subtitles');
-
-                const result = await response.json();
-                messageDiv.textContent = `✓ ${result.message}`;
-                messageDiv.className = 'success';
-
-                // Reload the video subtitles
-                const subtitleTrack = document.getElementById('subtitle-track');
-                subtitleTrack.src = `/api/subtitles/${folderNumber}.vtt?t=${Date.now()}`;
-
-                subtitleModal.style.display = 'none';
-
-                setTimeout(() => {
-                    messageDiv.textContent = '';
-                    messageDiv.className = '';
-                }, 3000);
-            } catch (error) {
-                messageDiv.textContent = `Error: ${error.message}`;
-                messageDiv.className = 'error';
-            }
+            setTimeout(() => {
+                messageDiv.textContent = '';
+                messageDiv.className = '';
+            }, 3000);
         });
 
         // Initialize
