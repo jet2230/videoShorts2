@@ -807,10 +807,15 @@ def save_theme_subtitles():
 @app.route('/api/save-subtitle-formatting', methods=['POST'])
 def save_subtitle_formatting():
     """Save subtitle formatting metadata for a theme."""
+    import json
     data = request.json
     folder_number = data.get('folder')
     theme_number = data.get('theme')
     formatting = data.get('formatting', {})  # {start_time: {bold, italic, color, size, text}}
+
+    print(f"[DEBUG] Saving subtitle formatting: folder={folder_number}, theme={theme_number}")
+    print(f"[DEBUG] Formatting keys: {list(formatting.keys())}")
+    print(f"[DEBUG] Formatting data: {formatting}")
 
     if not all([folder_number, theme_number]):
         return jsonify({'error': 'Missing required fields'}), 400
@@ -827,13 +832,16 @@ def save_subtitle_formatting():
         return jsonify({'error': 'Folder not found'}), 404
 
     # Save formatting metadata to JSON file
-    import json
     shorts_dir = folder / 'shorts'
     shorts_dir.mkdir(exist_ok=True)
     formatting_file = shorts_dir / f'theme_{int(theme_number):03d}_formatting.json'
 
+    print(f"[DEBUG] Writing to: {formatting_file}")
+
     with open(formatting_file, 'w', encoding='utf-8') as f:
         json.dump(formatting, f, indent=2)
+
+    print(f"[DEBUG] Successfully wrote formatting file")
 
     return jsonify({
         'success': True,
