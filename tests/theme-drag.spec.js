@@ -237,4 +237,144 @@ test.describe('Formatting Persistence', () => {
     const reloadedJson = readFormattingJson(TEST_FOLDER, TEST_THEME);
     expect(reloadedJson[firstKey].color).toBe(originalColor);
   });
+
+  test('comprehensive workflow: apply, drag, style new text, reset', async ({ page }) => {
+    // Step 1: Apply yellow color to "that" text
+    console.log('Step 1: Apply yellow color to "that"');
+
+    // Wait for subtitle text to load and be visible
+    const subtitleText = page.locator('#subtitle-text');
+    await expect(subtitleText).toBeVisible({ timeout: 5000 });
+    await page.waitForTimeout(500); // Wait for text to populate
+
+    // Focus, select all text, then apply color
+    await subtitleText.click();
+    await page.waitForTimeout(200);
+
+    // Select all text using keyboard shortcut
+    await page.keyboard.press('Control+A');
+    await page.waitForTimeout(100);
+
+    // Apply yellow color
+    await page.locator('button[onclick*="applyColor(\'#ffff00\'"]').click();
+    await page.waitForTimeout(1000); // Wait for color to apply and save
+
+    let json = await waitForFormattingSave(TEST_FOLDER, TEST_THEME);
+
+    // Step 2: Check JSON has the formatting
+    console.log('Step 2: Check JSON has yellow formatting');
+    const keys = Object.keys(json);
+    expect(keys.length).toBeGreaterThan(0);
+
+    // Find the entry for "that" text
+    const thatEntry = Object.values(json).find(entry => entry._text === 'that' || entry.html?.includes('that'));
+    expect(thatEntry, 'Entry for "that" not found').toBeDefined();
+
+    // Check if color was applied (may be in html field as span/font tag)
+    const hasYellowColor = thatEntry.color === '#ffff00' ||
+                          thatEntry.html?.includes('#ffff00') ||
+                          thatEntry.html?.includes('color: #ffff00') ||
+                          thatEntry.html?.includes('color="#ffff00"');
+
+    expect(hasYellowColor, 'Yellow color not found in entry').toBeTruthy();
+    console.log(`  ✓ Found "that" with yellow color, sequence: ${thatEntry.sequence}`);
+
+    // Store the sequence key for "that"
+    const thatSequence = thatEntry.sequence;
+    const thatOriginalTimestamp = thatEntry.timestamp;
+
+    // Step 3: Expand timeline left by 60 seconds (using left buffer increase button)
+    console.log('Step 3: Expand timeline left by 60 seconds');
+    const leftIncreaseBtn = page.locator('#video-buffer-increase-left');
+    await leftIncreaseBtn.click();
+    await page.waitForTimeout(1500); // Wait for update and auto-save
+
+    // Step 4: Check JSON after expansion
+    console.log('Step 4: Check JSON after left expansion');
+    json = readFormattingJson(TEST_FOLDER, TEST_THEME);
+
+    // Verify sequence keys are stable
+    const keysAfterExpansion = Object.keys(json);
+    expect(keysAfterExpansion).toEqual(keys);
+    console.log(`  ✓ Sequence keys stable: ${keys.join(', ')}`);
+
+    // Verify "that" entry still exists with same sequence
+    expect(json[thatSequence]).toBeDefined();
+    expect(json[thatSequence].sequence).toBe(thatSequence);
+    console.log(`  ✓ "that" sequence unchanged: ${thatSequence}`);
+
+    // Verify timestamp was updated (should be more negative now)
+    console.log(`  Timestamp before: ${thatOriginalTimestamp}`);
+    console.log(`  Timestamp after: ${json[thatSequence].timestamp}`);
+
+    // Verify color is still yellow
+    expect(json[thatSequence].color).toBe('#ffff00');
+    console.log(`  ✓ "that" still yellow after expansion`);
+
+    // Step 5: Style a new text (navigate to different subtitle)
+    console.log('Step 5: Style a different subtitle');
+
+    // Play video to move to next subtitle
+    const previewVideo = page.locator('#preview-video');
+    await previewVideo.evaluate(video => video.currentTime += 2);
+    await page.waitForTimeout(1000);
+
+    // Apply green color to new subtitle
+    // Focus the editor first and select text
+    await subtitleText.click();
+    await page.waitForTimeout(200);
+    await page.keyboard.press('Control+A');
+    await page.waitForTimeout(100);
+
+    await page.locator('button[onclick*="applyColor(\'#00ff00\'"]').click();
+    await page.waitForTimeout(1500);
+
+    // Check JSON has new entry
+    json = readFormattingJson(TEST_FOLDER, TEST_THEME);
+    const keysAfterNewStyle = Object.keys(json);
+    expect(keysAfterNewStyle.length).toBeGreaterThan(keys.length);
+    console.log(`  ✓ New entry added. Total entries: ${keysAfterNewStyle.length}`);
+
+    // Find the new green entry
+    const greenEntry = Object.values(json).find(entry => entry.color === '#00ff00');
+    expect(greenEntry).toBeDefined();
+    console.log(`  ✓ Found green entry, sequence: ${greenEntry.sequence}`);
+
+    // Step 6: Reset timeline to original
+    console.log('Step 6: Reset timeline to original');
+    const resetButton = page.locator('#reset-timeline-btn');
+    await resetButton.click();
+    await page.waitForTimeout(2000);
+
+    // Step 7: Check JSON after reset
+    console.log('Step 7: Check JSON after reset');
+    json = readFormattingJson(TEST_FOLDER, TEST_THEME);
+
+    // Verify sequence keys are still stable
+    const keysAfterReset = Object.keys(json).sort();
+    const originalKeysSorted = keysAfterNewStyle.sort();
+    expect(keysAfterReset).toEqual(originalKeysSorted);
+    console.log(`  ✓ Sequence keys still stable after reset`);
+
+    // Step 8: Verify "that" is STILL YELLOW (critical test!)
+    console.log('Step 8: Verify "that" is still yellow after reset');
+    expect(json[thatSequence]).toBeDefined();
+
+    const stillYellow = json[thatSequence].color === '#ffff00' ||
+                       json[thatSequence].html?.includes('#ffff00') ||
+                       json[thatSequence].html?.includes('color: #ffff00') ||
+                       json[thatSequence].html?.includes('color="#ffff00"');
+
+    expect(stillYellow, '"that" should still be yellow after reset').toBeTruthy();
+    console.log(`  ✓✓✓ "that" is STILL YELLOW! Sequence: ${thatSequence}`);
+
+    // Also verify green entry still exists
+    expect(json[greenEntry.sequence]).toBeDefined();
+    expect(json[greenEntry.sequence].color).toBe('#00ff00');
+    console.log(`  ✓ Green entry also preserved, sequence: ${greenEntry.sequence}`);
+
+    console.log('\n🎉 COMPREHENSIVE TEST PASSED!');
+    console.log(`   Total entries in JSON: ${Object.keys(json).length}`);
+    console.log(`   Sequences: ${Object.keys(json).sort().join(', ')}`);
+  });
 });
