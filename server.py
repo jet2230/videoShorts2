@@ -774,10 +774,13 @@ def get_all_subtitles(folder_number: str):
     if not folder:
         return "Folder not found", 404
 
-    # Read the original SRT file
-    srt_file = folder / f'{folder_number}.srt'
-    if not srt_file.exists():
+    # Find the SRT file (could have any name, not just folder_number.srt)
+    srt_files = list(folder.glob('*.srt'))
+    if not srt_files:
         return jsonify({'error': 'SRT file not found'}), 404
+
+    srt_file = srt_files[0]  # Use the first (and likely only) SRT file
+    print(f"[DEBUG] Using SRT file: {srt_file.name}")
 
     with open(srt_file, 'r', encoding='utf-8') as f:
         srt_content = f.read()
