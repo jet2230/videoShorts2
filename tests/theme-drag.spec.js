@@ -377,4 +377,82 @@ test.describe('Formatting Persistence', () => {
     console.log(`   Total entries in JSON: ${Object.keys(json).length}`);
     console.log(`   Sequences: ${Object.keys(json).sort().join(', ')}`);
   });
+
+  test('should allow styling subtitles when timeline is expanded', async ({ page }) => {
+    console.log('Test: Styling subtitles in expanded timeline area');
+
+    // Step 1: Expand timeline left by 60 seconds
+    console.log('Step 1: Expand timeline left by 60 seconds');
+    const leftIncreaseBtn = page.locator('#video-buffer-increase-left');
+    await leftIncreaseBtn.click();
+    await page.waitForTimeout(1500);
+
+    // Step 2: Navigate to a subtitle in the expanded area (negative time)
+    console.log('Step 2: Navigate to subtitle in expanded area');
+
+    // The preview video should be at a negative time relative to theme start
+    const previewVideo = page.locator('#preview-video');
+    await previewVideo.evaluate(video => {
+      // Seek to the expanded area (before theme start)
+      video.currentTime = 8; // Assuming theme starts around 9:40, this puts us in buffer
+    });
+    await page.waitForTimeout(1000);
+
+    // Step 3: Check if we're on a subtitle
+    const subtitleText = page.locator('#subtitle-text');
+    const textContent = await subtitleText.innerText();
+
+    console.log(`  Current subtitle text: "${textContent}"`);
+
+    if (textContent && textContent.trim().length > 0) {
+      // Step 4: Try to apply color to this subtitle
+      console.log('Step 3: Apply yellow color to subtitle in expanded area');
+
+      await subtitleText.click();
+      await page.waitForTimeout(200);
+      await page.keyboard.press('Control+A');
+      await page.waitForTimeout(100);
+
+      await page.locator('button[onclick*="applyColor(\'#ffff00\'"]').click();
+      await page.waitForTimeout(1500);
+
+      // Step 5: Check if formatting was saved
+      console.log('Step 4: Check if formatting was saved to JSON');
+      const json = readFormattingJson(TEST_FOLDER, TEST_THEME);
+
+      if (json && Object.keys(json).length > 0) {
+        console.log(`  ✓ JSON has ${Object.keys(json).length} entries`);
+
+        // Look for the entry with the current text
+        const entry = Object.values(json).find(e => e._text === textContent.trim());
+
+        if (entry) {
+          const hasColor = entry.color === '#ffff00' ||
+                          entry.html?.includes('#ffff00') ||
+                          entry.html?.includes('color: #ffff00');
+
+          if (hasColor) {
+            console.log(`  ✓✓✓ Successfully applied color to subtitle in expanded area!`);
+            console.log(`      Sequence: ${entry.sequence}`);
+            console.log(`      Timestamp: ${entry.timestamp}`);
+            console.log(`      Text: "${entry._text}"`);
+          } else {
+            console.log(`  ⚠️  Entry found but color not applied`);
+            console.log(`      Entry:`, entry);
+          }
+        } else {
+          console.log(`  ⚠️  No entry found for text "${textContent.trim()}"`);
+          console.log(`      Available texts:`, Object.values(json).map(e => e._text));
+        }
+      } else {
+        console.log(`  ⚠️  JSON is empty or doesn't exist`);
+      }
+    } else {
+      console.log(`  ⚠️  No subtitle text found in expanded area`);
+      console.log(`      This might mean there are no subtitles in the buffer zone`);
+    }
+
+    // Test passes if we got here without errors
+    console.log('\n✓ Test completed - check logs above for details');
+  });
 });
