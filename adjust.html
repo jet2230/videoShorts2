@@ -623,6 +623,30 @@
             color: #aaa;
         }
 
+        /* Time start marker inside timeline */
+        .time-start-marker-inside {
+            position: absolute;
+            bottom: 4px;
+            left: 8px;
+            font-size: 11px;
+            color: #00ff9d;
+            font-weight: 500;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        /* Time end marker inside timeline */
+        .time-end-marker-inside {
+            position: absolute;
+            bottom: 4px;
+            right: 8px;
+            font-size: 11px;
+            color: #00ff9d;
+            font-weight: 500;
+            pointer-events: none;
+            z-index: 5;
+        }
+
         /* Info display */
         .info-row {
             display: flex;
@@ -991,6 +1015,97 @@
             padding: 16px;
             border-top: 1px solid rgba(255, 255, 255, 0.1);
         }
+
+        /* Time extension controls */
+        .time-extension-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 12px;
+            margin: 16px 0;
+            padding: 12px 16px;
+            background: rgba(0, 255, 157, 0.08);
+            border: 1px solid rgba(0, 255, 157, 0.2);
+            border-radius: 8px;
+        }
+
+        .extension-input-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .extension-divider {
+            color: #aaa;
+            font-size: 14px;
+            margin: 0 4px;
+        }
+
+        .extension-label {
+            color: #00ff9d;
+            font-size: 13px;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        .extension-time-input {
+            background: rgba(30, 30, 45, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            color: #fff;
+            font-size: 13px;
+            padding: 6px 8px;
+            font-family: monospace;
+            width: 115px;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+        }
+
+        /* Make the time input spinner icon white */
+        .extension-time-input::-webkit-calendar-picker-indicator {
+            filter: invert(1);
+            cursor: pointer;
+        }
+
+        .extension-time-input::-webkit-calendar-picker-indicator:hover {
+            filter: invert(1) brightness(1.2);
+        }
+
+        .extension-time-input:hover {
+            border-color: rgba(0, 255, 157, 0.4);
+        }
+
+        .extension-time-input:focus {
+            outline: none;
+            border-color: #00ff9d;
+            background: rgba(30, 30, 45, 1);
+        }
+
+        .time-separator {
+            color: #aaa;
+            font-size: 12px;
+        }
+
+        .extension-apply-btn {
+            background: rgba(0, 255, 157, 0.15);
+            border: 1px solid rgba(0, 255, 157, 0.4);
+            border-radius: 4px;
+            color: #00ff9d;
+            font-size: 12px;
+            font-weight: 500;
+            padding: 6px 14px;
+            cursor: pointer;
+            transition: background 0.2s, border-color 0.2s, transform 0.1s;
+        }
+
+        .extension-apply-btn:hover {
+            background: rgba(0, 255, 157, 0.25);
+            border-color: #00ff9d;
+        }
+
+        .extension-apply-btn:active {
+            transform: scale(0.96);
+        }
     </style>
 </head>
 <body>
@@ -1076,10 +1191,25 @@
                             <div class="theme-box-handle right" id="handle-right"></div>
                         </div>
                     </div>
+                    <span class="time-start-marker-inside" id="time-start-marker">00:00</span>
+                    <span class="time-end-marker-inside" id="time-end-marker">00:00</span>
                 </div>
                 <div class="time-markers">
-                    <span id="time-start-marker">00:00</span>
-                    <span id="time-end-marker">00:00</span>
+                </div>
+            </div>
+
+            <!-- Manual time extension inputs -->
+            <div class="time-extension-controls">
+                <div class="extension-input-group">
+                    <label class="extension-label">Ext Left</label>
+                    <button id="apply-ext-left" class="extension-apply-btn">Apply</button>
+                </div>
+                <input type="time" id="ext-left-end" class="extension-time-input" step="1" min="00:00:00" max="01:00:00">
+                <div class="extension-divider">|</div>
+                <input type="time" id="ext-right-end" class="extension-time-input" step="1" min="00:00:00" max="01:00:00">
+                <div class="extension-input-group">
+                    <button id="apply-ext-right" class="extension-apply-btn">Apply</button>
+                    <label class="extension-label">Ext Right</label>
                 </div>
             </div>
 
@@ -1348,6 +1478,62 @@
                     }, 2000);
                 }
             }, 500); // Wait 500ms after drag ends before saving
+        }
+
+        // Helper function to convert seconds to time input format (HH:MM:SS)
+        function secondsToTimeInput(totalSeconds) {
+            console.log('   secondsToTimeInput called with:', totalSeconds, 'type:', typeof totalSeconds);
+
+            // Handle invalid values
+            if (totalSeconds === null || totalSeconds === undefined || isNaN(totalSeconds)) {
+                console.warn('   ⚠️ Invalid value, returning 00:00:00');
+                return '00:00:00';
+            }
+
+            // Ensure we have a number
+            totalSeconds = Number(totalSeconds);
+
+            // Round to nearest whole second for time input display
+            totalSeconds = Math.round(totalSeconds);
+
+            const h = Math.floor(totalSeconds / 3600);
+            const m = Math.floor((totalSeconds % 3600) / 60);
+            const s = totalSeconds % 60;
+
+            const result = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+            console.log(`   → ${result} (h:${h}, m:${m}, s:${s})`);
+            return result;
+        }
+
+        // Helper function to update time extension inputs
+        function updateTimeExtensionInputs() {
+            console.log('🕐 updateTimeExtensionInputs called');
+
+            const extLeftEnd = document.getElementById('ext-left-end');
+            const extRightEnd = document.getElementById('ext-right-end');
+
+            console.log(`   Elements found: extLeftEnd=${!!extLeftEnd}, extRightEnd=${!!extRightEnd}`);
+            console.log(`   Values: originalStartSeconds=${originalStartSeconds}, startSeconds=${startSeconds}`);
+            console.log(`   Values: originalEndSeconds=${originalEndSeconds}, endSeconds=${endSeconds}`);
+
+            if (extLeftEnd && extRightEnd &&
+                originalStartSeconds !== null && originalStartSeconds !== undefined &&
+                originalEndSeconds !== null && originalEndSeconds !== undefined &&
+                startSeconds !== null && startSeconds !== undefined &&
+                endSeconds !== null && endSeconds !== undefined) {
+
+                const leftExtension = Math.max(0, originalStartSeconds - startSeconds);
+                const rightExtension = Math.max(0, endSeconds - originalEndSeconds);
+
+                console.log(`   Calculated: leftExtension=${leftExtension}s, rightExtension=${rightExtension}s`);
+
+                extLeftEnd.value = secondsToTimeInput(leftExtension);
+                extRightEnd.value = secondsToTimeInput(rightExtension);
+
+                console.log(`   ✅ Updated: extLeftEnd.value=${extLeftEnd.value}, extRightEnd.value=${extRightEnd.value}`);
+            } else {
+                console.warn('   ⚠️ Cannot update - missing elements or values');
+            }
         }
 
         // Load all theme cues for editing
@@ -1873,6 +2059,9 @@
 
                 // Setup custom video controls
                 setupVideoControls();
+
+                // Initialize time extension inputs with current theme extension values
+                updateTimeExtensionInputs();
 
             } catch (error) {
                 document.getElementById('loading').classList.add('hidden');
@@ -2674,6 +2863,9 @@
 
                     // Auto-save theme adjustment
                     autoSaveTheme();
+
+                    // Update time extension inputs to reflect new theme boundaries
+                    updateTimeExtensionInputs();
                 }
                 isDragging = null;
             });
@@ -2714,6 +2906,133 @@
                 bufferRightSeconds += 60;
                 updateUI();
             });
+
+            // Helper function to convert time input (HH:MM:SS) to seconds
+            const timeInputToSeconds = (timeInput) => {
+                const parts = timeInput.split(':');
+                if (parts.length === 3) {
+                    const [h, m, s] = parts.map(Number);
+                    return h * 3600 + m * 60 + s;
+                }
+                return 0;
+            };
+
+            // Apply left extension time from input fields
+            const applyExtLeftBtn = document.getElementById('apply-ext-left');
+            if (applyExtLeftBtn) {
+                applyExtLeftBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+
+                    const extLeftEnd = document.getElementById('ext-left-end');
+
+                    if (extLeftEnd) {
+                        const extensionSeconds = timeInputToSeconds(extLeftEnd.value);
+
+                        // Move theme start earlier by the extension amount
+                        const newStartSeconds = Math.max(0, originalStartSeconds - extensionSeconds);
+
+                        // Handle formatting timestamp shift when theme start changes
+                        const timeOffset = newStartSeconds - startSeconds;
+
+                        if (Object.keys(allCueFormatting).length > 0 && timeOffset !== 0) {
+                            const vttToSeconds = (vttTimestamp) => {
+                                const [time, millis] = vttTimestamp.split('.');
+                                const isNegative = time.startsWith('-');
+                                const [h, m, s] = time.replace('-', '').split(':').map(Number);
+                                const result = h * 3600 + m * 60 + s + (millis || 0) / 1000;
+                                return isNegative ? -result : result;
+                            };
+
+                            const secondsToVtt = (totalSeconds) => {
+                                const EPSILON = 0.001;
+                                if (Math.abs(totalSeconds) < EPSILON) {
+                                    totalSeconds = 0;
+                                }
+                                const isNegative = totalSeconds < 0;
+                                const absSeconds = Math.abs(totalSeconds);
+                                let h = Math.floor(absSeconds / 3600);
+                                let m = Math.floor((absSeconds % 3600) / 60);
+                                let s = absSeconds % 60;
+                                let sInt = Math.floor(s);
+                                let msInt = Math.round((s - sInt) * 1000);
+                                if (msInt >= 1000) {
+                                    msInt = 0;
+                                    sInt += 1;
+                                    if (sInt >= 60) {
+                                        sInt = 0;
+                                        m += 1;
+                                        if (m >= 60) {
+                                            m = 0;
+                                            h += 1;
+                                        }
+                                    }
+                                }
+                                const sign = isNegative ? '-' : '';
+                                return `${sign}${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${sInt.toString().padStart(2, '0')}.${msInt.toString().padStart(3, '0')}`;
+                            };
+
+                            // Update timestamps for each sequence key
+                            for (const [seqKey, formatting] of Object.entries(allCueFormatting)) {
+                                const oldSeconds = vttToSeconds(formatting.timestamp);
+                                const newSeconds = oldSeconds - timeOffset;
+                                allCueFormatting[seqKey].timestamp = secondsToVtt(newSeconds);
+                            }
+
+                            // Save formatting to server
+                            fetch('/api/save-subtitle-formatting', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    folder: folderNumber,
+                                    theme: themeNumber,
+                                    formatting: allCueFormatting
+                                })
+                            }).then(res => res.json())
+                              .then(data => console.log('   ✓ Formatting saved'))
+                              .catch(err => console.error('   ✗ Failed to save formatting:', err));
+                        }
+
+                        startSeconds = newStartSeconds;
+
+                        console.log(`🎯 Applied left extension: ${extLeftEnd.value} (${extensionSeconds}s earlier)`);
+                        updateUI();
+                        updatePreviewVideo();
+                        reloadSubtitleTrack();
+
+                        // Save adjusted theme boundaries to server
+                        autoSaveTheme();
+                    }
+                });
+            }
+
+            // Apply right extension time from input fields
+            const applyExtRightBtn = document.getElementById('apply-ext-right');
+            if (applyExtRightBtn) {
+                applyExtRightBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+
+                    const extRightEnd = document.getElementById('ext-right-end');
+
+                    if (extRightEnd) {
+                        const extensionSeconds = timeInputToSeconds(extRightEnd.value);
+
+                        // Move theme end later by the extension amount
+                        const newEndSeconds = Math.min(fullVideoDuration, originalEndSeconds + extensionSeconds);
+
+                        endSeconds = newEndSeconds;
+
+                        console.log(`🎯 Applied right extension: ${extRightEnd.value} (${extensionSeconds}s later)`);
+                        updateUI();
+                        updatePreviewVideo();
+                        reloadSubtitleTrack();
+
+                        // Save adjusted theme boundaries to server
+                        autoSaveTheme();
+                    }
+                });
+            }
 
             // Reset timeline button - reset to original theme time range
             const resetTimelineBtn = document.getElementById('reset-timeline-btn');
@@ -2818,6 +3137,9 @@
 
                     // Reload subtitle track with new time range
                     reloadSubtitleTrack();
+
+                    // Update time extension inputs - after reset they should be 00:00:00
+                    updateTimeExtensionInputs();
 
                     // Delete the adjust file on server
                     try {
