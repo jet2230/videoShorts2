@@ -1318,6 +1318,10 @@
                         <input type="checkbox" id="overlay-toggle" style="width: 18px; height: 18px;">
                         <span style="font-size: 13px; color: #aaa;">Show 9:16 Crop Overlay</span>
                     </label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="karaoke-toggle" style="width: 18px; height: 18px;">
+                        <span style="font-size: 13px; color: #aaa;">Karaoke Highlighting</span>
+                    </label>
                 </div>
             </div>
 
@@ -1653,6 +1657,7 @@
         // Position mode: 'global' (all subtitles) or 'current' (individual subtitle)
         let positionMode = 'global';
         let globalPosition = 'bottom'; // Default global position for all subtitles
+        let karaokeEnabled = true; // Karaoke word highlighting (default: enabled)
 
         // Custom position and alignment
         let customPosition = null; // {left: number, top: number, width: number}
@@ -4396,6 +4401,158 @@
             }
         });
 
+        // Karaoke highlighting toggle
+        async function toggleKaraoke(enabled) {
+            // If enabling karaoke, check if word timestamps exist
+            if (enabled) {
+                try {
+                    const response = await fetch(`/api/check-word-timestamps?folder=${folderNumber}`);
+                    const data = await response.json();
+
+                    if (!data.exists) {
+                        // Word timestamps don't exist - ask user to create them
+                        const message = `Word timestamps are required for karaoke highlighting.\n\n` +
+                                       `This will transcribe the video again to extract word-level timing data.\n\n` +
+                                       `⏱️ Estimated time: ${data.video_duration || 'a few minutes'}\n\n` +
+                                       `Create word timestamps now?`;
+
+                        if (!confirm(message)) {
+                            // User cancelled - reset toggle and return
+                            document.getElementById('karaoke-toggle').checked = false;
+                            return;
+                        }
+
+                        // User confirmed - show progress and start transcription
+                        const loadingDiv = document.getElementById('loading');
+                        const contentDiv = document.getElementById('content');
+                        loadingDiv.classList.remove('hidden');
+                        loadingDiv.innerHTML = '🎤 Creating word timestamps...<br><small>This may take a few minutes depending on video length.</small>';
+                        contentDiv.classList.add('hidden');
+
+                        try {
+                            const transcribeResponse = await fetch('/api/create-word-timestamps', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ folder: folderNumber })
+                            });
+
+                            if (!transcribeResponse.ok) {
+                                throw new Error('Failed to create word timestamps');
+                            }
+
+                            const transcribeData = await transcribeResponse.json();
+                            if (transcribeData.error) {
+                                throw new Error(transcribeData.error);
+                            }
+
+                            loadingDiv.innerHTML = '✅ Word timestamps created!<br>Regenerating subtitles with karaoke...';
+                        } catch (error) {
+                            loadingDiv.innerHTML = '❌ Failed to create word timestamps:<br>' + error.message;
+                            setTimeout(() => {
+                                loadingDiv.classList.add('hidden');
+                                contentDiv.classList.remove('hidden');
+                                document.getElementById('karaoke-toggle').checked = false;
+                            }, 3000);
+                            return;
+                        }
+                    }
+                } catch (error) {
+                    console.error('❌ Error checking word timestamps:', error);
+                    // Continue anyway - the server will handle missing timestamps
+                }
+            }
+
+            karaokeEnabled = enabled;
+            console.log('🎤 Karaoke highlighting:', enabled ? 'ENABLED' : 'DISABLED');
+
+            // Save karaoke setting to server
+            try {
+                const response = await fetch('/api/save-karaoke-setting', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        folder: folderNumber,
+                        theme: themeNumber,
+                        enabled: enabled
+                    })
+                });
+
+                if (!response.ok) {
+                    console.warn('⚠️ Failed to save karaoke setting');
+                }
+            } catch (error) {
+                console.error('❌ Error saving karaoke setting:', error);
+            }
+
+            // Show loading indicator
+            const loadingDiv = document.getElementById('loading');
+            const contentDiv = document.getElementById('content');
+            loadingDiv.classList.remove('hidden');
+            loadingDiv.textContent = '🎤 Regenerating subtitles with karaoke ' + (enabled ? 'enabled' : 'disabled') + '...';
+            contentDiv.classList.add('hidden');
+
+            // Regenerate ASS files with new karaoke setting
+            try {
+                const response = await fetch('/api/regenerate-ass', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        folder: folderNumber,
+                        theme: themeNumber,
+                        karaoke: enabled
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to regenerate ASS');
+                }
+
+                // Reload the page to show updated subtitles
+                window.location.reload();
+            } catch (error) {
+                console.error('❌ Error regenerating ASS:', error);
+                loadingDiv.textContent = '❌ Failed to update karaoke setting';
+                setTimeout(() => {
+                    loadingDiv.classList.add('hidden');
+                    contentDiv.classList.remove('hidden');
+                    // Reset toggle on error
+                    document.getElementById('karaoke-toggle').checked = !enabled;
+                }, 2000);
+            }
+        }
+
+        document.getElementById('karaoke-toggle').addEventListener('change', async (e) => {
+            await toggleKaraoke(e.target.checked);
+        });
+
+        // Load karaoke setting on page load
+        async function loadKaraokeSetting() {
+            try {
+                // Check if word timestamps exist first
+                const checkResponse = await fetch(`/api/check-word-timestamps?folder=${folderNumber}`);
+                let wordTimestampsExist = false;
+                if (checkResponse.ok) {
+                    const checkData = await checkResponse.json();
+                    wordTimestampsExist = checkData.exists;
+                }
+
+                // Get karaoke setting from server
+                const response = await fetch(`/api/get-karaoke-setting?folder=${folderNumber}&theme=${themeNumber}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    // Only enable karaoke if both setting is true AND word timestamps exist
+                    karaokeEnabled = data.enabled && wordTimestampsExist;
+                    document.getElementById('karaoke-toggle').checked = karaokeEnabled;
+                    console.log('🎤 Karaoke setting loaded:', karaokeEnabled ? 'ENABLED' : 'DISABLED',
+                               wordTimestampsExist ? '(word timestamps exist)' : '(no word timestamps)');
+                }
+            } catch (error) {
+                console.warn('⚠️ Could not load karaoke setting, using default (disabled)');
+                karaokeEnabled = false;
+                document.getElementById('karaoke-toggle').checked = false;
+            }
+        }
+
         // Lock video controls button
         document.getElementById('lock-video-btn').addEventListener('click', () => {
             videoControlsLocked = !videoControlsLocked;
@@ -4706,6 +4863,8 @@
             loadTheme().then(() => {
                 // Initialize position mode buttons after theme loads
                 setPositionMode('global'); // Default to global mode
+                // Load karaoke setting
+                loadKaraokeSetting();
             });
         } else {
             document.getElementById('loading').classList.add('hidden');

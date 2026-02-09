@@ -434,11 +434,12 @@ Video Path: {video_info['video_path']}
         progress_thread.start()
 
         try:
-            # Transcribe
+            # Transcribe with word-level timestamps for karaoke highlighting
             result = model.transcribe(
                 str(video_path),
                 language=language,
                 task=task,
+                word_timestamps=True,  # Enable word-level timestamps
                 verbose=False
             )
         finally:
@@ -454,6 +455,12 @@ Video Path: {video_info['video_path']}
         writer = get_writer('srt', str(folder))
         writer(result, srt_path)
 
+        # Save word-level timestamps for karaoke highlighting
+        word_timestamps_path = Path(folder) / f"{base_name}_word_timestamps.json"
+        self._save_word_timestamps(result, word_timestamps_path)
+        if word_timestamps_path.exists():
+            _log_msg(f"Created word timestamps: {word_timestamps_path}")
+
         if srt_path.exists():
             _log_msg(f"Created subtitles: {srt_path}")
             _log_msg("Subtitles: Complete")
@@ -461,6 +468,33 @@ Video Path: {video_info['video_path']}
             raise FileNotFoundError(f"Whisper CLI did not create expected subtitle file: {srt_path}")
 
         return str(srt_path)
+
+    def _save_word_timestamps(self, result: dict, output_path: Path) -> None:
+        """Save word-level timestamps from Whisper result to JSON file.
+
+        This enables karaoke-style word highlighting in ASS subtitles.
+
+        Args:
+            result: Whisper result dict with word timestamps
+            output_path: Path to save JSON file
+        """
+        import json
+
+        word_data = []
+        for segment in result.get("segments", []):
+            for word_info in segment.get("words", []):
+                word_data.append({
+                    "word": word_info["word"],
+                    "start": word_info["start"],
+                    "end": word_info["end"]
+                })
+
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump({
+                "language": result.get("language"),
+                "duration": result.get("duration"),
+                "words": word_data
+            }, f, indent=2, ensure_ascii=False)
 
     def generate_themes(self, video_info: Dict[str, str], ai_generator=None, model_size='base', progress_callback=None) -> None:
         """Generate themes for YouTube Shorts from subtitles."""
@@ -1170,7 +1204,7 @@ Video Path: {video_info['video_path']}
         subtitle_file_for_ffmpeg = str(trimmed_srt_path).replace(':', '\\:').replace('\\', '\\\\').replace("'", "\\'")
 
         # Check if we need to create ASS file
-        # Create ASS if: 1) Individual formatting exists (JSON) OR 2) Global custom position exists (adjust.md)
+        # Create ASS if: 1) Individual formatting exists (JSON) OR 2) Global custom position exists (adjust.md) OR 3) Word timestamps exist (for karaoke)
         formatting_json_path = output_dir / f"theme_{theme['number']:03d}_formatting.json"
         adjust_md_path = theme.get('adjust_file')
         use_ass = False
@@ -1178,6 +1212,17 @@ Video Path: {video_info['video_path']}
         # Check if there's individual formatting or global custom position
         has_formatting = formatting_json_path.exists()
         has_global_position = False
+        has_word_timestamps = False
+
+        # Check for word timestamps file (for karaoke highlighting)
+        # Word timestamps are in the parent folder of the shorts directory
+        video_folder = output_dir.parent
+        word_timestamps_file = None
+        for file in video_folder.glob('*_word_timestamps.json'):
+            word_timestamps_file = file
+            has_word_timestamps = True
+            print(f"    Found word timestamps: {word_timestamps_file.name}")
+            break
 
         if adjust_md_path and adjust_md_path.exists():
             # Read adjust.md to check if there's a custom position
@@ -1192,7 +1237,8 @@ Video Path: {video_info['video_path']}
             except:
                 pass
 
-        if has_formatting or has_global_position:
+        # Create ASS if any condition is met
+        if has_formatting or has_global_position or has_word_timestamps:
             print(f"    Creating ASS file (formatting: {has_formatting}, global position: {has_global_position})...")
             # Create ASS file from trimmed SRT using ASSFormatter
             ass_output_path = output_dir / f"theme_{theme['number']:03d}.ass"
@@ -1203,8 +1249,11 @@ Video Path: {video_info['video_path']}
                 # Use the trimmed SRT for ASS generation (it contains the adjusted subtitle sequence)
                 print(f"    Using trimmed.srt (sequence {trimmed_srt_name}) for ASS generation")
                 # Pass adjust.md path for global position settings
-                ass_formatter.create_ass_file(trimmed_srt_path, formatting_json_path, ass_output_path, adjust_md_path)
-                print(f"    Created ASS subtitles: {ass_output_path.name}")
+                # Enable karaoke if word timestamps exist
+                use_karaoke = has_word_timestamps
+                ass_formatter.create_ass_file(trimmed_srt_path, formatting_json_path, ass_output_path, adjust_md_path, use_karaoke=use_karaoke)
+                karaoke_msg = " with karaoke tags" if use_karaoke else ""
+                print(f"    Created ASS subtitles{karaoke_msg}: {ass_output_path.name}")
                 subtitle_file_for_ffmpeg = str(ass_output_path).replace(':', '\\:').replace('\\', '\\\\').replace("'", "\\'")
                 use_ass = True
             except Exception as e:

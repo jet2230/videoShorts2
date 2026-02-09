@@ -33,8 +33,15 @@ class ASSFormatter:
     # === File Generation ===
 
     def create_ass_file(self, srt_path: Path, formatting_json_path: Path, output_ass_path: Path,
-                       adjust_md_path: Optional[Path] = None) -> bool:
+                       adjust_md_path: Optional[Path] = None, use_karaoke: bool = True) -> bool:
         """Create ASS subtitle file from SRT and formatting JSON.
+
+        Args:
+            srt_path: Path to input SRT file
+            formatting_json_path: Path to JSON with HTML formatting data
+            output_ass_path: Path where ASS file should be written
+            adjust_md_path: Optional path to adjust.md with global position settings
+            use_karaoke: Whether to use karaoke tags if word timestamps available (default: True)
 
         Args:
             srt_path: Path to input SRT file
@@ -59,6 +66,27 @@ class ASSFormatter:
         # Priority: JSON individual position > adjust.md global position > settings.ini defaults
         position_override = None
         custom_position = None  # For custom X/Y coordinates from adjust.md
+
+        # Load word timestamps for karaoke highlighting
+        word_timestamps = None
+        word_timestamps_path = srt_path.parent / f"{srt_path.stem.split('_')[0]}_word_timestamps.json"
+
+        # If not found in current directory, check parent directory (video folder)
+        if not word_timestamps_path.exists():
+            # For trimmed SRTs in shorts/ folder, check parent video folder
+            parent_folder = srt_path.parent.parent
+            for file in parent_folder.glob('*_word_timestamps.json'):
+                word_timestamps_path = file
+                break
+
+        if word_timestamps_path.exists():
+            try:
+                with open(word_timestamps_path, 'r', encoding='utf-8') as f:
+                    word_data = json.load(f)
+                    word_timestamps = word_data.get("words", [])
+                    print(f"    Loaded {len(word_timestamps)} word timestamps from {word_timestamps_path.name}")
+            except Exception as e:
+                print(f"    Warning: Could not load word timestamps: {e}")
 
         # First, check adjust.md for global position
         if adjust_md_path and adjust_md_path.exists():
@@ -136,8 +164,17 @@ class ASSFormatter:
                 # Get HTML if available, otherwise use plain text
                 display_text = formatting.get('html', text) if formatting else text
 
-                # Parse HTML formatting to ASS tags
-                display_text = self.parse_html_to_ass(display_text)
+                # Apply karaoke highlighting if enabled, word timestamps available, and no custom HTML
+                if use_karaoke and word_timestamps and display_text == text:
+                    # Find matching word timestamps for this segment
+                    segment_words = self._find_words_for_segment(text, word_timestamps, start_time, end_time)
+                    if segment_words:
+                        display_text = self.create_karaoke_tags(segment_words, text, start_time)
+
+                # Parse HTML formatting to ASS tags (if not karaoke)
+                # Skip HTML parsing if we already have karaoke tags (they contain backslashes)
+                if not word_timestamps or display_text == text or '{\\k' not in display_text:
+                    display_text = self.parse_html_to_ass(display_text)
 
                 # Escape special ASS characters (but not backslashes in tags)
                 display_text = self._escape_ass_special_chars(display_text)
@@ -605,6 +642,83 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         result = re.sub(r'<[^>]+>', '', result)
 
         return result
+
+    # === Karaoke Tag Generation ===
+
+    def create_karaoke_tags(self, word_timestamps: list, segment_text: str, segment_start: float) -> str:
+        """Generate ASS karaoke tags (\k) from word timestamps.
+
+        The \k tag in ASS creates a karaoke-style highlighting effect where
+        each word highlights for its duration when spoken.
+
+        Args:
+            word_timestamps: List of dicts with 'word', 'start', 'end' keys
+            segment_text: Full text of the segment
+            segment_start: Start time of the segment in seconds
+
+        Returns:
+            String with karaoke tags and words, e.g., "{\\k50}Hello{\\k30}world"
+        """
+        result = ""
+        last_end = segment_start
+
+        # Normalize segment text for matching (remove punctuation, lowercase)
+        segment_words = segment_text.strip().lower().split()
+
+        # Match word timestamps to segment words
+        word_idx = 0
+        for word_info in word_timestamps:
+            word = word_info["word"].strip()
+            word_start = word_info["start"]
+            word_end = word_info["end"]
+
+            # Skip if we've already matched all segment words
+            if word_idx >= len(segment_words):
+                break
+
+            # Calculate duration in centiseconds (ASS \k uses cs)
+            duration_cs = int((word_end - word_start) * 100)
+
+            # Handle gaps between words (pause time)
+            gap_cs = int((word_start - last_end) * 100)
+            if gap_cs > 0:
+                result += f"{{\\k{gap_cs}}}"
+
+            # Add word with karaoke tag
+            result += f"{{\\k{duration_cs}}}{word}"
+
+            last_end = word_end
+            word_idx += 1
+
+        return result
+
+    def _find_words_for_segment(self, segment_text: str, all_word_timestamps: list,
+                                segment_start: float, segment_end: float) -> list:
+        """Find word timestamps that belong to a specific segment.
+
+        Args:
+            segment_text: The text of the subtitle segment
+            all_word_timestamps: All word timestamps from the video
+            segment_start: Start time of the segment in seconds
+            segment_end: End time of the segment in seconds
+
+        Returns:
+            List of word timestamp dicts that fall within this segment
+        """
+        matched_words = []
+
+        for word_info in all_word_timestamps:
+            word_start = word_info["start"]
+            word_end = word_info["end"]
+
+            # Check if word is within segment time range (with some tolerance)
+            if word_start >= segment_start - 0.1 and word_end <= segment_end + 0.5:
+                matched_words.append(word_info)
+
+        # Sort by start time
+        matched_words.sort(key=lambda x: x["start"])
+
+        return matched_words
 
     # === Position Handling ===
 

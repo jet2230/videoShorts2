@@ -1787,6 +1787,320 @@ def get_edit_status(edit_id: str):
         return jsonify(edit_processes[edit_id])
 
 
+# === Karaoke Highlighting API Endpoints ===
+
+@app.route('/api/check-word-timestamps', methods=['GET'])
+def check_word_timestamps():
+    """Check if word timestamps JSON file exists for a video."""
+    folder_number = request.args.get('folder')
+
+    if not folder_number:
+        return jsonify({'error': 'folder is required'}), 400
+
+    # Find the folder
+    base_dir = Path(settings.get('video', 'output_dir'))
+    folder = None
+    for f in base_dir.iterdir():
+        if f.is_dir() and f.name.startswith(f"{folder_number}_"):
+            folder = f
+            break
+
+    if not folder:
+        return jsonify({'error': 'Folder not found'}), 404
+
+    # Check for word timestamps file
+    word_timestamps_file = None
+    for file in folder.glob('*_word_timestamps.json'):
+        word_timestamps_file = file
+        break
+
+    exists = word_timestamps_file is not None and word_timestamps_file.exists()
+
+    # Get video duration for estimation
+    video_duration = None
+    if exists:
+        try:
+            with open(word_timestamps_file, 'r') as f:
+                import json
+                data = json.load(f)
+                video_duration = data.get('duration')
+        except:
+            pass
+
+    return jsonify({
+        'exists': exists,
+        'video_duration': format_duration(video_duration) if video_duration else None
+    })
+
+
+@app.route('/api/create-word-timestamps', methods=['POST'])
+def create_word_timestamps():
+    """Create word timestamps by re-transcribing the video with word_timestamps=True."""
+    data = request.json
+    folder_number = data.get('folder')
+
+    if not folder_number:
+        return jsonify({'error': 'folder is required'}), 400
+
+    # Find the folder
+    base_dir = Path(settings.get('video', 'output_dir'))
+    folder = None
+    for f in base_dir.iterdir():
+        if f.is_dir() and f.name.startswith(f"{folder_number}_"):
+            folder = f
+            break
+
+    if not folder:
+        return jsonify({'error': 'Folder not found'}), 404
+
+    # Find the video file
+    video_file = None
+    for ext in ['.mp4', '.mkv', '.webm', '.mov', '.avi']:
+        potential = folder / f"{folder.name}{ext}"
+        if potential.exists():
+            video_file = potential
+            break
+
+    if not video_file:
+        return jsonify({'error': 'No video file found'}), 404
+
+    # Create a task for word timestamp generation
+    global task_counter
+    with task_lock:
+        task_counter += 1
+        task_id = f"task_{task_counter}"
+        tasks[task_id] = {
+            'type': 'create_word_timestamps',
+            'status': 'pending',
+            'folder_number': folder_number,
+            'video_path': str(video_file)
+        }
+
+    # Run in background thread
+    thread = threading.Thread(
+        target=run_task_with_callback,
+        args=(task_id, _create_word_timestamps, folder_number, str(video_file)),
+        daemon=True
+    )
+    thread.start()
+
+    return jsonify({'task_id': task_id})
+
+
+def _create_word_timestamps(folder_number: str, video_path: str, progress_callback=None, cancel_check=None):
+    """Create word timestamps in background."""
+    if cancel_check and cancel_check():
+        raise Exception('Cancelled by user')
+
+    # Get video info
+    video_info = {'video_path': video_path, 'folder': Path(video_path).parent}
+
+    # Run transcription with word timestamps
+    srt_path = creator.generate_subtitles(
+        video_info,
+        model_size='base',  # Use base model for speed
+        language=None,
+        task='transcribe',
+        progress_callback=progress_callback
+    )
+
+    # Verify word timestamps were created
+    folder = Path(video_path).parent
+    word_timestamps_files = list(folder.glob('*_word_timestamps.json'))
+
+    if not word_timestamps_files:
+        raise Exception('Word timestamps file was not created')
+
+    return {
+        'word_timestamps_file': str(word_timestamps_files[0]),
+        'srt_file': srt_path
+    }
+
+
+@app.route('/api/save-karaoke-setting', methods=['POST'])
+def save_karaoke_setting():
+    """Save karaoke setting to adjust.md file."""
+    import re
+    data = request.json
+    folder_number = data.get('folder')
+    theme_number = data.get('theme')
+    enabled = data.get('enabled', True)
+
+    if not all([folder_number, theme_number]):
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    # Find the folder
+    base_dir = Path(settings.get('video', 'output_dir'))
+    folder = None
+    for f in base_dir.iterdir():
+        if f.is_dir() and f.name.startswith(f"{folder_number}_"):
+            folder = f
+            break
+
+    if not folder:
+        return jsonify({'error': 'Folder not found'}), 404
+
+    # Path to adjust.md file
+    adjust_file = folder / 'shorts' / f'theme_{int(theme_number):03d}_adjust.md'
+
+    # Read existing content or create new
+    if adjust_file.exists():
+        with open(adjust_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+    else:
+        content = f'# Theme {theme_number} Settings\n\n'
+
+    # Update or add karaoke setting
+    karaoke_pattern = r'\*\*karaoke_highlighting:\*\*\s*(true|false)'
+    karaoke_line = f'**karaoke_highlighting:** {str(enabled).lower()}'
+
+    if re.search(karaoke_pattern, content):
+        content = re.sub(karaoke_pattern, karaoke_line, content)
+    else:
+        content += f'\n{karaoke_line}\n'
+
+    # Write back
+    with open(adjust_file, 'w', encoding='utf-8') as f:
+        f.write(content)
+
+    return jsonify({'success': True, 'enabled': enabled})
+
+
+@app.route('/api/get-karaoke-setting', methods=['GET'])
+def get_karaoke_setting():
+    """Get karaoke setting from adjust.md file."""
+    import re
+    folder_number = request.args.get('folder')
+    theme_number = request.args.get('theme')
+
+    if not all([folder_number, theme_number]):
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    # Find the folder
+    base_dir = Path(settings.get('video', 'output_dir'))
+    folder = None
+    for f in base_dir.iterdir():
+        if f.is_dir() and f.name.startswith(f"{folder_number}_"):
+            folder = f
+            break
+
+    if not folder:
+        return jsonify({'error': 'Folder not found'}), 404
+
+    # Path to adjust.md file
+    adjust_file = folder / 'shorts' / f'theme_{int(theme_number):03d}_adjust.md'
+
+    # Read setting from file
+    if adjust_file.exists():
+        with open(adjust_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        karaoke_match = re.search(r'\*\*karaoke_highlighting:\*\*\s*(true|false)', content)
+        if karaoke_match:
+            enabled = karaoke_match.group(1) == 'true'
+            return jsonify({'enabled': enabled})
+
+    # Default: enabled
+    return jsonify({'enabled': True})
+
+
+@app.route('/api/regenerate-ass', methods=['POST'])
+def regenerate_ass():
+    """Regenerate ASS files with karaoke on/off."""
+    data = request.json
+    folder_number = data.get('folder')
+    theme_number = data.get('theme')
+    karaoke = data.get('karaoke', True)
+
+    if not all([folder_number, theme_number]):
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    # Find the folder
+    base_dir = Path(settings.get('video', 'output_dir'))
+    folder = None
+    for f in base_dir.iterdir():
+        if f.is_dir() and f.name.startswith(f"{folder_number}_"):
+            folder = f
+            break
+
+    if not folder:
+        return jsonify({'error': 'Folder not found'}), 404
+
+    # Find SRT and word timestamps files
+    srt_file = None
+    for file in folder.glob('*.srt'):
+        if 'theme' not in file.name:  # Get the main SRT, not theme SRTs
+            srt_file = file
+            break
+
+    if not srt_file:
+        return jsonify({'error': 'SRT file not found'}), 404
+
+    word_timestamps = None
+    word_timestamps_file = folder / f"{srt_file.stem}_word_timestamps.json"
+    if word_timestamps_file.exists():
+        import json
+        try:
+            with open(word_timestamps_file, 'r') as f:
+                word_data = json.load(f)
+                word_timestamps = word_data.get('words', [])
+        except Exception as e:
+            print(f"Warning: Could not load word timestamps: {e}")
+
+    # Check for formatting JSON
+    formatting_json_path = folder / 'shorts' / f'theme_{int(theme_number):03d}_formatting.json'
+
+    # Check for adjust.md
+    adjust_md_path = folder / 'shorts' / f'theme_{int(theme_number):03d}_adjust.md'
+
+    try:
+        # Create ASS formatter
+        from ass_formatter import ASSFormatter
+        formatter = ASSFormatter(settings)
+
+        # Generate ASS output path
+        ass_output_path = folder / 'shorts' / f'theme_{int(theme_number):03d}.ass'
+
+        # Create ASS file
+        success = formatter.create_ass_file(
+            srt_file,
+            formatting_json_path,
+            ass_output_path,
+            adjust_md_path,
+            use_karaoke=karaoke and word_timestamps is not None
+        )
+
+        if success:
+            return jsonify({
+                'success': True,
+                'ass_file': str(ass_output_path),
+                'karaoke': karaoke and word_timestamps is not None
+            })
+        else:
+            return jsonify({'error': 'Failed to create ASS file'}), 500
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"Error in regenerate_ass: {e}\n{error_trace}")
+        return jsonify({'error': f'Failed to create ASS: {str(e)}'}), 500
+
+
+def format_duration(seconds):
+    """Format seconds to human-readable duration."""
+    if not seconds:
+        return None
+
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+
+    if hours > 0:
+        return f'{hours}h {minutes}m'
+    elif minutes > 0:
+        return f'{minutes}m {secs}s'
+    else:
+        return f'{secs}s'
+
 
 if __name__ == '__main__':
     import signal
