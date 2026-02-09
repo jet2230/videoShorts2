@@ -1,5 +1,0 @@
-1. adjust.html - orignal downloaded video shows on the left.
-2. theme content cut clip show on the left, this clip must be cut from the orignal video.
-3. show timeline under the orignal video, the timeline will show the clip size box on the timeline, on the exact same time position it was cut from.
-4. the timeline clip should be extendable by dragging from the left and right - to decrease or increase the length of the clip.
-5. any change of the clip size box on the orignal video timeline will reflect the same change on the content cut clip i.e. if the clip size box is increased in time from the right by 20seconds, then the theme content cut clip will also increase in 20seconds from the right.
