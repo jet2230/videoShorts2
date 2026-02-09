@@ -489,9 +489,9 @@ def update_theme():
     if adjust_file.exists():
         with open(adjust_file, 'r', encoding='utf-8') as f:
             content = f.read()
-            # Extract existing Position line
+            # Extract existing subtitle_position line
             import re
-            position_match = re.search(r'\*\*Position:\*\*\s*(top|middle|bottom)', content)
+            position_match = re.search(r'\*\*subtitle_position:\*\*\s*(top|middle|bottom)', content)
             if position_match:
                 existing_position = position_match.group(1)
 
@@ -501,7 +501,7 @@ def update_theme():
         f.write(f"**Title:** {new_title}\n\n")
         f.write(f"**Time Range:** {new_start} - {new_end} ({duration_str})\n")
         if existing_position:
-            f.write(f"**Position:** {existing_position}\n")
+            f.write(f"**subtitle_position:** {existing_position}\n")
         f.write(f"\n**Folder:** {folder.name}\n")
         f.write(f"**Last Modified:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
 
@@ -538,8 +538,8 @@ def reset_theme():
     if adjust_file.exists():
         with open(adjust_file, 'r', encoding='utf-8') as f:
             content = f.read()
-            # Extract existing Position line
-            position_match = re.search(r'\*\*Position:\*\*\s*(top|middle|bottom)', content)
+            # Extract existing subtitle_position line
+            position_match = re.search(r'\*\*subtitle_position:\*\*\s*(top|middle|bottom)', content)
             if position_match:
                 existing_position = position_match.group(1)
 
@@ -578,7 +578,7 @@ def reset_theme():
         f.write(f"**Title:** {theme_title}\n\n")
         f.write(f"**Time Range:** {theme_start} - {theme_end} ({duration_str})\n")
         if existing_position:
-            f.write(f"**Position:** {existing_position}\n")
+            f.write(f"**subtitle_position:** {existing_position}\n")
         f.write(f"\n**Folder:** {folder.name}\n")
         f.write(f"**Last Modified:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
 
@@ -970,6 +970,11 @@ def save_global_position():
     folder_number = data.get('folder')
     theme_number = data.get('theme')
     position = data.get('position', 'bottom')
+    # Custom position data (optional)
+    custom_left = data.get('left')
+    custom_top = data.get('top')
+    h_align = data.get('h_align', 'center')
+    v_align = data.get('v_align', 'middle')
 
     if not all([folder_number, theme_number]):
         return jsonify({'error': 'Missing required fields'}), 400
@@ -1038,12 +1043,24 @@ def save_global_position():
         if existing_title:
             f.write(f"**Title:** {existing_title}\n\n")
         f.write(f"**Time Range:** {existing_time_range}\n")
-        f.write(f"**Position:** {position}\n")
+
+        # Write position - either preset or custom with coordinates
+        if custom_left is not None and custom_top is not None:
+            # Custom position with X/Y coordinates
+            f.write(f"**subtitle_position:** custom\n")
+            f.write(f"**subtitle_left:** {custom_left}\n")
+            f.write(f"**subtitle_top:** {custom_top}\n")
+            f.write(f"**subtitle_h_align:** {h_align}\n")
+            f.write(f"**subtitle_v_align:** {v_align}\n")
+        else:
+            # Preset position
+            f.write(f"**subtitle_position:** {position}\n")
+
         if existing_folder:
             f.write(f"\n**Folder:** {existing_folder}\n")
         f.write(f"**Last Modified:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
 
-    print(f"[DEBUG] Saved global position: folder={folder_number}, theme={theme_number}, position={position}")
+    print(f"[DEBUG] Saved global position: folder={folder_number}, theme={theme_number}, position={position}, custom={custom_left}")
 
     return jsonify({
         'success': True,
@@ -1081,7 +1098,27 @@ def get_global_position():
         with open(adjust_file, 'r', encoding='utf-8') as f:
             content = f.read()
 
-        position_match = re.search(r'\*\*Position:\*\*\s*(top|middle|bottom)', content)
+        # Check if it's a custom position with coordinates
+        position_match = re.search(r'\*\*subtitle_position:\*\*\s*custom', content)
+        if position_match:
+            # Read custom coordinates
+            left_match = re.search(r'\*\*subtitle_left:\*\*\s*(\d+)', content)
+            top_match = re.search(r'\*\*subtitle_top:\*\*\s*(\d+)', content)
+            h_align_match = re.search(r'\*\*subtitle_h_align:\*\*\s*(left|center|right)', content)
+            v_align_match = re.search(r'\*\*subtitle_v_align:\*\*\s*(top|middle|bottom)', content)
+
+            result = {
+                'position': 'custom',
+                'left': int(left_match.group(1)) if left_match else None,
+                'top': int(top_match.group(1)) if top_match else None,
+                'h_align': h_align_match.group(1) if h_align_match else 'center',
+                'v_align': v_align_match.group(1) if v_align_match else 'middle'
+            }
+            print(f"[DEBUG] Found global custom position: folder={folder_number}, theme={theme_number}, result={result}")
+            return jsonify(result)
+
+        # Check for preset position
+        position_match = re.search(r'\*\*subtitle_position:\*\*\s*(top|middle|bottom)', content)
         if position_match:
             position = position_match.group(1)
             print(f"[DEBUG] Found global position: folder={folder_number}, theme={theme_number}, position={position}")

@@ -1169,13 +1169,32 @@ Video Path: {video_info['video_path']}
         # Use the trimmed SRT for subtitle burning (it's already adjusted)
         subtitle_file_for_ffmpeg = str(trimmed_srt_path).replace(':', '\\:').replace('\\', '\\\\').replace("'", "\\'")
 
-        # Check if formatting JSON exists for this theme
+        # Check if we need to create ASS file
+        # Create ASS if: 1) Individual formatting exists (JSON) OR 2) Global custom position exists (adjust.md)
         formatting_json_path = output_dir / f"theme_{theme['number']:03d}_formatting.json"
+        adjust_md_path = theme.get('adjust_file')
         use_ass = False
 
-        if formatting_json_path.exists():
-            print(f"    Found subtitle formatting - creating ASS file...")
-            # Create ASS file from trimmed SRT and formatting JSON using ASSFormatter
+        # Check if there's individual formatting or global custom position
+        has_formatting = formatting_json_path.exists()
+        has_global_position = False
+
+        if adjust_md_path and adjust_md_path.exists():
+            # Read adjust.md to check if there's a custom position
+            try:
+                with open(adjust_md_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    import re
+                    # Check for custom position
+                    has_global_position = bool(re.search(r'\*\*subtitle_position:\*\*\s*custom', content))
+                    if has_global_position:
+                        print(f"    Found global custom position in adjust.md")
+            except:
+                pass
+
+        if has_formatting or has_global_position:
+            print(f"    Creating ASS file (formatting: {has_formatting}, global position: {has_global_position})...")
+            # Create ASS file from trimmed SRT using ASSFormatter
             ass_output_path = output_dir / f"theme_{theme['number']:03d}.ass"
             try:
                 # Convert settings to dict for ASSFormatter
@@ -1183,7 +1202,8 @@ Video Path: {video_info['video_path']}
                 ass_formatter = ASSFormatter(settings_dict)
                 # Use the trimmed SRT for ASS generation (it contains the adjusted subtitle sequence)
                 print(f"    Using trimmed.srt (sequence {trimmed_srt_name}) for ASS generation")
-                ass_formatter.create_ass_file(trimmed_srt_path, formatting_json_path, ass_output_path)
+                # Pass adjust.md path for global position settings
+                ass_formatter.create_ass_file(trimmed_srt_path, formatting_json_path, ass_output_path, adjust_md_path)
                 print(f"    Created ASS subtitles: {ass_output_path.name}")
                 subtitle_file_for_ffmpeg = str(ass_output_path).replace(':', '\\:').replace('\\', '\\\\').replace("'", "\\'")
                 use_ass = True
@@ -1343,6 +1363,7 @@ Video Path: {video_info['video_path']}
         # Check for adjusted theme files and update themes with adjusted values
         for theme in themes:
             adjust_file = folder / 'shorts' / f"theme_{theme['number']:03d}_adjust.md"
+            theme['adjust_file'] = adjust_file  # Store path for later use
             if adjust_file.exists():
                 try:
                     with open(adjust_file, 'r', encoding='utf-8') as f:

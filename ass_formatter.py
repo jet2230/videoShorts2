@@ -32,28 +32,63 @@ class ASSFormatter:
 
     # === File Generation ===
 
-    def create_ass_file(self, srt_path: Path, formatting_json_path: Path, output_ass_path: Path) -> bool:
+    def create_ass_file(self, srt_path: Path, formatting_json_path: Path, output_ass_path: Path,
+                       adjust_md_path: Optional[Path] = None) -> bool:
         """Create ASS subtitle file from SRT and formatting JSON.
 
         Args:
             srt_path: Path to input SRT file
             formatting_json_path: Path to JSON with HTML formatting data
             output_ass_path: Path where ASS file should be written
+            adjust_md_path: Optional path to adjust.md with global position settings
 
         Returns:
             True if successful, False otherwise
         """
-        # Load formatting data
-        with open(formatting_json_path, 'r', encoding='utf-8') as f:
-            formatting_data = json.load(f)
+        # Load formatting data (may not exist if only using global position)
+        formatting_data = {}
+        if formatting_json_path.exists():
+            try:
+                with open(formatting_json_path, 'r', encoding='utf-8') as f:
+                    formatting_data = json.load(f)
+            except Exception as e:
+                print(f"    Warning: Failed to load formatting JSON: {e}")
+                formatting_data = {}
 
         # Check if any cue has a position set - if so, use that for all cues
-        # Priority: JSON position > settings.ini defaults
+        # Priority: JSON individual position > adjust.md global position > settings.ini defaults
         position_override = None
+        custom_position = None  # For custom X/Y coordinates from adjust.md
+
+        # First, check adjust.md for global position
+        if adjust_md_path and adjust_md_path.exists():
+            global_pos = self._read_global_position(adjust_md_path)
+            if global_pos:
+                if global_pos['position'] == 'custom':
+                    # Custom X/Y coordinates from global settings
+                    custom_position = global_pos
+                else:
+                    # Preset position from global settings
+                    position_override = global_pos['position']
+
+        # Then, check JSON for individual cue positions (overrides global)
         for timestamp_key, cue_data in formatting_data.items():
-            if isinstance(cue_data, dict) and cue_data.get('position'):
-                position_override = cue_data['position']
-                break
+            if isinstance(cue_data, dict):
+                # Check for custom position with X/Y coordinates
+                if 'customPosition' in cue_data and cue_data['customPosition']:
+                    # Individual cue has custom X/Y position - use it directly
+                    custom_position = {
+                        'left': cue_data['customPosition'].get('left'),
+                        'top': cue_data['customPosition'].get('top'),
+                        'width': cue_data['customPosition'].get('width'),
+                        'h_align': cue_data.get('horizontalAlign', 'center'),
+                        'v_align': cue_data.get('verticalAlign', 'middle')
+                    }
+                    break
+                # Check for preset position
+                elif cue_data.get('position'):
+                    position_override = cue_data['position']
+                    break
 
         # Parse SRT segments
         segments = self._parse_srt_segments(srt_path)
@@ -70,7 +105,7 @@ class ASSFormatter:
         with open(output_ass_path, 'w', encoding='utf-8') as f:
             # Write header
             f.write(self.create_ass_header())
-            f.write(self.create_ass_styles(position_override))
+            f.write(self.create_ass_styles(position_override, custom_position))
 
             # Write events
             for segment in segments:
@@ -107,8 +142,15 @@ class ASSFormatter:
                 # Escape special ASS characters (but not backslashes in tags)
                 display_text = self._escape_ass_special_chars(display_text)
 
-                # Write dialogue line
-                f.write(f"Dialogue: 0,{start_ass},{end_ass},Default,,0,0,0,,{display_text}\n")
+                # Handle custom position in dialogue
+                if custom_position:
+                    dialogue_line = self._create_positioned_dialogue(
+                        start_ass, end_ass, display_text, custom_position
+                    )
+                else:
+                    dialogue_line = f"Dialogue: 0,{start_ass},{end_ass},Default,,0,0,0,,{display_text}\n"
+
+                f.write(dialogue_line)
 
         return True
 
@@ -125,18 +167,22 @@ ScaledBorderAndShadow: yes
 
 """
 
-    def create_ass_styles(self, position_override=None) -> str:
+    def create_ass_styles(self, position_override=None, custom_position=None) -> str:
         """Generate ASS style definitions.
 
         Args:
-            position_override: Optional position from JSON ('top', 'middle', 'bottom').
-                             If provided, overrides settings.ini defaults.
+            position_override: Optional preset position ('top', 'middle', 'bottom').
+            custom_position: Optional dict with custom X/Y coordinates.
         """
-        # Use position from JSON if available, otherwise use defaults from settings
+        # Use position from override if available, otherwise use defaults from settings
         alignment = 2  # Default: center
         margin_v = 10   # Default: 10px from bottom
 
-        if position_override:
+        if custom_position:
+            # Custom X/Y position - use default style, position handled in dialogue
+            alignment = 2  # Center by default, can be overridden per dialogue
+            margin_v = 35  # Default margin
+        elif position_override:
             # Map position to ASS alignment and margin
             # Alignment: 1=left, 2=center, 3=right, 7=left-top, 8=center-top, 9=right-top, etc.
             # For 9:16 vertical video, we use bottom alignment for subtitles
@@ -559,6 +605,96 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         result = re.sub(r'<[^>]+>', '', result)
 
         return result
+
+    # === Position Handling ===
+
+    def _read_global_position(self, adjust_md_path: Path) -> Optional[dict]:
+        """Read global position settings from adjust.md file.
+
+        Args:
+            adjust_md_path: Path to adjust.md file
+
+        Returns:
+            Dict with position data or None if not found
+        """
+        try:
+            with open(adjust_md_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            # Check for custom position with X/Y coordinates
+            position_match = re.search(r'\*\*subtitle_position:\*\*\s*custom', content)
+            if position_match:
+                # Read custom coordinates
+                left_match = re.search(r'\*\*subtitle_left:\*\*\s*(\d+)', content)
+                top_match = re.search(r'\*\*subtitle_top:\*\*\s*(\d+)', content)
+                h_align_match = re.search(r'\*\*subtitle_h_align:\*\*\s*(left|center|right)', content)
+                v_align_match = re.search(r'\*\*subtitle_v_align:\*\*\s*(top|middle|bottom)', content)
+
+                return {
+                    'position': 'custom',
+                    'left': int(left_match.group(1)) if left_match else None,
+                    'top': int(top_match.group(1)) if top_match else None,
+                    'width': None,  # Will be calculated based on text
+                    'h_align': h_align_match.group(1) if h_align_match else 'center',
+                    'v_align': v_align_match.group(1) if v_align_match else 'middle'
+                }
+
+            # Check for preset position (top, middle, bottom)
+            preset_match = re.search(r'\*\*subtitle_position:\*\*\s*(top|middle|bottom)', content)
+            if preset_match:
+                return {'position': preset_match.group(1)}
+
+            return None
+        except Exception as e:
+            print(f"Warning: Failed to read global position from {adjust_md_path}: {e}")
+            return None
+
+    def _create_positioned_dialogue(self, start_ass: str, end_ass: str, text: str,
+                                    custom_position: dict) -> str:
+        """Create ASS dialogue line with custom X/Y positioning.
+
+        Args:
+            start_ass: Start timestamp in ASS format
+            end_ass: End timestamp in ASS format
+            text: Subtitle text with ASS tags
+            custom_position: Dict with left, top, h_align, v_align
+
+        Returns:
+            ASS dialogue line with position tags
+        """
+        left = custom_position.get('left', 0)
+        top = custom_position.get('top', 0)
+        h_align = custom_position.get('h_align', 'center')
+        v_align = custom_position.get('v_align', 'middle')
+
+        # Map alignment to ASS anchor points
+        # ASS \pos() with \an() uses the anchor point for positioning
+        # Row 1 (bottom): 1=left, 2=center, 3=right
+        # Row 2 (middle): 4=left, 5=center, 6=right
+        # Row 3 (top): 7=left, 8=center, 9=right
+
+        # Calculate row (vertical)
+        if v_align == 'top':
+            row = 3
+        elif v_align == 'middle':
+            row = 2
+        else:  # bottom
+            row = 1
+
+        # Calculate column (horizontal)
+        if h_align == 'left':
+            col = 1
+        elif h_align == 'center':
+            col = 2
+        else:  # right
+            col = 3
+
+        # Calculate final alignment: (row-1)*3 + col
+        final_alignment = (row - 1) * 3 + col
+
+        position_tag = f'{{\\an{final_alignment}\\pos({left},{top})}}'
+
+        return f"Dialogue: 0,{start_ass},{end_ass},Default,,0,0,0,,{position_tag}{text}\n"
 
     # === Color Conversion ===
 

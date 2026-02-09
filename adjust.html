@@ -729,8 +729,8 @@
 
         .form-row {
             display: flex;
-            gap: 12px;
-            margin-bottom: 12px;
+            gap: 8px;
+            margin-bottom: 8px;
         }
 
         .form-group {
@@ -739,9 +739,9 @@
 
         .form-group label {
             display: block;
-            font-size: 12px;
+            font-size: 11px;
             color: #aaa;
-            margin-bottom: 6px;
+            margin-bottom: 4px;
         }
 
         .form-group input,
@@ -777,12 +777,12 @@
 
         .position-mode-btn {
             flex: 1;
-            padding: 8px 12px;
+            padding: 6px 8px;
             background: transparent;
             border: none;
             border-radius: 4px;
             color: rgba(255, 255, 255, 0.6);
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 500;
             cursor: pointer;
             transition: all 0.2s ease;
@@ -801,6 +801,38 @@
 
         .position-mode-btn.active:hover {
             background: #00cc7d;
+        }
+
+        .align-group {
+            display: flex;
+            gap: 2px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 2px;
+        }
+
+        .align-btn {
+            flex: 1;
+            padding: 6px 2px;
+            background: transparent;
+            border: none;
+            border-radius: 4px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            line-height: 1;
+        }
+
+        .align-btn:hover {
+            color: rgba(255, 255, 255, 0.8);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .align-btn.active {
+            background: #00ff9d;
+            color: #000;
         }
 
         .subtitle-text-area {
@@ -860,6 +892,118 @@
         .toolbar-btn.active {
             background: rgba(0, 255, 157, 0.3);
             border-color: #00ff9d;
+        }
+
+        .toolbar-divider {
+            width: 1px;
+            background: rgba(255, 255, 255, 0.2);
+            margin: 0 4px;
+        }
+
+        /* Custom color picker */
+        .color-picker-wrapper {
+            position: relative;
+            width: 36px;
+            height: 34px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .color-picker-wrapper:hover {
+            background: rgba(0, 255, 157, 0.2);
+            border-color: #00ff9d;
+        }
+
+        .color-picker-wrapper::before {
+            content: '🎨';
+            font-size: 14px;
+            position: absolute;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        /* Color preview dot (shows current/last selected color) */
+        .color-picker-wrapper::after {
+            content: '';
+            position: absolute;
+            bottom: 3px;
+            right: 3px;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            background: var(--current-color, #ff00ff);
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        #custom-color-picker {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        #custom-color-picker::-webkit-color-swatch-wrapper {
+            padding: 0;
+        }
+
+        #custom-color-picker::-webkit-color-swatch {
+            border: none;
+            border-radius: 4px;
+        }
+
+        /* Actions toolbar (for Edit All, Lock, Clear buttons) */
+        .actions-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            margin-bottom: 8px;
+        }
+
+        .actions-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        .action-btn {
+            padding: 6px 12px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            color: #fff;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .action-btn:hover {
+            background: rgba(0, 255, 157, 0.2);
+            border-color: #00ff9d;
+        }
+
+        #lock-video-btn.locked {
+            background: rgba(255, 152, 0, 0.2);
+            border-color: #ff9800;
+            color: #ff9800;
+        }
+
+        #lock-video-btn.locked:hover {
+            background: rgba(255, 152, 0, 0.3);
         }
 
         /* Buttons */
@@ -1304,25 +1448,36 @@
 
             <div class="subtitle-editor">
                 <div class="subtitle-section">
-                    <div style="display: flex; align-items: center; justify-content: space-between;">
-                        <h3>Subtitle Text</h3>
-                        <div style="display: flex; gap: 8px;">
-                            <button id="edit-all-subs-btn" class="lock-btn" title="Edit all subtitles for this theme">📝 Edit All</button>
-                            <button id="lock-video-btn" class="lock-btn" title="Lock video controls">
-                                <span id="lock-icon">🔓</span>
+                    <h3>Subtitle Text</h3>
+
+                    <!-- Action buttons toolbar -->
+                    <div class="actions-toolbar">
+                        <div class="actions-group">
+                            <button id="edit-all-subs-btn" class="action-btn" title="Edit all subtitles for this theme">📝 Edit All</button>
+                            <button id="lock-video-btn" class="action-btn" title="Lock video controls to enable dragging">
+                                <span id="lock-icon">🔓</span> Lock
                             </button>
                         </div>
+                        <div class="actions-group">
+                            <button class="toolbar-btn" onclick="removeFormatting()" title="Clear all formatting">🗑 Clear</button>
+                        </div>
                     </div>
+
+                    <!-- Rich text formatting toolbar -->
                     <div class="rich-text-toolbar">
                         <button class="toolbar-btn" data-style="bold" onclick="toggleStyle('bold')"><b>Bold</b></button>
                         <button class="toolbar-btn" data-style="italic" onclick="toggleStyle('italic')"><i>Italic</i></button>
-                        <button class="toolbar-btn" data-style="color" onclick="applyColor('#ff0000')">🔴 Red</button>
-                        <button class="toolbar-btn" data-style="color" onclick="applyColor('#00ff00')">🟢 Green</button>
-                        <button class="toolbar-btn" data-style="color" onclick="applyColor('#00ffff')">🔵 Cyan</button>
-                        <button class="toolbar-btn" data-style="color" onclick="applyColor('#ffff00')">🟡 Yellow</button>
+                        <button class="toolbar-btn" data-style="color" onclick="applyColor('#ff0000')">🔴</button>
+                        <button class="toolbar-btn" data-style="color" onclick="applyColor('#00ff00')">🟢</button>
+                        <button class="toolbar-btn" data-style="color" onclick="applyColor('#00ffff')">🔵</button>
+                        <button class="toolbar-btn" data-style="color" onclick="applyColor('#ffff00')">🟡</button>
+                        <button class="toolbar-btn" data-style="color" onclick="applyColor('#ffffff')">⚪</button>
+                        <div class="color-picker-wrapper">
+                            <input type="color" id="custom-color-picker" value="#ff00ff" title="Custom color">
+                        </div>
+                        <div class="toolbar-divider"></div>
                         <button class="toolbar-btn" data-style="size" onclick="applySize(1.2)">A+</button>
                         <button class="toolbar-btn" data-style="size" onclick="applySize(0.8)">a-</button>
-                        <button class="toolbar-btn" onclick="removeFormatting()" style="margin-left: auto;">🗑 Clear Format</button>
                     </div>
                     <div class="subtitle-text-area" id="subtitle-text" contenteditable="true" data-placeholder="Edit subtitle text here..."></div>
                 </div>
@@ -1355,13 +1510,17 @@
                             <label>Background Color</label>
                             <input type="color" id="subtitle-bg" value="#000000">
                         </div>
+                        <div class="form-group">
+                            <label>Background Opacity</label>
+                            <input type="range" id="subtitle-bg-opacity" min="0" max="100" value="70">
+                        </div>
                     </div>
                     <div class="form-row">
                         <div class="form-group">
                             <label>Position Mode</label>
                             <div class="position-mode-group">
-                                <button class="position-mode-btn active" data-mode="global">Global Subs</button>
-                                <button class="position-mode-btn" data-mode="current">Current Sub</button>
+                                <button class="position-mode-btn active" data-mode="global">Global</button>
+                                <button class="position-mode-btn" data-mode="current">Current</button>
                             </div>
                         </div>
                         <div class="form-group">
@@ -1372,9 +1531,23 @@
                                 <option value="top">Top</option>
                             </select>
                         </div>
-                        <div class="form-group">
-                            <label>Background Opacity</label>
-                            <input type="range" id="subtitle-bg-opacity" min="0" max="100" value="70">
+                    </div>
+                    <div class="form-row" style="justify-content: center;">
+                        <div class="form-group" style="flex: 0; min-width: 140px;">
+                            <label style="text-align: center;">H: ⬅ ⬌ ➡</label>
+                            <div class="align-group">
+                                <button class="align-btn" data-align="left" title="Align Left">⬅</button>
+                                <button class="align-btn active" data-align="center" title="Align Center">⬌</button>
+                                <button class="align-btn" data-align="right" title="Align Right">➡</button>
+                            </div>
+                        </div>
+                        <div class="form-group" style="flex: 0; min-width: 140px;">
+                            <label style="text-align: center;">V: ⬆ ⬍ ⬇</label>
+                            <div class="align-group">
+                                <button class="align-btn" data-valign="top" title="Align Top">⬆</button>
+                                <button class="align-btn active" data-valign="middle" title="Align Middle">⬍</button>
+                                <button class="align-btn" data-valign="bottom" title="Align Bottom">⬇</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1480,6 +1653,11 @@
         // Position mode: 'global' (all subtitles) or 'current' (individual subtitle)
         let positionMode = 'global';
         let globalPosition = 'bottom'; // Default global position for all subtitles
+
+        // Custom position and alignment
+        let customPosition = null; // {left: number, top: number, width: number}
+        let horizontalAlign = 'center'; // 'left', 'center', 'right'
+        let verticalAlign = 'middle'; // 'top', 'middle', 'bottom'
 
         function autoSaveTheme() {
             // Clear existing timeout
@@ -1635,6 +1813,51 @@
             console.log('💾 Saving global position:', position);
             console.log('   folder:', folderNumber, 'theme:', themeNumber);
 
+            // Get preview video element to calculate scale factor
+            const previewVideo = document.getElementById('preview-video');
+            const previewHeight = previewVideo.offsetHeight || 500;  // Default to 500px if not available
+            const previewWidth = previewVideo.offsetWidth || 281;   // Default ~281px for 9:16
+
+            // Target output resolution
+            const targetWidth = 1080;
+            const targetHeight = 1920;
+
+            // Calculate scale factors
+            const scaleX = targetWidth / previewWidth;
+            const scaleY = targetHeight / previewHeight;
+
+            console.log('   Scale factors:', { scaleX: scaleX.toFixed(3), scaleY: scaleY.toFixed(3) });
+            console.log('   Preview size:', { width: previewWidth, height: previewHeight });
+
+            // Calculate correct X position based on alignment
+            // ASS with center alignment uses center point, not left edge
+            let leftToSave = null;
+            let topToSave = null;
+            if (customPosition) {
+                // Scale coordinates from preview to output resolution
+                if (horizontalAlign === 'center') {
+                    // For center alignment, save the center point (scaled)
+                    leftToSave = Math.round(customPosition.centerX * scaleX);
+                } else if (horizontalAlign === 'right') {
+                    // For right alignment, save the right edge (scaled)
+                    leftToSave = Math.round((customPosition.left + customPosition.width) * scaleX);
+                } else {
+                    // For left alignment, save the left edge (scaled)
+                    leftToSave = Math.round(customPosition.left * scaleX);
+                }
+                // Scale Y coordinate
+                topToSave = Math.round(customPosition.top * scaleY);
+
+                console.log('   Position calculation:', {
+                    previewLeft: customPosition.left,
+                    previewTop: customPosition.top,
+                    previewCenter: customPosition.centerX,
+                    scaledLeft: leftToSave,
+                    scaledTop: topToSave,
+                    align: horizontalAlign
+                });
+            }
+
             try {
                 const response = await fetch('/api/save-global-position', {
                     method: 'POST',
@@ -1642,7 +1865,12 @@
                     body: JSON.stringify({
                         folder: folderNumber,
                         theme: themeNumber,
-                        position: position
+                        position: position,
+                        // Include scaled custom coordinates
+                        left: leftToSave,
+                        top: topToSave,
+                        h_align: horizontalAlign,
+                        v_align: verticalAlign
                     })
                 });
 
@@ -1677,23 +1905,80 @@
                 if (!response.ok) {
                     console.warn('   ⚠️ No global position found, using default');
                     globalPosition = 'bottom';
+                    customPosition = null;
                     return 'bottom';
                 }
 
                 const data = await response.json();
                 globalPosition = data.position || 'bottom';
-                console.log('   ✅ Global position loaded:', globalPosition);
+                console.log('   ✅ Global position loaded:', globalPosition, data);
+
+                // Check if it's a custom position with coordinates
+                if (data.position === 'custom' && data.left !== null && data.top !== null) {
+                    const hAlign = data.h_align || 'center';
+
+                    // Get preview video element to calculate scale factor
+                    const previewVideo = document.getElementById('preview-video');
+                    const previewHeight = previewVideo?.offsetHeight || 500;
+                    const previewWidth = previewVideo?.offsetWidth || 281;
+
+                    // Target output resolution
+                    const targetWidth = 1080;
+                    const targetHeight = 1920;
+
+                    // Calculate scale factors (output -> preview)
+                    const scaleX = previewWidth / targetWidth;
+                    const scaleY = previewHeight / targetHeight;
+
+                    console.log('   Loading with scale factors:', { scaleX: scaleX.toFixed(3), scaleY: scaleY.toFixed(3) });
+
+                    // Scale coordinates from output resolution to preview resolution
+                    const scaledLeft = data.left * scaleX;
+                    const scaledTop = data.top * scaleY;
+
+                    // Convert saved position back to preview coordinates
+                    let leftEdge;
+                    if (hAlign === 'center') {
+                        // Saved value is center point - use directly with transform
+                        leftEdge = scaledLeft;
+                    } else if (hAlign === 'right') {
+                        // Saved value is right edge - estimate left edge
+                        leftEdge = scaledLeft - 200; // Will be adjusted by preview positioning
+                    } else {
+                        // Saved value is left edge - use directly
+                        leftEdge = scaledLeft;
+                    }
+
+                    customPosition = {
+                        left: leftEdge,
+                        top: scaledTop,
+                        centerX: hAlign === 'center' ? scaledLeft : null,
+                        width: null
+                    };
+                    horizontalAlign = hAlign;
+                    verticalAlign = data.v_align || 'middle';
+                    hasManualPosition = true;  // Mark as having manual position since we loaded custom coordinates
+
+                    // Update align buttons to match loaded values
+                    updateAlignButtons(horizontalAlign, verticalAlign);
+
+                    console.log('   ✅ Custom coordinates loaded (scaled for preview):', customPosition, 'align:', hAlign);
+                    console.log('      Original from server:', { left: data.left, top: data.top });
+                } else {
+                    customPosition = null;
+                }
 
                 // Update dropdown to match global position
                 const positionSelect = document.getElementById('subtitle-position');
                 if (positionSelect && positionMode === 'global') {
-                    positionSelect.value = globalPosition;
+                    positionSelect.value = globalPosition === 'custom' ? 'bottom' : globalPosition;
                 }
 
                 return globalPosition;
             } catch (error) {
                 console.warn('   ⚠️ Error loading global position:', error);
                 globalPosition = 'bottom';
+                customPosition = null;
                 return 'bottom';
             }
         }
@@ -1702,12 +1987,15 @@
         async function handlePositionChange(newPosition) {
             console.log('📍 Position changed to:', newPosition, 'mode:', positionMode);
 
+            // Clear custom position when preset is selected
+            customPosition = null;
+            hasManualPosition = false;
+
             if (positionMode === 'global') {
                 // Save to global (adjust.md)
                 await saveGlobalPosition(newPosition);
             } else {
                 // Save to current cue (JSON)
-                hasManualPosition = false;
                 updateSubtitlePreview();
                 await saveCurrentCueFormatting();
             }
@@ -2563,13 +2851,56 @@
                                 italic: formatting.italic || false,
                                 color: formatting.color || null,
                                 size: formatting.size || null,
-                                position: formatting.position || null  // Load individual position
+                                position: formatting.position || null,  // Load individual position
+                                customPosition: formatting.customPosition || null,
+                                horizontalAlign: formatting.horizontalAlign || 'center',
+                                verticalAlign: formatting.verticalAlign || 'middle'
                             };
+
+                            // Restore custom position if exists
+                            if (formatting.customPosition) {
+                                // Scale coordinates from output resolution back to preview resolution
+                                const previewVideo = document.getElementById('preview-video');
+                                const scaleX = (previewVideo?.offsetWidth || 281) / 1080;
+                                const scaleY = (previewVideo?.offsetHeight || 500) / 1920;
+
+                                customPosition = {
+                                    left: formatting.customPosition.left * scaleX,
+                                    top: formatting.customPosition.top * scaleY,
+                                    centerX: formatting.customPosition.centerX ? formatting.customPosition.centerX * scaleX : null,
+                                    width: formatting.customPosition.width ? formatting.customPosition.width * scaleX : null
+                                };
+                                console.log('   🔄 Scaled individual position from JSON:', customPosition);
+                            } else {
+                                customPosition = null;
+                            }
+
+                            // Restore alignment
+                            horizontalAlign = formatting.horizontalAlign || 'center';
+                            verticalAlign = formatting.verticalAlign || 'middle';
+
+                            // Update align button states
+                            updateAlignButtons(horizontalAlign, verticalAlign);
                         } else {
                             console.log('   ❌ No saved formatting for this cue');
                             // No saved formatting, use plain text
                             subtitleText.innerHTML = currentCue.text;
                             subtitleFormatting = { bold: false, italic: false, color: null, size: null, position: null };
+
+                            // Don't reset customPosition if global mode has custom position
+                            // Keep the global custom position for all cues
+                            if (globalPosition !== 'custom') {
+                                customPosition = null;
+                                hasManualPosition = false;
+                            } else {
+                                // Global mode has custom position - keep it and mark as manual
+                                hasManualPosition = true;
+                                console.log('   ✅ Keeping global custom position:', customPosition);
+                            }
+
+                            horizontalAlign = 'center';
+                            verticalAlign = 'middle';
+                            updateAlignButtons(horizontalAlign, verticalAlign);
                         }
 
                         // Always update preview after programmatic cue change
@@ -3500,9 +3831,28 @@
                 overlay.style.display = 'block';
                 overlay.style.left = '50%';
 
-                // Only update position if NOT manually positioned
-                // When user has dragged the subtitle, keep their manual position
-                if (!hasManualPosition) {
+                // Check if custom position exists (from drag or align buttons)
+                if (customPosition && hasManualPosition) {
+                    // Apply exact custom position with proper alignment
+                    // For center alignment, use centerX with translateX(-50%)
+                    // For left/right alignment, use left edge directly
+                    const hAlign = horizontalAlign || 'center';
+                    if (hAlign === 'center' && customPosition.centerX !== null) {
+                        overlay.style.left = `${customPosition.centerX}px`;
+                        overlay.style.transform = 'translateX(-50%)';
+                    } else if (hAlign === 'right') {
+                        // For right align, position from right edge
+                        overlay.style.right = `${customPosition.left}px`;  // saved as right edge
+                        overlay.style.left = 'auto';
+                        overlay.style.transform = 'none';
+                    } else {
+                        // For left align, use left edge directly
+                        overlay.style.left = `${customPosition.left}px`;
+                        overlay.style.transform = 'none';
+                    }
+                    overlay.style.top = `${customPosition.top}px`;
+                    overlay.style.bottom = 'auto';
+                } else if (!hasManualPosition) {
                     // Position overlay using effective position (individual > global > dropdown)
                     if (effectivePosition === 'bottom') {
                         overlay.style.bottom = '40px';
@@ -3741,6 +4091,23 @@
             const position = positionSelect ? positionSelect.value : null;
             allCueFormatting[key].position = position;
 
+            // Save custom position and alignment if set
+            if (customPosition) {
+                // Scale coordinates from preview to output resolution
+                const previewVideo = document.getElementById('preview-video');
+                const scaleX = 1080 / (previewVideo?.offsetWidth || 281);
+                const scaleY = 1920 / (previewVideo?.offsetHeight || 500);
+
+                allCueFormatting[key].customPosition = {
+                    left: customPosition.left * scaleX,
+                    top: customPosition.top * scaleY,
+                    centerX: customPosition.centerX ? customPosition.centerX * scaleX : null,
+                    width: customPosition.width ? customPosition.width * scaleX : null
+                };
+            }
+            allCueFormatting[key].horizontalAlign = horizontalAlign;
+            allCueFormatting[key].verticalAlign = verticalAlign;
+
             subtitleFormatting = { ...allCueFormatting[key] };
 
             // Debug: log what's being saved
@@ -3808,6 +4175,121 @@
                 setPositionMode(mode);
             });
         });
+
+        // Horizontal align button event listeners
+        document.querySelectorAll('.align-btn[data-align]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const align = btn.dataset.align;
+                horizontalAlign = align;
+                updateAlignButtons(align, verticalAlign);
+                await applyAlignment();
+            });
+        });
+
+        // Vertical align button event listeners
+        document.querySelectorAll('.align-btn[data-valign]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const valign = btn.dataset.valign;
+                verticalAlign = valign;
+                updateAlignButtons(horizontalAlign, valign);
+                await applyAlignment();
+            });
+        });
+
+        // Custom color picker event listener
+        const customColorPicker = document.getElementById('custom-color-picker');
+        customColorPicker.addEventListener('input', (e) => {
+            const color = e.target.value;
+            applyColor(color);
+            // Update CSS variable for color preview
+            document.querySelector('.color-picker-wrapper').style.setProperty('--current-color', color);
+        });
+
+        customColorPicker.addEventListener('change', (e) => {
+            // Save formatting when color selection is complete
+            saveCurrentCueFormatting();
+        });
+
+        // Update align button visual states
+        function updateAlignButtons(hAlign, vAlign) {
+            horizontalAlign = hAlign;
+            verticalAlign = vAlign;
+
+            // Update horizontal buttons
+            document.querySelectorAll('.align-btn[data-align]').forEach(btn => {
+                if (btn.dataset.align === hAlign) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+
+            // Update vertical buttons
+            document.querySelectorAll('.align-btn[data-valign]').forEach(btn => {
+                if (btn.dataset.valign === vAlign) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+        }
+
+        // Apply alignment to subtitle
+        async function applyAlignment() {
+            const overlay = document.getElementById('subtitle-overlay');
+            const parentRect = overlay.parentElement.getBoundingClientRect();
+
+            // Calculate position based on alignment
+            let newLeft, newTop;
+
+            // Horizontal alignment
+            if (customPosition && customPosition.width) {
+                // Use custom width if available
+                if (horizontalAlign === 'left') {
+                    newLeft = customPosition.width / 2;
+                } else if (horizontalAlign === 'right') {
+                    newLeft = parentRect.width - customPosition.width / 2;
+                } else {
+                    newLeft = parentRect.width / 2;
+                }
+            } else {
+                // Default to center
+                newLeft = parentRect.width / 2;
+            }
+
+            // Vertical alignment
+            if (verticalAlign === 'top') {
+                newTop = 20;
+            } else if (verticalAlign === 'bottom') {
+                newTop = parentRect.height - 60;
+            } else {
+                newTop = parentRect.height / 2;
+            }
+
+            // Apply position
+            overlay.style.left = `${newLeft}px`;
+            overlay.style.top = `${newTop}px`;
+            overlay.style.bottom = 'auto';
+            overlay.style.transform = 'translate(-50%, -50%)';
+
+            // Update custom position
+            customPosition = {
+                left: newLeft - (customPosition?.width || overlay.offsetWidth) / 2,
+                top: newTop,
+                width: customPosition?.width || overlay.offsetWidth,
+                centerX: newLeft
+            };
+
+            // Clear manual position flag so preset positioning doesn't override
+            hasManualPosition = true;
+
+            // Save the formatting
+            if (positionMode === 'global') {
+                await saveGlobalPosition('custom');
+            } else {
+                await saveCurrentCueFormatting();
+            }
+        }
 
         // Theme name editing
         const themeNameElement = document.getElementById('theme-name');
@@ -3924,7 +4406,9 @@
             if (videoControlsLocked) {
                 lockBtn.classList.add('locked');
                 lockIcon.textContent = '🔒';
-                lockBtn.title = 'Unlock video controls';
+                // Update button text
+                lockBtn.innerHTML = '<span id="lock-icon">🔒</span> Unlock';
+                lockBtn.title = 'Unlock video controls to disable dragging';
 
                 // Pause video if playing when locked
                 if (!previewVideo.paused) {
@@ -3938,7 +4422,9 @@
             } else {
                 lockBtn.classList.remove('locked');
                 lockIcon.textContent = '🔓';
-                lockBtn.title = 'Lock video controls';
+                // Update button text
+                lockBtn.innerHTML = '<span id="lock-icon">🔓</span> Lock';
+                lockBtn.title = 'Lock video controls to enable dragging';
 
                 // Disable subtitle dragging when unlocked
                 if (subtitleOverlay) {
@@ -4014,17 +4500,33 @@
                 // Remove drag border
                 subtitleOverlay.style.border = '';
 
-                // Update subtitle position setting to match new position
+                // Get exact position relative to parent
                 const rect = subtitleOverlay.getBoundingClientRect();
                 const parentRect = subtitleOverlay.parentElement.getBoundingClientRect();
 
+                const relativeLeft = rect.left - parentRect.left;
                 const relativeTop = rect.top - parentRect.top;
-                const relativeBottom = parentRect.height - rect.top - rect.height;
+                const centerX = relativeLeft + rect.width / 2;
 
-                // Determine position (top/middle/bottom) based on current location
+                // Store exact custom position
+                customPosition = {
+                    left: relativeLeft,
+                    top: relativeTop,
+                    width: rect.width,
+                    centerX: centerX
+                };
+
+                console.log('🖱️ Drag ended - exact position:', {
+                    left: relativeLeft,
+                    top: relativeTop,
+                    centerX: centerX,
+                    parentWidth: parentRect.width,
+                    parentHeight: parentRect.height
+                });
+
+                // Determine nearest preset for dropdown
                 const positionSelect = document.getElementById('subtitle-position');
                 const third = parentRect.height / 3;
-
                 if (relativeTop < third) {
                     positionSelect.value = 'top';
                 } else if (relativeTop > 2 * third) {
@@ -4033,17 +4535,37 @@
                     positionSelect.value = 'middle';
                 }
 
+                // Determine horizontal alignment based on center position
+                const hThird = parentRect.width / 3;
+                let hAlign = 'center';
+                if (centerX < hThird) {
+                    hAlign = 'left';
+                } else if (centerX > 2 * hThird) {
+                    hAlign = 'right';
+                }
+
+                // Determine vertical alignment
+                const vThird = parentRect.height / 3;
+                let vAlign = 'middle';
+                if (relativeTop < vThird) {
+                    vAlign = 'top';
+                } else if (relativeTop > 2 * vThird) {
+                    vAlign = 'bottom';
+                }
+
+                // Update align button states
+                updateAlignButtons(hAlign, vAlign);
+
                 updateSubtitlePreview();
 
                 // Save based on current position mode
-                const newPosition = positionSelect.value;
-                console.log('🖱️ Drag ended, position:', newPosition, 'mode:', positionMode);
+                console.log('🖱️ Drag ended, align:', hAlign, vAlign, 'mode:', positionMode);
 
                 if (positionMode === 'global') {
-                    // Save to global (adjust.md)
-                    await saveGlobalPosition(newPosition);
+                    // Save custom position for global mode
+                    await saveGlobalPosition('custom');
                 } else {
-                    // Save to current cue (JSON)
+                    // For current mode, save exact custom position
                     await saveCurrentCueFormatting();
                 }
             }
