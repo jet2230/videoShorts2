@@ -2425,28 +2425,37 @@ def encode_canvas_karaoke():
             return jsonify({'error': 'No video file found'}), 404
         video_file = video_files[0]
 
-        # Get theme timing from themes.md
-        themes_file = folder / 'themes.md'
-        if not themes_file.exists():
-            return jsonify({'error': 'themes.md not found'}), 404
+        # Get theme timing - prefer client-provided times, fall back to themes.md
+        theme_start = data.get('themeStart')
+        theme_end = data.get('themeEnd')
 
-        with open(themes_file, 'r', encoding='utf-8') as f:
-            themes_content = f.read()
+        if theme_start is not None and theme_end is not None:
+            # Use times provided by client (current theme length in browser)
+            start_time = float(theme_start)
+            end_time = float(theme_end)
+        else:
+            # Fall back to reading from themes.md
+            themes_file = folder / 'themes.md'
+            if not themes_file.exists():
+                return jsonify({'error': 'themes.md not found and no client times provided'}), 400
 
-        # Parse time range
-        import re
-        time_pattern = r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})'
-        time_match = re.search(time_pattern, themes_content)
+            with open(themes_file, 'r', encoding='utf-8') as f:
+                themes_content = f.read()
 
-        if not time_match:
-            return jsonify({'error': 'Could not parse theme time range from themes.md'}), 400
+            # Parse time range
+            import re
+            time_pattern = r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})'
+            time_match = re.search(time_pattern, themes_content)
 
-        def parse_time_str(time_str):
-            h, m, s = map(int, time_str.split(':'))
-            return h * 3600 + m * 60 + s
+            if not time_match:
+                return jsonify({'error': 'Could not parse theme time range from themes.md'}), 400
 
-        start_time = parse_time_str(time_match.group(1))
-        end_time = parse_time_str(time_match.group(2))
+            def parse_time_str(time_str):
+                h, m, s = map(int, time_str.split(':'))
+                return h * 3600 + m * 60 + s
+
+            start_time = parse_time_str(time_match.group(1))
+            end_time = parse_time_str(time_match.group(2))
 
         # Get word timestamps
         word_timestamps_file = None

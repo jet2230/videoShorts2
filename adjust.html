@@ -1913,7 +1913,6 @@
 
                 // Debug: log what we're rendering
                 if (Math.random() < 0.05) { // Only log occasionally to avoid spam
-                    console.log('[Canvas renderFrame]', { currentTime, subtitleText, canvasSize: `${canvas.width}x${canvas.height}` });
                 }
 
                 // Draw video frame first (if video element is available and ready)
@@ -2070,7 +2069,6 @@
                 const canvas = this.canvas;
 
                 // Debug: log what we're rendering EVERY TIME to track changes
-                console.log('[Canvas Render] highlightedWordIndex:', highlightedWordIndex, 'subtitleText:', subtitleText?.substring(0, 30));
 
                 // Clear canvas to transparent first
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -2240,11 +2238,9 @@
 
         // Helper function to convert seconds to time input format (HH:MM:SS)
         function secondsToTimeInput(totalSeconds) {
-            console.log('   secondsToTimeInput called with:', totalSeconds, 'type:', typeof totalSeconds);
 
             // Handle invalid values
             if (totalSeconds === null || totalSeconds === undefined || isNaN(totalSeconds)) {
-                console.warn('   ⚠️ Invalid value, returning 00:00:00');
                 return '00:00:00';
             }
 
@@ -2259,20 +2255,15 @@
             const s = totalSeconds % 60;
 
             const result = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-            console.log(`   → ${result} (h:${h}, m:${m}, s:${s})`);
             return result;
         }
 
         // Helper function to update time extension inputs
         function updateTimeExtensionInputs() {
-            console.log('🕐 updateTimeExtensionInputs called');
 
             const extLeftEnd = document.getElementById('ext-left-end');
             const extRightEnd = document.getElementById('ext-right-end');
 
-            console.log(`   Elements found: extLeftEnd=${!!extLeftEnd}, extRightEnd=${!!extRightEnd}`);
-            console.log(`   Values: originalStartSeconds=${originalStartSeconds}, startSeconds=${startSeconds}`);
-            console.log(`   Values: originalEndSeconds=${originalEndSeconds}, endSeconds=${endSeconds}`);
 
             if (extLeftEnd && extRightEnd &&
                 originalStartSeconds !== null && originalStartSeconds !== undefined &&
@@ -2283,14 +2274,11 @@
                 const leftExtension = Math.max(0, originalStartSeconds - startSeconds);
                 const rightExtension = Math.max(0, endSeconds - originalEndSeconds);
 
-                console.log(`   Calculated: leftExtension=${leftExtension}s, rightExtension=${rightExtension}s`);
 
                 extLeftEnd.value = secondsToTimeInput(leftExtension);
                 extRightEnd.value = secondsToTimeInput(rightExtension);
 
-                console.log(`   ✅ Updated: extLeftEnd.value=${extLeftEnd.value}, extRightEnd.value=${extRightEnd.value}`);
             } else {
-                console.warn('   ⚠️ Cannot update - missing elements or values');
             }
         }
 
@@ -2300,7 +2288,6 @@
 
         // Switch position mode (global or current)
         function setPositionMode(mode) {
-            console.log('📍 Setting position mode:', mode);
             positionMode = mode;
 
             // Update button UI
@@ -2318,22 +2305,18 @@
             if (mode === 'global') {
                 // Show global position
                 positionSelect.value = globalPosition;
-                console.log('   → Switched to global mode, position =', globalPosition);
             } else {
                 // Show current cue's individual position (if exists)
                 if (currentCueInfo && currentCueInfo.sequence) {
                     const formatting = allCueFormatting[currentCueInfo.sequence];
                     if (formatting && formatting.position) {
                         positionSelect.value = formatting.position;
-                        console.log('   → Switched to current mode, position =', formatting.position);
                     } else {
                         // No individual position set, use global
                         positionSelect.value = globalPosition;
-                        console.log('   → Switched to current mode, using global =', globalPosition);
                     }
                 } else {
                     positionSelect.value = globalPosition;
-                    console.log('   → Switched to current mode, no cue, using global =', globalPosition);
                 }
             }
 
@@ -2342,8 +2325,6 @@
 
         // Save global position to server
         async function saveGlobalPosition(position) {
-            console.log('💾 Saving global position:', position);
-            console.log('   folder:', folderNumber, 'theme:', themeNumber);
 
             // Get preview video element to calculate scale factor
             const previewVideo = document.getElementById('preview-video');
@@ -2358,8 +2339,6 @@
             const scaleX = targetWidth / previewWidth;
             const scaleY = targetHeight / previewHeight;
 
-            console.log('   Scale factors:', { scaleX: scaleX.toFixed(3), scaleY: scaleY.toFixed(3) });
-            console.log('   Preview size:', { width: previewWidth, height: previewHeight });
 
             // Calculate correct X position based on alignment
             // ASS with center alignment uses center point, not left edge
@@ -2379,15 +2358,6 @@
                 }
                 // Scale Y coordinate
                 topToSave = Math.round(customPosition.top * scaleY);
-
-                console.log('   Position calculation:', {
-                    previewLeft: customPosition.left,
-                    previewTop: customPosition.top,
-                    previewCenter: customPosition.centerX,
-                    scaledLeft: leftToSave,
-                    scaledTop: topToSave,
-                    align: horizontalAlign
-                });
             }
 
             try {
@@ -2406,36 +2376,28 @@
                     })
                 });
 
-                console.log('   Response status:', response.status);
 
                 if (!response.ok) {
-                    console.error('❌ Failed to save global position, status:', response.status);
                     const errorText = await response.text();
-                    console.error('   Error:', errorText);
                     return false;
                 }
 
                 const result = await response.json();
-                console.log('   Server response:', result);
 
                 globalPosition = position;
-                console.log('   ✅ Global position saved:', globalPosition);
                 return true;
             } catch (error) {
-                console.error('❌ Error saving global position:', error);
                 return false;
             }
         }
 
         // Load global position from server
         async function loadGlobalPosition() {
-            console.log('🔄 Loading global position...');
 
             try {
                 const response = await fetch(`/api/get-global-position?folder=${folderNumber}&theme=${themeNumber}`);
 
                 if (!response.ok) {
-                    console.warn('   ⚠️ No global position found, using default');
                     globalPosition = 'bottom';
                     customPosition = null;
                     return 'bottom';
@@ -2443,7 +2405,6 @@
 
                 const data = await response.json();
                 globalPosition = data.position || 'bottom';
-                console.log('   ✅ Global position loaded:', globalPosition, data);
 
                 // Check if it's a custom position with coordinates
                 if (data.position === 'custom' && data.left !== null && data.top !== null) {
@@ -2462,7 +2423,6 @@
                     const scaleX = previewWidth / targetWidth;
                     const scaleY = previewHeight / targetHeight;
 
-                    console.log('   Loading with scale factors:', { scaleX: scaleX.toFixed(3), scaleY: scaleY.toFixed(3) });
 
                     // Scale coordinates from output resolution to preview resolution
                     const scaledLeft = data.left * scaleX;
@@ -2494,8 +2454,6 @@
                     // Update align buttons to match loaded values
                     updateAlignButtons(horizontalAlign, verticalAlign);
 
-                    console.log('   ✅ Custom coordinates loaded (scaled for preview):', customPosition, 'align:', hAlign);
-                    console.log('      Original from server:', { left: data.left, top: data.top });
                 } else {
                     customPosition = null;
                 }
@@ -2508,7 +2466,6 @@
 
                 return globalPosition;
             } catch (error) {
-                console.warn('   ⚠️ Error loading global position:', error);
                 globalPosition = 'bottom';
                 customPosition = null;
                 return 'bottom';
@@ -2517,7 +2474,6 @@
 
         // Handle position dropdown change based on current mode
         async function handlePositionChange(newPosition) {
-            console.log('📍 Position changed to:', newPosition, 'mode:', positionMode);
 
             // Clear custom position when preset is selected
             customPosition = null;
@@ -2536,7 +2492,6 @@
         // Load all theme cues for editing
         async function loadThemeCues() {
             try {
-                console.log('🔄 Loading all theme cues from original SRT...');
 
                 // Load ALL cues from original SRT (not filtered by theme range)
                 // This allows styling subtitles in expanded timeline areas
@@ -2544,25 +2499,20 @@
                 const cacheBuster = Date.now();
                 const response = await fetch(`/api/all-subtitles/${folderNumber}?_=${cacheBuster}`);
 
-                console.log(`   Response status: ${response.status} ${response.statusText}`);
 
                 if (!response.ok) {
-                    console.warn('❌ Failed to load all subtitles, falling back to theme-filtered');
                     // Fallback to theme-filtered API
                     const fallbackResponse = await fetch(`/api/theme-subtitles/${folderNumber}/${themeNumber}`);
                     if (!fallbackResponse.ok) return [];
                     const data = await fallbackResponse.json();
                     allThemeCues = data.cues;
-                    console.log(`   ✓ Fallback: loaded ${allThemeCues.length} theme-filtered cues`);
                     return allThemeCues;
                 }
 
                 const data = await response.json();
                 allThemeCues = data.cues;
-                console.log(`✓ Loaded ${allThemeCues.length} cues from original SRT`);
                 return allThemeCues;
             } catch (error) {
-                console.error('❌ Failed to load theme cues:', error);
                 return [];
             }
         }
@@ -2570,7 +2520,6 @@
         // Load subtitle formatting metadata
         async function loadSubtitleFormatting() {
             try {
-// console.log('📂 Loading subtitle formatting...');
                 const response = await fetch(`/api/subtitle-formatting/${folderNumber}/${themeNumber}`);
                 if (!response.ok) return;
 
@@ -2667,7 +2616,7 @@
                                 theme: themeNumber,
                                 formatting: allCueFormatting
                             })
-                        }).then(() => {}); // console.log('   ✓ Saved corrected formatting')
+                        });
                     }
                 }
 
@@ -2689,7 +2638,6 @@
                                     // Mark positive key for removal (keep negative version)
                                     if (!keysToRemove.includes(otherKey)) {
                                         keysToRemove.push(otherKey);
-// console.log(`   🧹 Removing duplicate: ${otherKey} (kept: ${key})`);
                                     }
                                 }
                             }
@@ -2703,7 +2651,6 @@
                 }
 
                 if (keysToRemove.length > 0) {
-// console.log(`   🧹 Cleaned up ${keysToRemove.length} duplicate entries`);
                     // Save cleaned up version
                     fetch('/api/save-subtitle-formatting', {
                         method: 'POST',
@@ -2713,7 +2660,7 @@
                             theme: themeNumber,
                             formatting: allCueFormatting
                         })
-                    }).then(() => {}); // console.log('   ✓ Saved cleaned formatting')
+                    });
                 }
 
                 // MIGRATION: Detect old format (timestamp_hash keys) and migrate to sequence keys
@@ -2723,7 +2670,6 @@
                 const hasOldFormatKeys = formattingKeys.some(key => key.includes(':') || key.includes('_'));
 
                 if (hasOldFormatKeys && formattingKeys.length > 0) {
-                    console.log('🔄 Detected old format keys, migrating to sequence numbers...');
 
                     // Ensure allThemeCues is loaded
                     if (allThemeCues.length === 0) {
@@ -2762,10 +2708,8 @@
                                 _text: formatting._text || matchingCue.text
                             };
                             migratedCount++;
-                            console.log(`   ✓ Migrated "${oldKey}" → sequence "${matchingCue.sequence}"`);
                         } else {
                             // Couldn't find match, keep old entry (will be cleaned up later)
-                            console.log(`   ⚠️ Could not find match for "${oldKey}", keeping as-is`);
                             newFormatting[oldKey] = formatting;
                         }
                     }
@@ -2775,7 +2719,6 @@
 
                     // Save migrated format to server
                     if (migratedCount > 0) {
-                        console.log(`   ✅ Migrated ${migratedCount} entries to sequence keys`);
                         fetch('/api/save-subtitle-formatting', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -2785,9 +2728,7 @@
                                 formatting: allCueFormatting
                             })
                         }).then(() => {
-                            console.log('   💾 Saved migrated formatting to server');
                         }).catch(err => {
-                            console.error('   ✗ Failed to save migrated formatting:', err);
                         });
                     }
                 }
@@ -2825,17 +2766,14 @@
                         const originalHtml = cueData.html;
                         cueData.html = convertFontTags(cueData.html);
                         if (originalHtml !== cueData.html) {
-                            // console.log("   Converted:", originalHtml, →, cueData.html);', originalHtml, '→', cueData.html);
                         }
                     }
                 }
 
-// console.log('📝 Loaded formatting for', Object.keys(allCueFormatting).length, 'cues:', Object.keys(allCueFormatting));
 
                 // Don't apply formatting here - let the cuechange handler apply it
                 // when each cue becomes active (avoids applying wrong cue's formatting)
             } catch (error) {
-// console.error('Failed to load subtitle formatting:', error);
             }
         }
 
@@ -3076,14 +3014,10 @@
 
         // Update preview video with clipped range
         function reloadSubtitleTrack() {
-//             console.log('🔄 reloadSubtitleTrack called');
-            // console.log("   startSeconds:", startSeconds);', startSeconds);
-            // console.log("   endSeconds:", endSeconds);', endSeconds);
 
             // Reload VTT subtitle track with current time range
             if (!previewVideo || !folderNumber || !themeNumber) return;
 
-            // console.log("   Before reload - overlay:", document.getElementById(subtitle-preview-text)?.textContent);', document.getElementById('subtitle-preview-text')?.textContent);
 
             // Clear ALL derived state FIRST to prevent stale subtitle display
             currentCueInfo = null;
@@ -3100,7 +3034,6 @@
                 previewOverlay.textContent = '';
             }
 
-            // console.log("   After clear - overlay:", document.getElementById(subtitle-preview-text)?.textContent);', document.getElementById('subtitle-preview-text')?.textContent);
 
             // Remove ALL existing track elements from the video
             const existingTracks = previewVideo.querySelectorAll('track');
@@ -3205,11 +3138,6 @@
                     const currentCue = activeCues[0];
                     const subtitleText = document.getElementById('subtitle-text');
 
-//                     console.log('🔄 syncSubtitleToTextarea called');
-                    // console.log("   currentCue.startTime:", currentCue.startTime);', currentCue.startTime);
-                    // console.log("   currentCue.text:", currentCue.text);', currentCue.text);
-                    // console.log("   previewVideo.currentTime:", previewVideo.currentTime);', previewVideo.currentTime);
-                    // console.log("   currentCueInfo:", currentCueInfo);', currentCueInfo);
 
                     // Convert cue time (seconds) to HH:MM:SS.mmm format for matching with API
                     // Supports negative values for subtitles before theme start
@@ -3290,9 +3218,6 @@
                             cue.start === absoluteTimestampKey && cue.end === absoluteEndTimeKey
                         );
                         if (matchingCue) {
-                            console.warn('⚠️ Matched by timestamp only (text differs):');
-                            console.warn('   VTT text:', currentCue.text);
-                            console.warn('   API text:', matchingCue.text);
                         }
                     }
 
@@ -3300,30 +3225,12 @@
                         sequence = matchingCue.sequence;
                     } else {
                         // Debug: log why matching failed
-                        console.warn('⚠️ Could not match cue to sequence number');
-                        console.warn('   Looking for (ABSOLUTE):', { start: absoluteTimestampKey, end: absoluteEndTimeKey, text: `"${currentCue.text}"` });
-                        console.warn('   Looking for (RELATIVE):', { start: timestampKey, end: endTimeKey, text: `"${currentCue.text}"` });
-                        console.warn('   allThemeCues.length:', allThemeCues.length);
 
                         // Find cues with matching timestamp (using absolute)
                         const timestampMatches = allThemeCues.filter(c => c.start === absoluteTimestampKey);
-                        console.warn(`   Found ${timestampMatches.length} cues with matching absolute timestamp:`, timestampMatches.map(c => ({
-                            sequence: c.sequence,
-                            start: c.start,
-                            end: c.end,
-                            text: `"${c.text}"`
-                        })));
 
                         // Find cues with similar text (substring match)
                         const textMatches = allThemeCues.filter(c => c.text.includes(currentCue.text) || currentCue.text.includes(c.text));
-                        if (textMatches.length > 0) {
-                            console.warn(`   Found ${textMatches.length} cues with similar text:`, textMatches.map(c => ({
-                                sequence: c.sequence,
-                                start: c.start,
-                                end: c.end,
-                                text: `"${c.text}"`
-                            })));
-                        }
                     }
 
                     const newCueInfo = {
@@ -3341,8 +3248,6 @@
                         // Set flag to prevent auto-save during programmatic update
                         isProgrammaticUpdate = true;
 
-                        console.log('🎬 Cue changed:', currentCueInfo.sequence, currentCueInfo.timestamp, currentCueInfo.text);
-                        console.log('   Looking for formatting in:', Object.keys(allCueFormatting));
 
                         // Load saved formatting for this cue using sequence as key
                         const key = currentCueInfo.sequence;
@@ -3350,8 +3255,6 @@
 
                         if (formatting && formatting.html) {
                             // Use the saved HTML which has selective formatting preserved
-                            console.log('   ✅ Found saved HTML, applying...');
-                            console.log('   HTML to apply:', formatting.html);
 
                             const html = formatting.html;
 
@@ -3360,14 +3263,11 @@
                             document.execCommand('selectAll', false, null);
                             document.execCommand('insertHTML', false, html);
 
-// console.log('   HTML after apply:', subtitleText.innerHTML);
 
                             // Set up observer to detect what's modifying the editor
                             const observer = new MutationObserver((mutations) => {
                                 mutations.forEach((mutation) => {
                                     if (mutation.type === 'childList' || mutation.type === 'characterData') {
-//                                         console.log('   ⚠️ Editor was modified! New content:', subtitleText.innerHTML);
-//                                         console.trace('   Call stack:');
                                     }
                                 });
                             });
@@ -3402,7 +3302,6 @@
                                     centerX: formatting.customPosition.centerX ? formatting.customPosition.centerX * scaleX : null,
                                     width: formatting.customPosition.width ? formatting.customPosition.width * scaleX : null
                                 };
-                                console.log('   🔄 Scaled individual position from JSON:', customPosition);
                             } else {
                                 customPosition = null;
                             }
@@ -3414,7 +3313,6 @@
                             // Update align button states
                             updateAlignButtons(horizontalAlign, verticalAlign);
                         } else {
-                            console.log('   ❌ No saved formatting for this cue');
                             // No saved formatting, use plain text
                             subtitleText.innerHTML = currentCue.text;
                             subtitleFormatting = { bold: false, italic: false, color: null, size: null, position: null };
@@ -3427,7 +3325,6 @@
                             } else {
                                 // Global mode has custom position - keep it and mark as manual
                                 hasManualPosition = true;
-                                console.log('   ✅ Keeping global custom position:', customPosition);
                             }
 
                             horizontalAlign = 'center';
@@ -3532,7 +3429,6 @@
 
                         // Debug log when we have subtitles
                         if (subtitleText && !window.canvasTextLogged) {
-                            console.log('[Canvas] ✓ Found subtitle text:', subtitleText.substring(0, 60));
                             window.canvasTextLogged = true;
                         }
 
@@ -3621,19 +3517,13 @@
 
                             // Debug: confirm render was called
                             if (!window.canvasRenderCallLogged) {
-                                console.log('[Canvas] ✓ renderFrameWithHighlight called successfully!');
                                 const canvas = document.getElementById('karaoke-canvas');
-                                console.log('[Canvas] canvas visibility:', canvas.style.display);
-                                console.log('[Canvas] canvas z-index:', window.getComputedStyle(canvas).zIndex);
-                                console.log('[Canvas] video opacity:', previewVideo.style.opacity);
                                 window.canvasRenderCallLogged = true;
                             }
                         } else {
-                            console.error('[Canvas] renderFrameWithHighlight method not found, falling back to renderFrame');
                             canvasRenderer.renderFrame(previewVideo.currentTime, subtitleText);
                         }
                     } catch (error) {
-                        console.error('[Canvas] Render error:', error);
                     }
                 }
             };
@@ -3862,16 +3752,11 @@
 
             document.addEventListener('mouseup', () => {
                 if (isDragging) {
-                        console.log('🖱️ DRAG END - Timeline extended');
 
                     // Calculate theme start offset when dragging left handle
                     const timeOffset = startSeconds - themeStartBeforeDrag;
 
                     if (isDragging === 'left' && timeOffset !== 0) {
-                        console.log(`   Theme start shifted by ${timeOffset}s`);
-                        console.log(`   Old theme start: ${themeStartBeforeDrag}s`);
-                        console.log(`   New theme start: ${startSeconds}s`);
-                        console.log(`   Keys before:`, Object.keys(allCueFormatting));
 
                         // CRITICAL: Update timestamps only, don't regenerate keys
                         // Sequence keys are stable and don't change
@@ -3916,13 +3801,10 @@
                             const oldSeconds = vttToSeconds(formatting.timestamp);
                             const newSeconds = oldSeconds - timeOffset;  // Subtract offset
                             allCueFormatting[seqKey].timestamp = secondsToVtt(newSeconds);
-                            console.log(`   Sequence ${seqKey}: ${formatting.timestamp} → ${allCueFormatting[seqKey].timestamp}`);
                         }
 
-                        console.log(`   Keys after (unchanged):`, Object.keys(allCueFormatting));
 
                         // Save formatting to server with updated timestamps
-                        console.log('   Saving to server...');
                         fetch('/api/save-subtitle-formatting', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -3932,8 +3814,6 @@
                                 formatting: allCueFormatting
                             })
                         }).then(res => res.json())
-                          .then(data => console.log('   ✓ Formatting saved:', data))
-                          .catch(err => console.error('   ✗ Failed to save formatting:', err));
                     }
 
                     // Handle right-side drag (theme end changes)
@@ -3943,14 +3823,9 @@
                         const themeEndOffset = endSeconds - themeEndBeforeDrag;
 
                         if (themeEndOffset !== 0) {
-                            console.log(`   Theme end shifted by ${themeEndOffset}s`);
-                            console.log(`   Old theme end: ${themeEndBeforeDrag}s`);
-                            console.log(`   New theme end: ${endSeconds}s`);
-                            console.log(`   Formatting keys (no shift needed, relative to themeStart):`, Object.keys(allCueFormatting));
 
                             // For right-side drag, we don't shift keys (they're relative to themeStart)
                             // But we save to ensure styles are preserved even if subtitles are now out of bounds
-                            console.log('   Saving formatting to preserve styles...');
                             fetch('/api/save-subtitle-formatting', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
@@ -3960,8 +3835,6 @@
                                     formatting: allCueFormatting
                                 })
                             }).then(res => res.json())
-                              .then(data => console.log('   ✓ Formatting saved:', data))
-                              .catch(err => console.error('   ✗ Failed to save formatting:', err));
                         }
                     }
 
@@ -3990,7 +3863,6 @@
 
                     // Regenerate the adjust.srt file with new theme boundaries
                     // This converts absolute timestamps to relative timestamps
-// console.log('   Regenerating adjust.srt with new theme boundaries...');
 
                     // Helper to parse VTT timestamp string to seconds
                     const vttToSeconds = (vttTimestamp) => {
@@ -4152,13 +4024,10 @@
                                     formatting: allCueFormatting
                                 })
                             }).then(res => res.json())
-                              .then(data => console.log('   ✓ Formatting saved'))
-                              .catch(err => console.error('   ✗ Failed to save formatting:', err));
                         }
 
                         startSeconds = newStartSeconds;
 
-                        console.log(`🎯 Applied left extension: ${extLeftEnd.value} (${extensionSeconds}s earlier)`);
                         updateUI();
                         updatePreviewVideo();
                         reloadSubtitleTrack();
@@ -4186,7 +4055,6 @@
 
                         endSeconds = newEndSeconds;
 
-                        console.log(`🎯 Applied right extension: ${extRightEnd.value} (${extensionSeconds}s later)`);
                         updateUI();
                         updatePreviewVideo();
                         reloadSubtitleTrack();
@@ -4207,10 +4075,6 @@
                     const currentStart = startSeconds;
                     const timeOffset = originalStartSeconds - currentStart;
 
-                    console.log('🔄 Reset to original');
-                    console.log(`   Current start: ${currentStart}s → Original: ${originalStartSeconds}s`);
-                    console.log(`   Time offset: ${timeOffset}s`);
-                    console.log(`   Keys before:`, Object.keys(allCueFormatting));
 
                     // CRITICAL: Update timestamps only, don't regenerate keys
                     // Sequence keys are stable and don't change
@@ -4256,14 +4120,11 @@
                             const oldSeconds = vttToSeconds(formatting.timestamp);
                             const newSeconds = oldSeconds - timeOffset;  // Subtract offset
                             allCueFormatting[seqKey].timestamp = secondsToVtt(newSeconds);
-                            console.log(`   Sequence ${seqKey}: ${formatting.timestamp} → ${allCueFormatting[seqKey].timestamp}`);
                         }
 
-                        console.log(`   Keys after (unchanged):`, Object.keys(allCueFormatting));
                     }
 
                     // Save formatting to server with updated keys
-                    console.log('   Saving to server...');
                     const saveResponse = await fetch('/api/save-subtitle-formatting', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -4275,10 +4136,8 @@
                     });
 
                     if (!saveResponse.ok) {
-                        console.error('   ✗ Failed to save formatting:', saveResponse.status);
                     } else {
                         const saveData = await saveResponse.json();
-                        console.log('   ✓ Formatting saved:', saveData);
                     }
 
                     // Reset to original values
@@ -4323,7 +4182,6 @@
                             resetTimelineBtn.innerHTML = '↺ Reset to Original';
                         }, 1500);
                     } catch (error) {
-// console.error('Error resetting theme:', error);
                         resetTimelineBtn.textContent = '✗ Reset Failed';
                         setTimeout(() => {
                             resetTimelineBtn.innerHTML = '↺ Reset to Original';
@@ -4465,8 +4323,6 @@
             let text = editor.innerText; // Get plain text for saving
             const html = editor.innerHTML; // Get HTML for display
 
-//             console.log('🎨 updateSubtitlePreview called');
-//             console.log('   editor HTML:', html.substring(0, 100));
 
             const fontSize = document.getElementById('subtitle-size').value;
             const fontFamily = document.getElementById('subtitle-font').value;
@@ -4655,7 +4511,6 @@
         // Save formatting for the current cue
         async function saveCurrentCueFormatting() {
             if (!currentCueInfo) {
-// console.log('❌ saveCurrentCueFormatting: No currentCueInfo');
                 return;
             }
 
@@ -4668,12 +4523,8 @@
 
             // CRITICAL: Cannot save without sequence number (cue matching failed)
             if (key === null) {
-                console.error('❌ Cannot save formatting: sequence number is null');
-                console.error('   allThemeCues.length:', allThemeCues.length);
-                console.error('   currentCueInfo:', currentCueInfo);
                 // Try to reload cues and retry once
                 if (allThemeCues.length === 0) {
-                    console.warn('⚠️ allThemeCues is empty, attempting to load...');
                     await loadThemeCues();
                     // Retry after loading
                     const retryCue = allThemeCues.find(cue =>
@@ -4683,7 +4534,6 @@
                     );
                     if (retryCue && retryCue.sequence) {
                         currentCueInfo.sequence = retryCue.sequence;
-                        console.log('✅ Found sequence after reload:', retryCue.sequence);
                         // Recursively call save after updating sequence
                         return await saveCurrentCueFormatting();
                     }
@@ -4698,9 +4548,6 @@
                 _text: currentCueInfo.text  // Store text for debugging
             };
 
-            console.log('💾 Saved formatting for sequence', key, `(${currentCueInfo.timestamp})`);
-            console.log('   Text:', currentCueInfo.text.substring(0, 50));
-            console.log('   HTML:', editor.innerHTML.substring(0, 100));
 
             // Also extract simplified formatting info for preview
             const bold = editor.querySelector('strong') !== null;
@@ -4779,9 +4626,6 @@
             subtitleFormatting = { ...allCueFormatting[key] };
 
             // Debug: log what's being saved
-// console.log('💾 Saving formatting for', currentCueInfo.start);
-// console.log('  HTML:', editor.innerHTML.substring(0, 150));
-// console.log('  → bold:', bold, 'italic:', italic, 'color:', color?.substring(0, 20), 'size:', size, 'position:', position);
 
             // Show saving indicator
             const indicator = document.getElementById('preview-autosave-indicator');
@@ -4809,7 +4653,6 @@
                     indicator.classList.remove('show');
                 }, 2000);
             } catch (error) {
-// console.error('Failed to save formatting:', error);
                 indicator.textContent = '✗ Save failed';
                 indicator.classList.remove('saving');
                 setTimeout(() => {
@@ -5075,13 +4918,11 @@
                         }
                     }
                 } catch (error) {
-                    console.error('❌ Error checking word timestamps:', error);
                     // Continue anyway - the server will handle missing timestamps
                 }
             }
 
             karaokeEnabled = enabled;
-            console.log('🎤 Karaoke highlighting:', enabled ? 'ENABLED' : 'DISABLED');
 
             // Save karaoke setting to server
             try {
@@ -5096,10 +4937,8 @@
                 });
 
                 if (!response.ok) {
-                    console.warn('⚠️ Failed to save karaoke setting');
                 }
             } catch (error) {
-                console.error('❌ Error saving karaoke setting:', error);
             }
 
             // Show toast and regenerate ASS files with new karaoke setting
@@ -5123,9 +4962,7 @@
 
                 // Show success message
                 showToast(`✅ Karaoke ${enabled ? 'enabled' : 'disabled'} successfully!`, 'success');
-                console.log(`✅ Karaoke ${enabled ? 'enabled' : 'disabled'}, ASS regenerated`);
             } catch (error) {
-                console.error('❌ Error regenerating ASS:', error);
                 showToast('❌ Failed to update karaoke setting', 'error');
                 // Reset toggle on error
                 document.getElementById('karaoke-toggle').checked = !enabled;
@@ -5134,18 +4971,15 @@
 
         // Regenerate ASS file with current karaoke settings (for mode/font size changes)
         async function regenerateAssWithCurrentSettings() {
-            console.log('🎤 regenerateAssWithCurrentSettings called, karaokeEnabled:', karaokeEnabled);
 
             // Only regenerate if karaoke is enabled
             if (!karaokeEnabled) {
-                console.log('   ⚠️ Karaoke not enabled, skipping regeneration');
                 return;
             }
 
             // Show toast message
             showToast('🎤 Regenerating subtitles with new karaoke settings...', 'info');
 
-            console.log('   📡 Calling /api/regenerate-ass...');
 
             try {
                 const response = await fetch('/api/regenerate-ass', {
@@ -5158,20 +4992,16 @@
                     })
                 });
 
-                console.log('   📡 Response status:', response.status);
 
                 if (!response.ok) {
                     throw new Error('Failed to regenerate ASS');
                 }
 
                 const result = await response.json();
-                console.log('   ✅ Regeneration result:', result);
 
                 // Show success message
                 showToast('✅ Subtitles regenerated successfully!', 'success');
-                console.log('   ✅ ASS file regenerated, no page reload needed');
             } catch (error) {
-                console.error('❌ Error regenerating ASS:', error);
                 showToast('❌ Failed to update karaoke settings', 'error');
             }
         }
@@ -5206,7 +5036,6 @@
 
                 // Set up logging
                 ffmpegInstance.on('log', ({ message }) => {
-                    console.log('FFmpeg:', message);
                 });
 
                 ffmpegInstance.on('progress', ({ progress, time }) => {
@@ -5227,7 +5056,6 @@
                 return ffmpegInstance;
 
             } catch (error) {
-                console.error('Failed to load ffmpeg.wasm:', error);
                 showToast('Failed to load ffmpeg.wasm: ' + error.message, 'error');
                 throw error;
             }
@@ -5251,7 +5079,6 @@
                     subtitleCues = data.cues || [];
                 }
             } catch (error) {
-                console.warn('Could not fetch subtitle cues:', error);
             }
 
             // Helper function to get subtitle text at a given time
@@ -5378,6 +5205,8 @@
                     body: JSON.stringify({
                         folder: folderNumber,
                         theme: themeNumber,
+                        themeStart: themeStart,
+                        themeEnd: themeEnd,
                         settings: settings
                     })
                 });
@@ -5476,12 +5305,10 @@
                     } catch (error) {
                         clearInterval(pollInterval);
                         if (progressToast) progressToast.remove();
-                        console.error('Progress polling error:', error);
                     }
                 }, 500);  // Poll every 500ms
 
             } catch (error) {
-                console.error('Export error:', error);
                 showToast('Export failed: ' + error.message, 'error');
             }
         }
@@ -5584,24 +5411,18 @@
                     // Only enable karaoke if both setting is true AND word timestamps exist
                     karaokeEnabled = data.enabled && wordTimestampsExist;
                     document.getElementById('karaoke-toggle').checked = karaokeEnabled;
-                    console.log('🎤 Karaoke setting loaded:', karaokeEnabled ? 'ENABLED' : 'DISABLED',
-                               wordTimestampsExist ? '(word timestamps exist)' : '(no word timestamps)');
 
                     // Show/hide style controls based on karaoke state
                     const styleControls = document.getElementById('karaoke-style-controls');
-                    console.log('Karaoke enabled:', karaokeEnabled, 'styleControls element:', styleControls, 'current display:', styleControls?.style.display);
                     if (karaokeEnabled) {
                         styleControls.style.display = 'flex';
-                        console.log('✅ Karaoke style controls shown, display is now:', styleControls.style.display);
                         // Load the saved highlight style
                         await loadHighlightStyle();
                     } else {
                         styleControls.style.display = 'none';
-                        console.log('❌ Karaoke style controls hidden');
                     }
                 }
             } catch (error) {
-                console.warn('⚠️ Could not load karaoke setting, using default (disabled)');
                 karaokeEnabled = false;
                 document.getElementById('karaoke-toggle').checked = false;
             }
@@ -5618,11 +5439,9 @@
                 if (response.ok) {
                     const data = await response.json();
                     wordTimestamps = data.words || [];
-                    console.log(`📝 Loaded ${wordTimestamps.length} word timestamps for preview`);
                     return wordTimestamps;
                 }
             } catch (error) {
-                console.warn('⚠️ Could not load word timestamps:', error);
             }
 
             wordTimestamps = [];
@@ -5769,10 +5588,8 @@
                 });
 
                 if (!response.ok) {
-                    console.warn('⚠️ Failed to save highlight style');
                 }
             } catch (error) {
-                console.error('❌ Error saving highlight style:', error);
             }
         }
 
@@ -5824,7 +5641,6 @@
                     }
                 }
             } catch (error) {
-                console.warn('⚠️ Could not load highlight style, using defaults');
             }
         }
 
@@ -5871,46 +5687,36 @@
         }
 
         // Setup event listeners for karaoke controls
-        console.log('🎤 Setting up karaoke control event listeners...');
 
         const karaokeModeSelect = document.getElementById('karaoke-mode');
         const fontSizeScaleInput = document.getElementById('font-size-scale');
         const pastColorInput = document.getElementById('past-color');
 
         if (karaokeModeSelect) {
-            console.log('   ✓ karaoke-mode element found');
         } else {
-            console.error('   ✗ karaoke-mode element NOT found!');
         }
 
         if (fontSizeScaleInput) {
-            console.log('   ✓ font-size-scale element found');
         } else {
-            console.error('   ✗ font-size-scale element NOT found!');
         }
 
         if (pastColorInput) {
-            console.log('   ✓ past-color element found');
         } else {
-            console.error('   ✗ past-color element NOT found!');
         }
 
         // Add event listeners for new karaoke controls
         // These controls affect ASS generation, so they need to regenerate the ASS file
         document.getElementById('karaoke-mode').addEventListener('change', async (e) => {
-            console.log('🎤 Karaoke mode changed to:', e.target.value);
             await saveHighlightStyle();
             await regenerateAssWithCurrentSettings();
         });
         document.getElementById('font-size-scale').addEventListener('change', async (e) => {
             const percent = e.target.value;
-            console.log('🎤 Font size scale changed to:', percent + '%');
             document.getElementById('font-scale-value').textContent = percent + '%';
             await saveHighlightStyle();
             await regenerateAssWithCurrentSettings();
         });
         document.getElementById('past-color').addEventListener('change', async (e) => {
-            console.log('🎤 Past color changed to:', e.target.value);
             await saveHighlightStyle();
             await regenerateAssWithCurrentSettings();
         });
@@ -5978,26 +5784,16 @@
                 canvas.width = rect.width;
                 canvas.height = rect.height;
 
-                console.log('[Canvas] Canvas size set to:', canvas.width, 'x', canvas.height, 'wrapper rect:', rect);
 
                 // Show canvas overlay (video remains visible underneath)
                 canvas.style.display = 'block';
                 canvasIndicator.style.display = 'block';
                 subtitleOverlay.style.display = 'none';
 
-                // Remove VTT track element completely (most aggressive hiding)
-                const trackElements = previewVideo.querySelectorAll('track');
-                trackElements.forEach(track => {
-                    track.remove();
-                    console.log('[Canvas] Removed track element:', track.src);
-                });
-
-                // Disable ALL VTT subtitles tracks
-                console.log('[Canvas] Disabling VTT tracks, total tracks:', previewVideo.textTracks?.length);
+                // Disable ALL VTT subtitles tracks (don't remove, just disable)
                 if (previewVideo.textTracks) {
                     for (let i = 0; i < previewVideo.textTracks.length; i++) {
                         const track = previewVideo.textTracks[i];
-                        console.log('[Canvas] Disabling track', i, 'kind:', track.kind, 'mode was:', track.mode);
                         track.mode = 'disabled';
                     }
                 }
@@ -6020,9 +5816,7 @@
                         font_weight: document.getElementById('highlight-font-weight')?.value || 'bold'
                     };
 
-                    console.log('Canvas renderer: wordTimestamps =', wordTimestamps ? wordTimestamps.length : 0, 'words');
                     canvasRenderer = new KaraokeCanvasRenderer(canvasEl, previewVideo, wordTimestamps, settings);
-                    console.log('✅ Canvas renderer initialized');
                 }
 
                 // Render initial frame - get text from editor and highlighted word index
@@ -6034,7 +5828,6 @@
 
                     if (!subtitleText && allThemeCues && allThemeCues.length > 0) {
                         const currentTime = previewVideo.currentTime;
-                        console.log('[Canvas Init] Looking for cue at time:', currentTime);
 
                         // Find the current subtitle cue based on video time
                         const currentCue = allThemeCues.find(cue => {
@@ -6042,27 +5835,21 @@
                             const cueEnd = parseTime(cue.end);
                             const match = currentTime >= cueStart && currentTime <= cueEnd;
                             if (match) {
-                                console.log('[Canvas Init] Cue match:', { cueStart, cueEnd, currentTime, text: cue.text.substring(0, 30) });
                             }
                             return match;
                         });
 
                         if (currentCue) {
                             subtitleText = currentCue.text;
-                            console.log('[Canvas Init] Found cue from allThemeCues:', currentCue);
                         } else {
                             // Find the nearest cue for debugging
                             const nearestCue = allThemeCues.find(cue => {
                                 const cueStart = parseTime(cue.start);
                                 return cueStart > currentTime - 5 && cueStart < currentTime + 5;
                             });
-                            console.log('[Canvas Init] No cue found at current time, nearest:', nearestCue);
                         }
                     }
 
-                    console.log('[Canvas Init] subtitleText:', subtitleText);
-                    console.log('[Canvas Init] editorEl:', editorEl);
-                    console.log('[Canvas Init] canvas size:', canvas.width, 'x', canvas.height);
 
                     // Get highlighted word index from DOM (if any)
                     const previewEl = document.getElementById('subtitle-preview-text');
@@ -6072,11 +5859,9 @@
                         highlightedWordIndex = parseInt(highlightedSpans[0].dataset.wordIndex || '-1');
                     }
 
-                    console.log('[Canvas Init] highlightedWordIndex:', highlightedWordIndex);
 
                     // Use renderFrameWithHighlight for preview (transparent canvas)
                     canvasRenderer.renderFrameWithHighlight(previewVideo.currentTime, subtitleText, highlightedWordIndex);
-                    console.log('[Canvas Init] renderFrameWithHighlight called');
                 }
 
                 showToast('Canvas mode enabled', 'success');
@@ -6096,7 +5881,6 @@
                 previewVideo.classList.remove('canvas-mode-active');
 
                 // Re-enable VTT subtitles tracks
-                console.log('[Canvas] Re-enabling VTT tracks');
                 if (previewVideo.textTracks) {
                     for (let i = 0; i < previewVideo.textTracks.length; i++) {
                         previewVideo.textTracks[i].mode = 'showing';
@@ -6227,14 +6011,6 @@
                     centerX: centerX
                 };
 
-                console.log('🖱️ Drag ended - exact position:', {
-                    left: relativeLeft,
-                    top: relativeTop,
-                    centerX: centerX,
-                    parentWidth: parentRect.width,
-                    parentHeight: parentRect.height
-                });
-
                 // Determine nearest preset for dropdown
                 const positionSelect = document.getElementById('subtitle-position');
                 const third = parentRect.height / 3;
@@ -6270,7 +6046,6 @@
                 updateSubtitlePreview();
 
                 // Save based on current position mode
-                console.log('🖱️ Drag ended, align:', hAlign, vAlign, 'mode:', positionMode);
 
                 if (positionMode === 'global') {
                     // Save custom position for global mode
