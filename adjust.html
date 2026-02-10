@@ -1471,7 +1471,7 @@
         </div>
 
         <!-- Right Panel: Theme Clip Preview + Subtitle Editor -->
-        <div class="panel">
+        <div class="panel" style="position: relative;">
             <h2>Theme Clip Preview (9:16 Shorts)</h2>
             <div class="video-wrapper preview-wrapper">
                 <video id="preview-video" loop playsinline>
@@ -1496,6 +1496,12 @@
                         <span id="preview-time-display" class="preview-time-display">00:00 / 00:00</span>
                     </div>
                 </div>
+            </div>
+
+            <!-- Canvas Mode Toggle LED - positioned at top center of preview video -->
+            <div id="canvas-mode-led" style="position: absolute; top: 48px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 12px; border-radius: 6px; background: rgba(255,255,255,0.05); transition: all 0.2s ease; user-select: none; z-index: 10;" title="Toggle Canvas Mode">
+                <div id="led-indicator" style="width: 12px; height: 12px; border-radius: 50%; background: #333; box-shadow: inset 0 1px 3px rgba(0,0,0,0.5); transition: all 0.3s ease;"></div>
+                <span style="font-size: 12px; color: #aaa;">Canvas</span>
             </div>
 
             <div class="subtitle-editor">
@@ -1815,6 +1821,23 @@
         let canvasMode = false;
         let canvasRenderer = null;
 
+        // Update LED indicator state
+        function updateCanvasLED() {
+            const led = document.getElementById('led-indicator');
+            const ledContainer = document.getElementById('canvas-mode-led');
+            if (canvasMode) {
+                // LED ON - bright green with glow
+                led.style.background = '#00ff00';
+                led.style.boxShadow = '0 0 10px #00ff00, 0 0 20px #00ff00, inset 0 1px 3px rgba(255,255,255,0.3)';
+                ledContainer.style.background = 'rgba(0, 255, 0, 0.15)';
+            } else {
+                // LED OFF - dark grey
+                led.style.background = '#333';
+                led.style.boxShadow = 'inset 0 1px 3px rgba(0,0,0,0.5)';
+                ledContainer.style.background = 'rgba(255,255,255,0.05)';
+            }
+        }
+
         // KaraokeCanvasRenderer class for canvas-based karaoke with fade-back effects
         class KaraokeCanvasRenderer {
             constructor(canvas, videoElement, wordTimestamps, settings) {
@@ -2045,6 +2068,9 @@
             renderFrameWithHighlight(currentTime, subtitleText, highlightedWordIndex) {
                 const ctx = this.ctx;
                 const canvas = this.canvas;
+
+                // Debug: log what we're rendering EVERY TIME to track changes
+                console.log('[Canvas Render] highlightedWordIndex:', highlightedWordIndex, 'subtitleText:', subtitleText?.substring(0, 30));
 
                 // Clear canvas to transparent first
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -3486,23 +3512,12 @@
                 // Canvas rendering handler for canvas mode
                 if (canvasMode && canvasRenderer) {
                     try {
-                        // Try to get text from the editable subtitle element (more reliable)
-                        const editorEl = document.getElementById('subtitle-text');
-                        const previewEl = document.getElementById('subtitle-preview-text');
-
-                        // Debug: check both elements
-                        if (!window.canvasDebugDone) {
-                            console.log('[Canvas] editorEl textContent:', editorEl?.textContent?.substring(0, 50));
-                            console.log('[Canvas] previewEl textContent:', previewEl?.textContent?.substring(0, 50));
-                            window.canvasDebugDone = true;
-                        }
-
-                        // Get text from editor (it's always in DOM)
-                        let subtitleText = editorEl?.innerText?.trim() || '';
+                        // IMPORTANT: Always find current subtitle from allThemeCues based on video time
+                        // Don't rely on editor element which may be stale
+                        let subtitleText = '';
                         let currentCue = null;
 
-                        // If editor is empty, try to get from allThemeCues
-                        if (!subtitleText && allThemeCues && allThemeCues.length > 0) {
+                        if (allThemeCues && allThemeCues.length > 0) {
                             const currentTime = previewVideo.currentTime;
                             currentCue = allThemeCues.find(cue => {
                                 const cueStart = parseTime(cue.start);
@@ -3545,17 +3560,43 @@
                             if (globalWordIndex >= 0 && currentCue) {
                                 // We have a cue from allThemeCues - calculate local word index
                                 const currentCueStart = parseTime(currentCue.start);
+                                const currentCueEnd = parseTime(currentCue.end);
                                 const wordsInCurrentCue = subtitleText.split(/\s+/).filter(w => w.length > 0);
 
-                                // Find the first word in wordTimestamps that's in the current cue
-                                const firstWordInCueIndex = wordTimestamps.findIndex(w => w.start >= currentCueStart);
+                                // Collect all word timestamps that fall within this cue's time range
+                                // Use epsilon for floating point comparison, and exclude words at exact boundaries
+                                const EPSILON = 0.05; // 50ms tolerance
+                                const wordsInCueRange = [];
+                                for (let i = 0; i < wordTimestamps.length; i++) {
+                                    const wt = wordTimestamps[i];
+                                    // Include words that start within the cue (with small buffer at start, strict at end)
+                                    if (wt.start >= currentCueStart - EPSILON && wt.start < currentCueEnd - EPSILON) {
+                                        wordsInCueRange.push({ index: i, word: wt.word, start: wt.start, end: wt.end });
+                                    }
+                                }
 
-                                // Calculate local index within this subtitle
-                                highlightedWordIndex = globalWordIndex - firstWordInCueIndex;
+                                // Now we need to match wordsInCueRange to wordsInCurrentCue by text
+                                // Note: highlightedWordIndex is declared above, don't redeclare with 'let'
 
-                                // Clamp to valid range
-                                if (highlightedWordIndex < 0 || highlightedWordIndex >= wordsInCurrentCue.length) {
-                                    highlightedWordIndex = -1;
+                                if (wordsInCueRange.length > 0) {
+                                    // Find which word is currently being spoken
+                                    const currentlySpoken = wordsInCueRange.find(w =>
+                                        previewVideo.currentTime >= w.start && previewVideo.currentTime < w.end
+                                    );
+
+                                    if (currentlySpoken) {
+                                        // Try to find this word in the subtitle text
+                                        // IMPORTANT: Trim whitespace and normalize
+                                        const spokenWordLower = currentlySpoken.word.trim().toLowerCase().replace(/[.,!?;:"']/g, '');
+
+                                        for (let i = 0; i < wordsInCurrentCue.length; i++) {
+                                            const cueWordLower = wordsInCurrentCue[i].trim().toLowerCase().replace(/[.,!?;:"']/g, '');
+                                            if (cueWordLower === spokenWordLower) {
+                                                highlightedWordIndex = i;
+                                                break;
+                                            }
+                                        }
+                                    }
                                 }
                             } else if (globalWordIndex >= 0 && !currentCue) {
                                 // Text came from editor, try to match by word text
@@ -3572,12 +3613,6 @@
                                     }
                                 }
                             }
-                        }
-
-                        // Debug highlight info
-                        if (subtitleText && !window.canvasHighlightLogged) {
-                            console.log('[Canvas] highlightedWordIndex:', highlightedWordIndex);
-                            window.canvasHighlightLogged = true;
                         }
 
                         // Check if the method exists
@@ -5907,6 +5942,21 @@
         });
         document.getElementById('reset-highlight-style').addEventListener('click', resetHighlightStyle);
 
+        // Canvas mode LED toggle
+        document.getElementById('canvas-mode-led').addEventListener('click', async () => {
+            // Trigger the existing canvas mode toggle
+            document.getElementById('toggle-canvas-mode').click();
+        });
+
+        // LED hover effect
+        const ledContainer = document.getElementById('canvas-mode-led');
+        ledContainer.addEventListener('mouseenter', () => {
+            ledContainer.style.background = canvasMode ? 'rgba(0, 255, 0, 0.25)' : 'rgba(255, 255, 255, 0.1)';
+        });
+        ledContainer.addEventListener('mouseleave', () => {
+            updateCanvasLED(); // Reset to proper state
+        });
+
         // Canvas mode toggle button
         document.getElementById('toggle-canvas-mode').addEventListener('click', async () => {
             canvasMode = !canvasMode;
@@ -5920,6 +5970,7 @@
                 // Enable canvas mode
                 btn.textContent = 'Canvas Preview: ON';
                 btn.style.background = '#4CAF50';
+                updateCanvasLED(); // Update LED state
 
                 // Set canvas to match the video wrapper's actual pixel size
                 const wrapper = canvas.parentElement;
@@ -6033,6 +6084,7 @@
                 // Disable canvas mode
                 btn.textContent = 'Canvas Preview: OFF';
                 btn.style.background = '#2196F3';
+                updateCanvasLED(); // Update LED state
 
                 // Show video, hide canvas
                 canvas.style.display = 'none';

@@ -440,8 +440,27 @@ def render_canvas_karaoke_video(
         logger.error("No word timestamps found")
         return False
 
-    # Parse SRT subtitles
+    # Detect if SRT file has absolute times (main video SRT) or relative times (theme SRT)
+    # Main video SRT: timestamps match the video timeline (e.g., start at 0s or near start_time)
+    # Theme SRT: timestamps start from 0 (relative to theme start)
+    srt_filename = Path(subtitle_srt_path).name.lower()
+    is_theme_srt = 'theme_' in srt_filename
+
+    # Additional check: detect based on first subtitle time
     subtitles = _parse_srt(subtitle_srt_path)
+    if subtitles and not is_theme_srt:
+        # Not a theme SRT file, so check if times are absolute
+        first_sub_start = subtitles[0]['start']
+        # If first subtitle starts near 0 or within 2 seconds of theme start, it's absolute
+        # (near 0 = main video from beginning, near start_time = we're in the middle of main video)
+        if first_sub_start < 10.0 or abs(first_sub_start - start_time) < 2.0:
+            is_theme_srt = False  # Absolute times (main video SRT)
+            logger.info(f"Detected main video SRT with ABSOLUTE times (first sub at {first_sub_start}s, theme starts at {start_time}s)")
+        else:
+            is_theme_srt = True  # Relative times (theme SRT)
+            logger.info(f"Detected theme SRT with RELATIVE times (first sub at {first_sub_start}s, theme starts at {start_time}s)")
+    else:
+        logger.info(f"Using theme SRT based on filename: {srt_filename}")
 
     # Create renderer
     renderer = CanvasKaraokeRenderer(video_path, word_timestamps, settings)
@@ -453,12 +472,15 @@ def render_canvas_karaoke_video(
     temp_dir = Path(tempfile.mkdtemp(prefix='canvas_karaoke_'))
 
     try:
-        # Generate frames
-        fps = 30
+        # Generate frames at original video FPS for proper sync
+        fps = renderer.fps
+        if fps <= 0 or fps > 120:
+            logger.warning(f"Invalid FPS {fps}, using 30")
+            fps = 30
         total_frames = int((end_time - start_time) * fps)
         frame_pattern = temp_dir / 'frame_%06d.jpg'  # Use JPEG for faster I/O
 
-        logger.info(f"Generating {total_frames} frames from {start_time}s to {end_time}s (sequential reading + JPEG)")
+        logger.info(f"Generating {total_frames} frames from {start_time}s to {end_time}s at {fps}fps (original video FPS)")
 
         if progress_callback:
             progress_callback(0, "rendering", "Seeking to start position...")
@@ -492,18 +514,30 @@ def render_canvas_karaoke_video(
                 break
 
             # Find subtitle for this time
-            # Note: SRT times are relative to theme start, so convert current_time to relative
-            relative_time = current_time - start_time
+            # Handle both absolute (main video SRT) and relative (theme SRT) times
             subtitle_text = ""
             subtitle_start = None
             subtitle_end = None
-            for sub in subtitles:
-                if sub['start'] <= relative_time <= sub['end']:
-                    subtitle_text = sub['text']
-                    # Convert to absolute time for word timestamp lookup
-                    subtitle_start = sub['start'] + start_time
-                    subtitle_end = sub['end'] + start_time
-                    break
+
+            if is_theme_srt:
+                # Theme SRT: times are relative to theme start (0 = theme start)
+                relative_time = current_time - start_time
+                for sub in subtitles:
+                    if sub['start'] <= relative_time <= sub['end']:
+                        subtitle_text = sub['text']
+                        # Convert to absolute time for word timestamp lookup
+                        subtitle_start = sub['start'] + start_time
+                        subtitle_end = sub['end'] + start_time
+                        break
+            else:
+                # Main video SRT: times are absolute (from video start)
+                for sub in subtitles:
+                    if sub['start'] <= current_time <= sub['end']:
+                        subtitle_text = sub['text']
+                        # Already absolute, use directly
+                        subtitle_start = sub['start']
+                        subtitle_end = sub['end']
+                        break
 
             # Render karaoke subtitles
             rendered_frame = renderer.render_frame(frame, current_time, subtitle_text, subtitle_start, subtitle_end)
@@ -532,7 +566,8 @@ def render_canvas_karaoke_video(
             'ffmpeg',
             '-y',
             '-framerate', str(fps),
-            '-i', str(temp_dir / 'frame_%06d.jpg'),  # Changed to .jpg
+            '-start_number', '0',
+            '-i', str(temp_dir / 'frame_%06d.jpg'),
             '-ss', str(start_time),
             '-i', str(video_path),
             '-t', str(end_time - start_time),

@@ -2462,6 +2462,13 @@ def encode_canvas_karaoke():
         if not srt_file.exists():
             srt_file = folder / 'adjust.srt'
 
+        # Fall back to main video SRT if adjust.srt doesn't exist
+        if not srt_file.exists():
+            for srt in folder.glob('*.srt'):
+                if 'transcribe' not in srt.name and 'theme' not in srt.name:
+                    srt_file = srt
+                    break
+
         if not srt_file.exists():
             return jsonify({'error': 'Subtitle file not found'}), 404
 
