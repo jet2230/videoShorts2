@@ -184,8 +184,14 @@ def main():
         logger.info("-" * 80)
 
         try:
+            # Create video_info dict for generate_subtitles method
+            video_info = {
+                'video_path': str(item['video']),
+                'folder': item['folder']
+            }
+
             # Use the existing transcription method
-            creator.transcribe_video(str(item['video']), item['folder'])
+            creator.generate_subtitles(video_info)
             success_count += 1
             logger.info(f"✅ Completed: {item['name']}")
         except Exception as e:
