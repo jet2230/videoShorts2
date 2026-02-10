@@ -1251,7 +1251,32 @@ Video Path: {video_info['video_path']}
                 # Pass adjust.md path for global position settings
                 # Enable karaoke if word timestamps exist
                 use_karaoke = has_word_timestamps
-                ass_formatter.create_ass_file(trimmed_srt_path, formatting_json_path, ass_output_path, adjust_md_path, use_karaoke=use_karaoke)
+
+                # Load karaoke style settings if available
+                karaoke_style = None
+                if use_karaoke:
+                    # highlight_style.json is in the parent folder, not in shorts/
+                    style_file = output_dir.parent / 'highlight_style.json'
+                    print(f"    Looking for highlight style in: {style_file}")
+                    if style_file.exists():
+                        try:
+                            import json
+                            with open(style_file, 'r', encoding='utf-8') as f:
+                                style_data = json.load(f)
+                                karaoke_style = {
+                                    'mode': style_data.get('karaoke_mode', 'normal'),
+                                    'font_size_scale': style_data.get('font_size_scale', 1.0),
+                                    'past_color': style_data.get('past_color', None),
+                                    'textColor': style_data.get('textColor', '#ffff00')
+                                }
+                                print(f"    ✓ Loaded karaoke style: mode={karaoke_style['mode']}, font_scale={karaoke_style['font_size_scale']}")
+                        except Exception as e:
+                            print(f"    ✗ Error loading karaoke style: {e}")
+                    else:
+                        print(f"    ✗ highlight_style.json not found at {style_file}")
+
+                print(f"    → Calling create_ass_file with karaoke_style={karaoke_style}")
+                ass_formatter.create_ass_file(trimmed_srt_path, formatting_json_path, ass_output_path, adjust_md_path, use_karaoke=use_karaoke, karaoke_style=karaoke_style)
                 karaoke_msg = " with karaoke tags" if use_karaoke else ""
                 print(f"    Created ASS subtitles{karaoke_msg}: {ass_output_path.name}")
                 subtitle_file_for_ffmpeg = str(ass_output_path).replace(':', '\\:').replace('\\', '\\\\').replace("'", "\\'")

@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Adjust Theme - YouTube Shorts Creator</title>
+    <!-- ffmpeg.wasm for client-side video encoding -->
+    <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.7/dist/umd/ffmpeg.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/umd/util.js"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -306,7 +309,33 @@
             object-fit: cover;
         }
 
-        /* Hide native VTT subtitles for preview video (we use custom overlay) */
+        /* Canvas for karaoke rendering */
+        #karaoke-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            z-index: 15; /* Above video but below controls (z-index 20) */
+        }
+
+        /* Preview seekbar container */
+        .preview-seekbar-container {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+            padding: 10px;
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            opacity: 1;
+            transition: opacity 0.3s;
+            pointer-events: auto;
+        }
         #preview-video::cue {
             background-color: transparent !important;
             color: transparent !important;
@@ -314,6 +343,25 @@
         }
         #preview-video::cue-background {
             background-color: transparent !important;
+        }
+
+        /* Extra hiding for canvas mode - ensure VTT is completely invisible */
+        #preview-video.canvas-mode-active::cue {
+            display: none !important;
+            opacity: 0 !important;
+            visibility: hidden !important;
+        }
+
+        #preview-video.canvas-mode-active::-webkit-media-text-track-display {
+            display: none !important;
+        }
+
+        #preview-video.canvas-mode-active::-webkit-media-text-track-container {
+            display: none !important;
+        }
+
+        #preview-video.canvas-mode-active text {
+            display: none !important;
         }
 
         /* Preview seekbar container */
@@ -1318,10 +1366,6 @@
                         <input type="checkbox" id="overlay-toggle" style="width: 18px; height: 18px;">
                         <span style="font-size: 13px; color: #aaa;">Show 9:16 Crop Overlay</span>
                     </label>
-                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                        <input type="checkbox" id="karaoke-toggle" style="width: 18px; height: 18px;">
-                        <span style="font-size: 13px; color: #aaa;">Karaoke Highlighting</span>
-                    </label>
                 </div>
             </div>
 
@@ -1438,6 +1482,10 @@
                 </div>
                 <div class="autosave-indicator preview-autosave" id="preview-autosave-indicator"></div>
 
+                <!-- Canvas for karaoke rendering (hidden by default) -->
+                <canvas id="karaoke-canvas" style="display:none;"></canvas>
+                <div class="buffer-info" id="canvas-mode-indicator" style="display:none;">Canvas Preview Mode</div>
+
                 <!-- Custom controls for preview video -->
                 <div class="preview-seekbar-container">
                     <div class="preview-controls-row">
@@ -1536,6 +1584,7 @@
                             </select>
                         </div>
                     </div>
+
                     <div class="form-row" style="justify-content: center;">
                         <div class="form-group" style="flex: 0; min-width: 140px;">
                             <label style="text-align: center;">H: ⬅ ⬌ ➡</label>
@@ -1554,12 +1603,114 @@
                             </div>
                         </div>
                     </div>
-                </div>
-            </div>
 
-            <div class="buttons">
-                <button class="btn btn-secondary" id="preview-btn">▶ Preview Theme Clip</button>
-                <button class="btn btn-primary" id="save-btn">Save Changes</button>
+                    <!-- Karaoke Highlighting Section -->
+                    <div class="form-row">
+                        <div class="form-group" style="width: 100%;">
+                            <label style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                <input type="checkbox" id="karaoke-toggle" style="width: 18px; height: 18px;">
+                                <span style="font-size: 14px; color: #fff;">🎤 Karaoke Word Highlighting</span>
+                            </label>
+
+                            <!-- Karaoke Style Controls -->
+                            <div id="karaoke-style-controls" style="display: none; margin-top: 15px; padding: 15px; background: #1a1a1a; border-radius: 8px; border: 1px solid #333;">
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+
+                                    <!-- Karaoke Mode -->
+                                    <div style="display: flex; flex-direction: column; gap: 5px;">
+                                        <label style="font-size: 12px; color: #aaa; font-weight: 500;">Karaoke Mode</label>
+                                        <select id="karaoke-mode" style="padding: 6px 8px; background: #2a2a2a; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 12px;">
+                                            <option value="normal" selected>Normal (word highlights, then fades)</option>
+                                            <option value="cumulative">Cumulative (words stay highlighted)</option>
+                                            <option value="fill">Fill Effect (bottom to top)</option>
+                                            <option value="outline">Outline Effect</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- Font Size Scale -->
+                                    <div style="display: flex; flex-direction: column; gap: 5px;">
+                                        <label style="font-size: 12px; color: #aaa; font-weight: 500;">Font Size: <span id="font-scale-value">100%</span></label>
+                                        <input type="range" id="font-size-scale" min="50" max="200" value="100" style="width: 100%; height: 6px;">
+                                    </div>
+
+                                    <!-- Past Words Color (for cumulative mode) -->
+                                    <div style="display: flex; align-items: center; gap: 10px; grid-column: 1 / -1;">
+                                        <label style="font-size: 12px; color: #aaa; font-weight: 500; min-width: 120px;">Past Words Color:</label>
+                                        <input type="color" id="past-color" value="#808080" style="width: 50px; height: 28px; cursor: pointer; border: none; border-radius: 4px;">
+                                        <span style="font-size: 11px; color: #666;">(for cumulative mode)</span>
+                                    </div>
+
+                                    <!-- Divider -->
+                                    <div style="grid-column: 1 / -1; height: 1px; background: #333; margin: 10px 0;"></div>
+
+                                    <!-- Color Preset -->
+                                    <div style="display: flex; align-items: center; gap: 10px;">
+                                        <label style="font-size: 12px; color: #aaa; font-weight: 500; min-width: 70px;">Preset:</label>
+                                        <select id="highlight-preset" style="flex: 1; padding: 6px 8px; background: #2a2a2a; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 12px;">
+                                            <option value="custom">Custom</option>
+                                            <option value="yellow-glow" selected>Yellow Glow</option>
+                                            <option value="red-bold">Red Bold</option>
+                                            <option value="cyan-neon">Cyan Neon</option>
+                                            <option value="green-glow">Green Glow</option>
+                                            <option value="pink-soft">Pink Soft</option>
+                                            <option value="orange-fire">Orange Fire</option>
+                                            <option value="white-clean">White Clean</option>
+                                            <option value="purple-vibe">Purple Vibe</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- Text Color -->
+                                    <div style="display: flex; align-items: center; gap: 10px;">
+                                        <label style="font-size: 12px; color: #aaa; font-weight: 500; min-width: 70px;">Text Color:</label>
+                                        <input type="color" id="highlight-text-color" value="#ffff00" style="width: 50px; height: 28px; cursor: pointer; border: none; border-radius: 4px;">
+                                    </div>
+
+                                    <!-- Glow Color -->
+                                    <div style="display: flex; align-items: center; gap: 10px;">
+                                        <label style="font-size: 12px; color: #aaa; font-weight: 500; min-width: 70px;">Glow Color:</label>
+                                        <input type="color" id="highlight-glow-color" value="#ffff00" style="width: 50px; height: 28px; cursor: pointer; border: none; border-radius: 4px;">
+                                    </div>
+
+                                    <!-- Glow Blur -->
+                                    <div style="display: flex; align-items: center; gap: 10px;">
+                                        <label style="font-size: 12px; color: #aaa; font-weight: 500; min-width: 70px;">Glow Blur:</label>
+                                        <input type="range" id="highlight-glow-blur" min="0" max="30" value="10" style="flex: 1; height: 6px;">
+                                        <span id="highlight-glow-blur-value" style="font-size: 11px; color: #aaa; min-width: 30px;">10px</span>
+                                    </div>
+
+                                    <!-- Font Weight -->
+                                    <div style="display: flex; align-items: center; gap: 10px;">
+                                        <label style="font-size: 12px; color: #aaa; font-weight: 500; min-width: 70px;">Font Weight:</label>
+                                        <select id="highlight-font-weight" style="flex: 1; padding: 6px 8px; background: #2a2a2a; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 12px;">
+                                            <option value="normal">Normal</option>
+                                            <option value="bold" selected>Bold</option>
+                                            <option value="100">Thin (100)</option>
+                                            <option value="300">Light (300)</option>
+                                            <option value="500">Medium (500)</option>
+                                            <option value="700">Extra Bold (700)</option>
+                                            <option value="900">Black (900)</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- Reset Button -->
+                                    <div style="grid-column: 1 / -1; display: flex; justify-content: center; margin-top: 10px;">
+                                        <button id="reset-highlight-style" style="padding: 8px 20px; background: #444; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Reset to Default</button>
+                                    </div>
+
+                                    <!-- Canvas Mode Toggle -->
+                                    <div style="grid-column: 1 / -1; display: flex; justify-content: center; margin-top: 10px;">
+                                        <button id="toggle-canvas-mode" style="padding: 8px 20px; background: #2196F3; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Canvas Preview: OFF</button>
+                                    </div>
+
+                                    <!-- Export Canvas Video Button -->
+                                    <div style="grid-column: 1 / -1; display: flex; justify-content: center; margin-top: 10px;">
+                                        <button id="export-canvas-video" style="padding: 10px 24px; background: linear-gradient(135deg, #4CAF50, #45a049); color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 600;">Export Canvas Karaoke Video (ffmpeg.wasm)</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div id="message" style="margin-top: 16px;"></div>
@@ -1658,6 +1809,356 @@
         let positionMode = 'global';
         let globalPosition = 'bottom'; // Default global position for all subtitles
         let karaokeEnabled = true; // Karaoke word highlighting (default: enabled)
+        let wordTimestamps = null; // Word timestamps for preview karaoke effect
+
+        // Canvas mode state
+        let canvasMode = false;
+        let canvasRenderer = null;
+
+        // KaraokeCanvasRenderer class for canvas-based karaoke with fade-back effects
+        class KaraokeCanvasRenderer {
+            constructor(canvas, videoElement, wordTimestamps, settings) {
+                this.canvas = canvas;
+                this.video = videoElement;
+                this.ctx = canvas.getContext('2d');
+                this.wordTimestamps = wordTimestamps || [];
+                this.settings = settings || {};
+                this.fadeDuration = 0.5; // seconds to fade from highlight to original color
+            }
+
+            // Linear interpolation between two hex colors
+            lerpColor(color1, color2, factor) {
+                const c1 = this.hexToRgb(color1);
+                const c2 = this.hexToRgb(color2);
+                const r = Math.round(c1.r + (c2.r - c1.r) * factor);
+                const g = Math.round(c1.g + (c2.g - c1.g) * factor);
+                const b = Math.round(c1.b + (c2.b - c1.b) * factor);
+                return `rgb(${r},${g},${b})`;
+            }
+
+            hexToRgb(hex) {
+                // Handle #RGB and #RRGGBB formats
+                if (hex.startsWith('#')) {
+                    hex = hex.slice(1);
+                }
+                if (hex.length === 3) {
+                    hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+                }
+                const result = /^([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+                return result ? {
+                    r: parseInt(result[1], 16),
+                    g: parseInt(result[2], 16),
+                    b: parseInt(result[3], 16)
+                } : {r: 255, g: 255, b: 255};
+            }
+
+            // Get current subtitle text for given time
+            getCurrentSubtitleText(currentTime) {
+                const textEl = document.getElementById('subtitle-preview-text');
+                return textEl?.textContent?.trim() || '';
+            }
+
+            // Find word timestamp by word text and index
+            findWordTimestamp(word, wordIndex) {
+                if (!this.wordTimestamps || this.wordTimestamps.length === 0) {
+                    return null;
+                }
+
+                // Clean the word for comparison
+                const cleanWord = word.toLowerCase().replace(/[.,!?;:"'\s]/g, '');
+
+                // Try exact match first
+                for (const wt of this.wordTimestamps) {
+                    const cleanWt = (wt.word || '').toLowerCase().replace(/[.,!?;:"'\s]/g, '');
+                    if (cleanWt === cleanWord) {
+                        return wt;
+                    }
+                }
+
+                // Try index-based match as fallback
+                if (wordIndex < this.wordTimestamps.length) {
+                    return this.wordTimestamps[wordIndex];
+                }
+
+                return null;
+            }
+
+            // Render a single frame at the given time
+            renderFrame(currentTime, subtitleText) {
+                const ctx = this.ctx;
+                const canvas = this.canvas;
+
+                // Debug: log what we're rendering
+                if (Math.random() < 0.05) { // Only log occasionally to avoid spam
+                    console.log('[Canvas renderFrame]', { currentTime, subtitleText, canvasSize: `${canvas.width}x${canvas.height}` });
+                }
+
+                // Draw video frame first (if video element is available and ready)
+                if (this.video && this.video.readyState >= 2) {
+                    // Calculate scaling to maintain aspect ratio and cover the canvas
+                    const videoRatio = this.video.videoWidth / this.video.videoHeight;
+                    const canvasRatio = canvas.width / canvas.height;
+
+                    let drawWidth, drawHeight, startX, startY;
+
+                    if (videoRatio > canvasRatio) {
+                        // Video is wider - use height as reference
+                        drawHeight = canvas.height;
+                        drawWidth = drawHeight * videoRatio;
+                        startX = (canvas.width - drawWidth) / 2;
+                        startY = 0;
+                    } else {
+                        // Video is taller - use width as reference
+                        drawWidth = canvas.width;
+                        drawHeight = drawWidth / videoRatio;
+                        startX = 0;
+                        startY = (canvas.height - drawHeight) / 2;
+                    }
+
+                    ctx.drawImage(this.video, startX, startY, drawWidth, drawHeight);
+                } else {
+                    // Fallback to black background if video not available
+                    ctx.fillStyle = '#000000';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                }
+
+                if (!subtitleText) {
+                    return;
+                }
+
+                // Get settings
+                const fontSize = this.settings.fontSize || 48;
+                const fontFamily = this.settings.font_name || 'Arial';
+                const highlightColor = this.settings.textColor || '#ffff00';
+                const pastColor = this.settings.past_color || '#808080';
+                const mode = this.settings.mode || 'normal';
+                const fontWeight = this.settings.font_weight || 'bold';
+
+                // Set font
+                ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+
+                // Calculate position (bottom center with margin)
+                const margin = 100;
+                const maxWidth = canvas.width - 80; // 40px padding on each side
+
+                // Get words from subtitle text
+                const words = subtitleText.split(/\s+/).filter(w => w.length > 0);
+
+                if (words.length === 0) {
+                    return;
+                }
+
+                // Word wrapping - break into lines
+                const lines = [];
+                let currentLine = [];
+                let lineWidth = 0;
+                const spaceWidth = ctx.measureText(' ').width;
+
+                for (const word of words) {
+                    const wordWidth = ctx.measureText(word).width;
+                    const testWidth = currentLine.length > 0 ? lineWidth + spaceWidth + wordWidth : wordWidth;
+
+                    if (testWidth <= maxWidth) {
+                        // Word fits on current line
+                        currentLine.push(word);
+                        lineWidth = testWidth;
+                    } else {
+                        // Word doesn't fit - start new line
+                        if (currentLine.length > 0) {
+                            lines.push(currentLine);
+                        }
+                        currentLine = [word];
+                        lineWidth = wordWidth;
+                    }
+                }
+
+                // Add last line
+                if (currentLine.length > 0) {
+                    lines.push(currentLine);
+                }
+
+                // Calculate total height for all lines
+                const lineHeight = fontSize * 1.2; // 20% line spacing
+                const totalHeight = lines.length * lineHeight;
+                const startY = canvas.height - margin - (lines.length - 1) * lineHeight;
+
+                // Render each line
+                for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+                    const line = lines[lineIndex];
+                    const lineY = startY + lineIndex * lineHeight;
+                    const lineX = canvas.width / 2;
+
+                    // Calculate word positions for this line
+                    let lineTextWidth = 0;
+                    const wordWidths = [];
+                    for (const word of line) {
+                        const width = ctx.measureText(word).width;
+                        wordWidths.push(width);
+                        lineTextWidth += width;
+                    }
+                    lineTextWidth += spaceWidth * (line.length - 1);
+
+                    let xPos = lineX - lineTextWidth / 2;
+
+                    // Render each word in this line
+                    for (let wordIndex = 0; wordIndex < line.length; wordIndex++) {
+                        const word = line[wordIndex];
+                        const wordWidth = wordWidths[wordIndex];
+                        let color = '#ffffff'; // Default white
+
+                        // Find timestamp for this word (using global word index)
+                        const globalWordIndex = words.indexOf(word);
+                        const wordTimestamp = this.findWordTimestamp(word, globalWordIndex);
+
+                        if (wordTimestamp) {
+                            const wordStart = wordTimestamp.start || 0;
+                            const wordEnd = wordTimestamp.end || 0;
+
+                            if (currentTime >= wordStart && currentTime <= wordEnd) {
+                                // Currently being spoken - highlight
+                                color = highlightColor;
+                            } else if (currentTime > wordEnd) {
+                                // Word was spoken
+                                if (mode === 'normal') {
+                                    // Fade back to white
+                                    const timeSinceEnd = currentTime - wordEnd;
+                                    const fadeProgress = Math.min(timeSinceEnd / this.fadeDuration, 1);
+                                    color = this.lerpColor(highlightColor, '#ffffff', fadeProgress);
+                                } else if (mode === 'cumulative') {
+                                    // Stay gray/past color
+                                    color = pastColor;
+                                }
+                            }
+                        }
+
+                        // Draw the word
+                        ctx.fillStyle = color;
+                        ctx.fillText(word, xPos + wordWidth / 2, lineY);
+                        xPos += wordWidth + spaceWidth;
+                    }
+                }
+            }
+
+            // Render a frame using the highlighted word index from the DOM (matches original system exactly)
+            renderFrameWithHighlight(currentTime, subtitleText, highlightedWordIndex) {
+                const ctx = this.ctx;
+                const canvas = this.canvas;
+
+                // Clear canvas to transparent first
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                if (!subtitleText) {
+                    return;
+                }
+
+                // Get settings
+                const fontSize = this.settings.fontSize || 48;
+                const fontFamily = this.settings.font_name || 'Arial';
+                const highlightColor = this.settings.textColor || '#ffff00';
+                const pastColor = this.settings.past_color || '#808080';
+                const mode = this.settings.mode || 'normal';
+                const fontWeight = this.settings.font_weight || 'bold';
+
+                // Set font
+                ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+
+                // Calculate position (bottom center with margin)
+                const margin = 100;
+                const maxWidth = canvas.width - 80; // 40px padding on each side
+
+                // Get words from subtitle text
+                const words = subtitleText.split(/\s+/).filter(w => w.length > 0);
+
+                if (words.length === 0) {
+                    return;
+                }
+
+                // Word wrapping - break into lines
+                const lines = [];
+                let currentLine = [];
+                let lineWidth = 0;
+                const spaceWidth = ctx.measureText(' ').width;
+
+                for (const word of words) {
+                    const wordWidth = ctx.measureText(word).width;
+                    const testWidth = currentLine.length > 0 ? lineWidth + spaceWidth + wordWidth : wordWidth;
+
+                    if (testWidth <= maxWidth) {
+                        // Word fits on current line
+                        currentLine.push(word);
+                        lineWidth = testWidth;
+                    } else {
+                        // Word doesn't fit - start new line
+                        if (currentLine.length > 0) {
+                            lines.push(currentLine);
+                        }
+                        currentLine = [word];
+                        lineWidth = wordWidth;
+                    }
+                }
+
+                // Add last line
+                if (currentLine.length > 0) {
+                    lines.push(currentLine);
+                }
+
+                // Calculate total height for all lines
+                const lineHeight = fontSize * 1.2; // 20% line spacing
+                const totalHeight = lines.length * lineHeight;
+                const startY = canvas.height - margin - (lines.length - 1) * lineHeight;
+
+                // Render each line
+                let globalWordIndex = 0; // Track word index across all lines
+                for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+                    const line = lines[lineIndex];
+                    const lineY = startY + lineIndex * lineHeight;
+                    const lineX = canvas.width / 2;
+
+                    // Calculate word positions for this line
+                    let lineTextWidth = 0;
+                    const wordWidths = [];
+                    for (const word of line) {
+                        const width = ctx.measureText(word).width;
+                        wordWidths.push(width);
+                        lineTextWidth += width;
+                    }
+                    lineTextWidth += spaceWidth * (line.length - 1);
+
+                    let xPos = lineX - lineTextWidth / 2;
+
+                    // Render each word in this line
+                    for (let wordIndex = 0; wordIndex < line.length; wordIndex++) {
+                        const word = line[wordIndex];
+                        const wordWidth = wordWidths[wordIndex];
+                        let color = '#ffffff'; // Default white
+
+                        // Use the highlighted word index from DOM to determine color
+                        if (globalWordIndex < highlightedWordIndex) {
+                            // Word was already spoken
+                            if (mode === 'cumulative') {
+                                color = pastColor;
+                            } else {
+                                // Normal mode - white
+                                color = '#ffffff';
+                            }
+                        } else if (globalWordIndex === highlightedWordIndex) {
+                            // Currently being spoken - highlight
+                            color = highlightColor;
+                        }
+
+                        // Draw the word
+                        ctx.fillStyle = color;
+                        ctx.fillText(word, xPos + wordWidth / 2, lineY);
+                        xPos += wordWidth + spaceWidth;
+                        globalWordIndex++;
+                    }
+                }
+            }
+        }
 
         // Custom position and alignment
         let customPosition = null; // {left: number, top: number, width: number}
@@ -2975,6 +3476,133 @@
 
             previewVideo.timeUpdateHandler = updateTimeDisplay;
             previewVideo.addEventListener('timeupdate', updateTimeDisplay);
+
+            // Add word highlighting handler for karaoke preview
+            previewVideo.wordHighlightHandler = () => {
+                if (karaokeEnabled) {
+                    updatePreviewWordHighlighting(previewVideo.currentTime);
+                }
+
+                // Canvas rendering handler for canvas mode
+                if (canvasMode && canvasRenderer) {
+                    try {
+                        // Try to get text from the editable subtitle element (more reliable)
+                        const editorEl = document.getElementById('subtitle-text');
+                        const previewEl = document.getElementById('subtitle-preview-text');
+
+                        // Debug: check both elements
+                        if (!window.canvasDebugDone) {
+                            console.log('[Canvas] editorEl textContent:', editorEl?.textContent?.substring(0, 50));
+                            console.log('[Canvas] previewEl textContent:', previewEl?.textContent?.substring(0, 50));
+                            window.canvasDebugDone = true;
+                        }
+
+                        // Get text from editor (it's always in DOM)
+                        let subtitleText = editorEl?.innerText?.trim() || '';
+                        let currentCue = null;
+
+                        // If editor is empty, try to get from allThemeCues
+                        if (!subtitleText && allThemeCues && allThemeCues.length > 0) {
+                            const currentTime = previewVideo.currentTime;
+                            currentCue = allThemeCues.find(cue => {
+                                const cueStart = parseTime(cue.start);
+                                const cueEnd = parseTime(cue.end);
+                                return currentTime >= cueStart && currentTime <= cueEnd;
+                            });
+
+                            if (currentCue) {
+                                subtitleText = currentCue.text;
+                            }
+                        }
+
+                        // Debug log when we have subtitles
+                        if (subtitleText && !window.canvasTextLogged) {
+                            console.log('[Canvas] ✓ Found subtitle text:', subtitleText.substring(0, 60));
+                            window.canvasTextLogged = true;
+                        }
+
+                        // Only render if there's actually text to show
+                        if (!subtitleText) {
+                            // No subtitle active - render transparent frame
+                            const canvas = document.getElementById('karaoke-canvas');
+                            const ctx = canvas?.getContext('2d');
+                            if (ctx && canvas) {
+                                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                            }
+                            return;
+                        }
+
+                        // Get the currently highlighted word index from word timestamps (not DOM)
+                        let highlightedWordIndex = -1;
+                        if (wordTimestamps && wordTimestamps.length > 0 && subtitleText) {
+                            const currentTime = previewVideo.currentTime;
+
+                            // Find the global index of the word being spoken
+                            const globalWordIndex = wordTimestamps.findIndex(w =>
+                                currentTime >= w.start && currentTime < w.end
+                            );
+
+                            if (globalWordIndex >= 0 && currentCue) {
+                                // We have a cue from allThemeCues - calculate local word index
+                                const currentCueStart = parseTime(currentCue.start);
+                                const wordsInCurrentCue = subtitleText.split(/\s+/).filter(w => w.length > 0);
+
+                                // Find the first word in wordTimestamps that's in the current cue
+                                const firstWordInCueIndex = wordTimestamps.findIndex(w => w.start >= currentCueStart);
+
+                                // Calculate local index within this subtitle
+                                highlightedWordIndex = globalWordIndex - firstWordInCueIndex;
+
+                                // Clamp to valid range
+                                if (highlightedWordIndex < 0 || highlightedWordIndex >= wordsInCurrentCue.length) {
+                                    highlightedWordIndex = -1;
+                                }
+                            } else if (globalWordIndex >= 0 && !currentCue) {
+                                // Text came from editor, try to match by word text
+                                const wordsInText = subtitleText.split(/\s+/).filter(w => w.length > 0);
+                                const spokenWord = wordTimestamps[globalWordIndex];
+
+                                // Try to find matching word in subtitle text
+                                for (let i = 0; i < wordsInText.length; i++) {
+                                    const cleanWord = wordsInText[i].toLowerCase().replace(/[.,!?;:"']/g, '');
+                                    const cleanSpoken = (spokenWord.word || '').toLowerCase().replace(/[.,!?;:"']/g, '');
+                                    if (cleanWord === cleanSpoken || cleanWord.includes(cleanSpoken) || cleanSpoken.includes(cleanWord)) {
+                                        highlightedWordIndex = i;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        // Debug highlight info
+                        if (subtitleText && !window.canvasHighlightLogged) {
+                            console.log('[Canvas] highlightedWordIndex:', highlightedWordIndex);
+                            window.canvasHighlightLogged = true;
+                        }
+
+                        // Check if the method exists
+                        if (typeof canvasRenderer.renderFrameWithHighlight === 'function') {
+                            canvasRenderer.renderFrameWithHighlight(previewVideo.currentTime, subtitleText, highlightedWordIndex);
+
+                            // Debug: confirm render was called
+                            if (!window.canvasRenderCallLogged) {
+                                console.log('[Canvas] ✓ renderFrameWithHighlight called successfully!');
+                                const canvas = document.getElementById('karaoke-canvas');
+                                console.log('[Canvas] canvas visibility:', canvas.style.display);
+                                console.log('[Canvas] canvas z-index:', window.getComputedStyle(canvas).zIndex);
+                                console.log('[Canvas] video opacity:', previewVideo.style.opacity);
+                                window.canvasRenderCallLogged = true;
+                            }
+                        } else {
+                            console.error('[Canvas] renderFrameWithHighlight method not found, falling back to renderFrame');
+                            canvasRenderer.renderFrame(previewVideo.currentTime, subtitleText);
+                        }
+                    } catch (error) {
+                        console.error('[Canvas] Render error:', error);
+                    }
+                }
+            };
+            previewVideo.addEventListener('timeupdate', previewVideo.wordHighlightHandler);
 
             previewVideo.seekbarHandler = handleSeekbarInput;
             previewSeekbar.addEventListener('input', handleSeekbarInput);
@@ -4328,61 +4956,6 @@
             }
         });
 
-        // Preview button
-        document.getElementById('preview-btn').addEventListener('click', () => {
-            previewVideo.currentTime = startSeconds;
-            previewVideo.play();
-
-            const checkEnd = () => {
-                if (previewVideo.currentTime >= endSeconds) {
-                    previewVideo.pause();
-                    previewVideo.removeEventListener('timeupdate', checkEnd);
-                }
-            };
-            previewVideo.addEventListener('timeupdate', checkEnd);
-        });
-
-        // Save button
-        document.getElementById('save-btn').addEventListener('click', async () => {
-            const messageDiv = document.getElementById('message');
-            messageDiv.textContent = 'Saving...';
-            messageDiv.className = '';
-
-            try {
-                const duration = endSeconds - startSeconds;
-                if (duration < 20) {
-                    throw new Error('Duration must be at least 20 seconds for YouTube Shorts');
-                }
-
-                const updates = {
-                    folder: folderNumber,
-                    theme: themeNumber,
-                    title: themeData.title,
-                    start: formatTime(startSeconds),
-                    end: formatTime(endSeconds)
-                };
-
-                const response = await fetch('/api/update-theme', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(updates)
-                });
-
-                if (!response.ok) throw new Error('Failed to save changes');
-
-                messageDiv.textContent = '✓ Theme updated successfully!';
-                messageDiv.className = 'success';
-
-                setTimeout(() => {
-                    window.close();
-                }, 1500);
-
-            } catch (error) {
-                messageDiv.textContent = '✗ ' + error.message;
-                messageDiv.className = 'error';
-            }
-        });
-
         // Subtitles toggle
         document.getElementById('subtitles-toggle').addEventListener('change', (e) => {
             const track = originalVideo.textTracks[0];
@@ -4403,6 +4976,14 @@
 
         // Karaoke highlighting toggle
         async function toggleKaraoke(enabled) {
+            // Show/hide style controls based on karaoke state
+            const styleControls = document.getElementById('karaoke-style-controls');
+            if (enabled) {
+                styleControls.style.display = 'flex';
+            } else {
+                styleControls.style.display = 'none';
+            }
+
             // If enabling karaoke, check if word timestamps exist
             if (enabled) {
                 try {
@@ -4446,6 +5027,8 @@
                             }
 
                             loadingDiv.innerHTML = '✅ Word timestamps created!<br>Regenerating subtitles with karaoke...';
+                            // Reload word timestamps for preview
+                            await loadWordTimestamps();
                         } catch (error) {
                             loadingDiv.innerHTML = '❌ Failed to create word timestamps:<br>' + error.message;
                             setTimeout(() => {
@@ -4484,12 +5067,8 @@
                 console.error('❌ Error saving karaoke setting:', error);
             }
 
-            // Show loading indicator
-            const loadingDiv = document.getElementById('loading');
-            const contentDiv = document.getElementById('content');
-            loadingDiv.classList.remove('hidden');
-            loadingDiv.textContent = '🎤 Regenerating subtitles with karaoke ' + (enabled ? 'enabled' : 'disabled') + '...';
-            contentDiv.classList.add('hidden');
+            // Show toast and regenerate ASS files with new karaoke setting
+            showToast(`🎤 Regenerating subtitles with karaoke ${enabled ? 'enabled' : 'disabled'}...`, 'info');
 
             // Regenerate ASS files with new karaoke setting
             try {
@@ -4507,19 +5086,446 @@
                     throw new Error('Failed to regenerate ASS');
                 }
 
-                // Reload the page to show updated subtitles
-                window.location.reload();
+                // Show success message
+                showToast(`✅ Karaoke ${enabled ? 'enabled' : 'disabled'} successfully!`, 'success');
+                console.log(`✅ Karaoke ${enabled ? 'enabled' : 'disabled'}, ASS regenerated`);
             } catch (error) {
                 console.error('❌ Error regenerating ASS:', error);
-                loadingDiv.textContent = '❌ Failed to update karaoke setting';
-                setTimeout(() => {
-                    loadingDiv.classList.add('hidden');
-                    contentDiv.classList.remove('hidden');
-                    // Reset toggle on error
-                    document.getElementById('karaoke-toggle').checked = !enabled;
-                }, 2000);
+                showToast('❌ Failed to update karaoke setting', 'error');
+                // Reset toggle on error
+                document.getElementById('karaoke-toggle').checked = !enabled;
             }
         }
+
+        // Regenerate ASS file with current karaoke settings (for mode/font size changes)
+        async function regenerateAssWithCurrentSettings() {
+            console.log('🎤 regenerateAssWithCurrentSettings called, karaokeEnabled:', karaokeEnabled);
+
+            // Only regenerate if karaoke is enabled
+            if (!karaokeEnabled) {
+                console.log('   ⚠️ Karaoke not enabled, skipping regeneration');
+                return;
+            }
+
+            // Show toast message
+            showToast('🎤 Regenerating subtitles with new karaoke settings...', 'info');
+
+            console.log('   📡 Calling /api/regenerate-ass...');
+
+            try {
+                const response = await fetch('/api/regenerate-ass', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        folder: folderNumber,
+                        theme: themeNumber,
+                        karaoke: true
+                    })
+                });
+
+                console.log('   📡 Response status:', response.status);
+
+                if (!response.ok) {
+                    throw new Error('Failed to regenerate ASS');
+                }
+
+                const result = await response.json();
+                console.log('   ✅ Regeneration result:', result);
+
+                // Show success message
+                showToast('✅ Subtitles regenerated successfully!', 'success');
+                console.log('   ✅ ASS file regenerated, no page reload needed');
+            } catch (error) {
+                console.error('❌ Error regenerating ASS:', error);
+                showToast('❌ Failed to update karaoke settings', 'error');
+            }
+        }
+
+        // ============================================
+        // Canvas + FFmpeg Karaoke Export Functions
+        // ============================================
+
+        let ffmpegLoaded = false;
+        let ffmpegInstance = null;
+
+        // Load ffmpeg.wasm library
+        async function loadFFmpeg() {
+            if (ffmpegLoaded && ffmpegInstance) {
+                return ffmpegInstance;
+            }
+
+            // Check for SharedArrayBuffer support
+            if (typeof SharedArrayBuffer === 'undefined') {
+                throw new Error('SharedArrayBuffer is not available. Please ensure the server has COOP/COEP headers set.');
+            }
+
+            showToast('Loading ffmpeg.wasm... (~25MB one-time download)', 'info');
+
+            try {
+                // FFmpeg and fetchFile are globals from the UMD builds
+                const { FFmpeg } = window.FFmpegWASM || { FFmpeg: window.FFmpeg };
+                const FFmpegClass = typeof FFmpeg !== 'undefined' ? FFmpeg : window.FFmpeg;
+                const fetchFileFunc = window.fetchFile;
+
+                ffmpegInstance = new FFmpegClass();
+
+                // Set up logging
+                ffmpegInstance.on('log', ({ message }) => {
+                    console.log('FFmpeg:', message);
+                });
+
+                ffmpegInstance.on('progress', ({ progress, time }) => {
+                    const percent = Math.round(progress * 100) || Math.round((time / 1000000) * 100);
+                    // Only show progress occasionally to avoid spam
+                    if (percent % 10 === 0 || percent > 95) {
+                        showToast(`FFmpeg encoding: ${percent}%`, 'info');
+                    }
+                });
+
+                // Load ffmpeg.wasm core
+                await ffmpegInstance.load({
+                    coreURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js',
+                });
+
+                ffmpegLoaded = true;
+                showToast('ffmpeg.wasm loaded successfully!', 'success');
+                return ffmpegInstance;
+
+            } catch (error) {
+                console.error('Failed to load ffmpeg.wasm:', error);
+                showToast('Failed to load ffmpeg.wasm: ' + error.message, 'error');
+                throw error;
+            }
+        }
+
+        // Generate frames from canvas
+        async function generateCanvasFrames(canvas, themeStart, themeEnd) {
+            const frames = [];
+            const fps = 30;
+            const duration = themeEnd - themeStart;
+            const totalFrames = Math.floor(duration * fps);
+
+            const previewVideo = document.getElementById('preview-video');
+
+            // Fetch subtitle cues for this theme to get proper text at each time point
+            let subtitleCues = [];
+            try {
+                const response = await fetch(`/api/theme-subtitles/${folderNumber}/${themeNumber}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    subtitleCues = data.cues || [];
+                }
+            } catch (error) {
+                console.warn('Could not fetch subtitle cues:', error);
+            }
+
+            // Helper function to get subtitle text at a given time
+            function getSubtitleTextAtTime(time) {
+                for (const cue of subtitleCues) {
+                    if (time >= cue.start && time <= cue.end) {
+                        return cue.text;
+                    }
+                }
+                return '';
+            }
+
+            // Helper function to seek video and wait for frame to be ready
+            function seekVideoAndWait(time) {
+                return new Promise((resolve) => {
+                    const onSeeked = () => {
+                        previewVideo.removeEventListener('seeked', onSeeked);
+                        // Small delay to ensure frame is rendered
+                        setTimeout(resolve, 50);
+                    };
+                    previewVideo.addEventListener('seeked', onSeeked);
+                    previewVideo.currentTime = time;
+                });
+            }
+
+            // Ensure canvas renderer is initialized
+            if (!canvasRenderer) {
+                const settings = {
+                    mode: document.getElementById('karaoke-mode')?.value || 'normal',
+                    fontSize: parseInt(document.getElementById('subtitle-size')?.value || '48'),
+                    textColor: document.getElementById('highlight-text-color')?.value || '#ffff00',
+                    past_color: document.getElementById('past-color')?.value || '#808080',
+                    font_name: document.getElementById('subtitle-font')?.value || 'Arial',
+                    font_weight: document.getElementById('highlight-font-weight')?.value || 'bold'
+                };
+                canvasRenderer = new KaraokeCanvasRenderer(canvas, previewVideo, wordTimestamps, settings);
+            }
+
+            // Store current video time to restore later
+            const originalTime = previewVideo.currentTime;
+            const wasPaused = previewVideo.paused;
+
+            // Pause video for frame generation
+            previewVideo.pause();
+
+            for (let frame = 0; frame < totalFrames; frame++) {
+                const currentTime = themeStart + (frame / fps);
+
+                // Seek video to this time
+                await seekVideoAndWait(currentTime);
+
+                // Get subtitle text for this specific time
+                const subtitleText = getSubtitleTextAtTime(currentTime);
+
+                // Render frame (video is now at correct time)
+                canvasRenderer.renderFrame(currentTime, subtitleText);
+
+                // Capture frame as ArrayBuffer
+                const blob = await new Promise(resolve => {
+                    canvas.toBlob(resolve, 'image/png');
+                });
+
+                frames.push(await blob.arrayBuffer());
+
+                // Show progress every 30 frames
+                if (frame % 30 === 0) {
+                    const progress = ((frame + 1) / totalFrames) * 100;
+                    showToast(`Generating frames: ${progress.toFixed(0)}%`, 'info');
+
+                    // Allow UI to update
+                    await new Promise(resolve => setTimeout(resolve, 0));
+                }
+            }
+
+            // Restore video state
+            await seekVideoAndWait(originalTime);
+            if (!wasPaused) {
+                previewVideo.play();
+            }
+
+            return frames;
+        }
+
+        // Export canvas karaoke video - generate frames client-side, encode server-side
+        async function exportCanvasKaraokeVideo() {
+            const previewVideo = document.getElementById('preview-video');
+
+            if (!previewVideo) {
+                showToast('Preview video not found', 'error');
+                return;
+            }
+
+            // Check if word timestamps exist
+            if (!wordTimestamps || wordTimestamps.length === 0) {
+                showToast('No word timestamps available. Please enable karaoke first.', 'error');
+                return;
+            }
+
+            // Get theme timing
+            const themeStart = parseFloat(previewVideo.dataset.themeStart);
+            const themeEnd = parseFloat(previewVideo.dataset.themeEnd);
+            const duration = themeEnd - themeStart;
+
+            if (!duration || duration <= 0) {
+                showToast('Invalid theme duration', 'error');
+                return;
+            }
+
+            try {
+                // Get settings
+                const settings = {
+                    mode: document.getElementById('karaoke-mode')?.value || 'normal',
+                    fontSize: parseInt(document.getElementById('subtitle-size')?.value || '48'),
+                    textColor: document.getElementById('highlight-text-color')?.value || '#ffff00',
+                    pastColor: document.getElementById('past-color')?.value || '#808080',
+                    fontName: document.getElementById('subtitle-font')?.value || 'Arial',
+                    fontWeight: document.getElementById('highlight-font-weight')?.value || 'bold'
+                };
+
+                // Start export (returns immediately with job_id)
+                const startResponse = await fetch('/api/encode-canvas-karaoke', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        folder: folderNumber,
+                        theme: themeNumber,
+                        settings: settings
+                    })
+                });
+
+                if (!startResponse.ok) {
+                    const error = await startResponse.json();
+                    throw new Error(error.error || 'Failed to start export');
+                }
+
+                const startResult = await startResponse.json();
+                const jobId = startResult.job_id;
+
+                // Show progress toast
+                const progressToast = document.createElement('div');
+                progressToast.className = 'karaoke-toast';
+                progressToast.id = 'export-progress-toast';
+                progressToast.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #333; color: white; padding: 15px 20px; border-radius: 8px; z-index: 10000; max-width: 400px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); border-left: 4px solid #2196F3;';
+                progressToast.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div class="spinner" style="width: 20px; height: 20px; border: 2px solid #ffffff33; border-top-color: #2196F3; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                        <div style="flex: 1;">
+                            <div style="font-weight: 600; margin-bottom: 4px;">🎬 Rendering Canvas Karaoke</div>
+                            <div id="export-stage" style="font-size: 12px; opacity: 0.8;">Starting...</div>
+                            <div style="background: rgba(255,255,255,0.1); height: 4px; border-radius: 2px; margin-top: 8px; overflow: hidden;">
+                                <div id="export-progress-bar" style="background: #2196F3; height: 100%; width: 0%; transition: width 0.3s;"></div>
+                            </div>
+                            <div id="export-progress-text" style="font-size: 11px; opacity: 0.6; margin-top: 4px;">0%</div>
+                        </div>
+                    </div>
+                    <style>
+                        @keyframes spin { to { transform: rotate(360deg); } }
+                    </style>
+                `;
+                document.body.appendChild(progressToast);
+
+                // Poll for progress
+                const pollInterval = setInterval(async () => {
+                    try {
+                        const progressResponse = await fetch(`/api/canvas-karaoke-progress/${jobId}`);
+                        if (!progressResponse.ok) {
+                            clearInterval(pollInterval);
+                            throw new Error('Failed to get progress');
+                        }
+
+                        const progressData = await progressResponse.json();
+
+                        // Update progress display
+                        const stageEl = document.getElementById('export-stage');
+                        const progressTextEl = document.getElementById('export-progress-text');
+                        const progressBarEl = document.getElementById('export-progress-bar');
+
+                        if (stageEl) {
+                            stageEl.textContent = progressData.message || progressData.stage;
+                        }
+                        if (progressTextEl) {
+                            progressTextEl.textContent = `${Math.round(progressData.progress)}%`;
+                        }
+                        if (progressBarEl) {
+                            progressBarEl.style.width = `${Math.max(0, Math.min(100, progressData.progress))}%`;
+                        }
+
+                        // Check if complete or error
+                        if (progressData.complete) {
+                            clearInterval(pollInterval);
+                            if (progressToast) progressToast.remove();
+
+                            showToast(`✅ Export complete!`, 'success');
+                            showToast(`📁 Saved to: ${progressData.output_path}`, 'success');
+
+                            // Provide download link
+                            setTimeout(() => {
+                                const link = document.createElement('a');
+                                link.href = `/api/download-canvas-karaoke/${folderNumber}/${themeNumber}`;
+                                link.download = `theme_${themeNumber}_canvas_karaoke.mp4`;
+                                link.textContent = '⬇️ Click here to download';
+                                link.style.display = 'block';
+                                link.style.textAlign = 'center';
+                                link.style.marginTop = '10px';
+                                link.style.color = '#4CAF50';
+                                link.style.textDecoration = 'none';
+                                link.style.padding = '10px';
+                                link.style.background = 'rgba(76, 175, 80, 0.1)';
+                                link.style.borderRadius = '4px';
+
+                                const container = document.querySelector('.karaoke-toast:last-child');
+                                if (container) {
+                                    container.appendChild(link);
+                                }
+                            }, 1000);
+                        } else if (progressData.error) {
+                            clearInterval(pollInterval);
+                            if (progressToast) progressToast.remove();
+                            throw new Error(progressData.error);
+                        }
+
+                    } catch (error) {
+                        clearInterval(pollInterval);
+                        if (progressToast) progressToast.remove();
+                        console.error('Progress polling error:', error);
+                    }
+                }, 500);  // Poll every 500ms
+
+            } catch (error) {
+                console.error('Export error:', error);
+                showToast('Export failed: ' + error.message, 'error');
+            }
+        }
+
+        // Export button event listener
+        document.getElementById('export-canvas-video')?.addEventListener('click', exportCanvasKaraokeVideo);
+
+        // Toast notification system
+        function showToast(message, type = 'info') {
+            // Remove existing toast if any
+            const existingToast = document.querySelector('.karaoke-toast');
+            if (existingToast) {
+                existingToast.remove();
+            }
+
+            // Create toast element
+            const toast = document.createElement('div');
+            toast.className = 'karaoke-toast';
+            toast.textContent = message;
+
+            // Style based on type
+            const styles = {
+                info: { background: '#2196F3', icon: 'ℹ️' },
+                success: { background: '#4CAF50', icon: '✅' },
+                error: { background: '#f44336', icon: '❌' }
+            };
+
+            const style = styles[type] || styles.info;
+            toast.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: ${style.background};
+                color: white;
+                padding: 16px 24px;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                z-index: 10000;
+                font-size: 14px;
+                font-weight: 500;
+                animation: slideIn 0.3s ease-out;
+                max-width: 400px;
+            `;
+
+            // Add to page
+            document.body.appendChild(toast);
+
+            // Auto-remove after 3 seconds
+            setTimeout(() => {
+                toast.style.animation = 'slideOut 0.3s ease-out';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // Add CSS for toast animations
+        const toastStyle = document.createElement('style');
+        toastStyle.textContent = `
+            @keyframes slideIn {
+                from {
+                    transform: translateX(100%);
+                    opacity: 0;
+                }
+                to {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+            }
+            @keyframes slideOut {
+                from {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+                to {
+                    transform: translateX(100%);
+                    opacity: 0;
+                }
+            }
+        `;
+        document.head.appendChild(toastStyle);
 
         document.getElementById('karaoke-toggle').addEventListener('change', async (e) => {
             await toggleKaraoke(e.target.checked);
@@ -4545,6 +5551,19 @@
                     document.getElementById('karaoke-toggle').checked = karaokeEnabled;
                     console.log('🎤 Karaoke setting loaded:', karaokeEnabled ? 'ENABLED' : 'DISABLED',
                                wordTimestampsExist ? '(word timestamps exist)' : '(no word timestamps)');
+
+                    // Show/hide style controls based on karaoke state
+                    const styleControls = document.getElementById('karaoke-style-controls');
+                    console.log('Karaoke enabled:', karaokeEnabled, 'styleControls element:', styleControls, 'current display:', styleControls?.style.display);
+                    if (karaokeEnabled) {
+                        styleControls.style.display = 'flex';
+                        console.log('✅ Karaoke style controls shown, display is now:', styleControls.style.display);
+                        // Load the saved highlight style
+                        await loadHighlightStyle();
+                    } else {
+                        styleControls.style.display = 'none';
+                        console.log('❌ Karaoke style controls hidden');
+                    }
                 }
             } catch (error) {
                 console.warn('⚠️ Could not load karaoke setting, using default (disabled)');
@@ -4552,6 +5571,489 @@
                 document.getElementById('karaoke-toggle').checked = false;
             }
         }
+
+        // Load word timestamps for preview karaoke highlighting
+        async function loadWordTimestamps() {
+            if (wordTimestamps !== null) {
+                return wordTimestamps; // Already loaded
+            }
+
+            try {
+                const response = await fetch(`/api/word-timestamps/${folderNumber}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    wordTimestamps = data.words || [];
+                    console.log(`📝 Loaded ${wordTimestamps.length} word timestamps for preview`);
+                    return wordTimestamps;
+                }
+            } catch (error) {
+                console.warn('⚠️ Could not load word timestamps:', error);
+            }
+
+            wordTimestamps = [];
+            return wordTimestamps;
+        }
+
+        // Update word highlighting in preview based on current video time
+        // This uses a POSITIONAL approach, not text matching:
+        // - Counts how many word timestamps occur during the current subtitle
+        // - Highlights the Nth word in the subtitle based on that count
+        // - Works regardless of language mismatches between audio and subtitles
+        let lastSubtitleText = ''; // Track subtitle changes
+        let subtitleWordCount = 0; // How many words have been spoken during current subtitle
+        let lastProcessedWordIndex = -1; // Last word timestamp index we processed
+
+        async function updatePreviewWordHighlighting(currentTime) {
+            // Only highlight if karaoke is enabled and word timestamps exist
+            if (!karaokeEnabled || !wordTimestamps || wordTimestamps.length === 0) {
+                return;
+            }
+
+            // Get current subtitle text from the text element
+            const textEl = document.getElementById('subtitle-preview-text');
+            if (!textEl || !textEl.textContent.trim()) {
+                return;
+            }
+
+            const subtitleText = textEl.textContent.trim();
+
+            // Reset counter when subtitle changes
+            if (lastSubtitleText !== subtitleText) {
+                lastSubtitleText = subtitleText;
+                subtitleWordCount = 0;
+                lastProcessedWordIndex = -1;
+                // Remove all highlights when subtitle changes
+                document.querySelectorAll('.word-highlight').forEach(el => {
+                    el.classList.remove('word-highlight');
+                });
+            }
+
+            // Find the word currently being spoken based on time
+            const currentSpokenWordIndex = wordTimestamps.findIndex(w =>
+                currentTime >= w.start && currentTime < w.end
+            );
+
+            // No word being spoken right now
+            if (currentSpokenWordIndex === -1) {
+                return;
+            }
+
+            // Only process if this is a new word we haven't processed yet
+            if (currentSpokenWordIndex > lastProcessedWordIndex) {
+                // Count how many words have been spoken during this subtitle
+                // Find the first word timestamp that occurred during this subtitle
+                // For simplicity: we just increment our counter each time we get a new word
+                subtitleWordCount++;
+                lastProcessedWordIndex = currentSpokenWordIndex;
+
+                // Remove previous highlight
+                document.querySelectorAll('.word-highlight').forEach(el => {
+                    el.classList.remove('word-highlight');
+                });
+
+                // Wrap words in spans if not already done
+                if (!textEl.innerHTML.includes('data-word-index')) {
+                    const words = subtitleText.split(/\s+/);
+                    const wrappedHTML = words.map((w, i) => {
+                        return `<span class="word-span" data-word-index="${i}">${w}</span>`;
+                    }).join(' ');
+                    textEl.innerHTML = wrappedHTML;
+                }
+
+                // Get all word elements
+                const wordElements = textEl.querySelectorAll('.word-span');
+
+                // Highlight the word at position = subtitleWordCount (1-based to 0-based)
+                const targetIndex = subtitleWordCount - 1;
+                if (targetIndex >= 0 && targetIndex < wordElements.length) {
+                    wordElements[targetIndex].classList.add('word-highlight');
+                }
+            }
+        }
+
+        // Add CSS for word highlighting (using CSS variables for dynamic updates)
+        const style = document.createElement('style');
+        style.id = 'highlight-style';
+        style.textContent = `
+            .word-highlight {
+                color: var(--highlight-text-color, #ffff00) !important;
+                text-shadow: 0 0 var(--highlight-glow-blur, 10px) var(--highlight-glow-color, rgba(255, 255, 0, 0.8));
+                font-weight: var(--highlight-font-weight, bold);
+                transition: all 0.1s ease-in-out;
+            }
+        `;
+        document.head.appendChild(style);
+
+        // Update highlight style dynamically
+        function updateHighlightStyle() {
+            const textColor = document.getElementById('highlight-text-color').value;
+            const glowColor = document.getElementById('highlight-glow-color').value;
+            const glowBlur = document.getElementById('highlight-glow-blur').value;
+            const fontWeight = document.getElementById('highlight-font-weight').value;
+
+            // Convert hex glow color to rgba with opacity
+            const r = parseInt(glowColor.slice(1, 3), 16);
+            const g = parseInt(glowColor.slice(3, 5), 16);
+            const b = parseInt(glowColor.slice(5, 7), 16);
+            const glowColorRgba = `rgba(${r}, ${g}, ${b}, 0.8)`;
+
+            // Update CSS variables on the root
+            document.documentElement.style.setProperty('--highlight-text-color', textColor);
+            document.documentElement.style.setProperty('--highlight-glow-color', glowColorRgba);
+            document.documentElement.style.setProperty('--highlight-glow-blur', glowBlur + 'px');
+            document.documentElement.style.setProperty('--highlight-font-weight', fontWeight);
+
+            // Update blur value display
+            document.getElementById('highlight-glow-blur-value').textContent = glowBlur + 'px';
+        }
+
+        // Save highlight style to server
+        async function saveHighlightStyle() {
+            // Convert font scale from percentage to decimal
+            const fontScalePercent = parseInt(document.getElementById('font-size-scale').value);
+            const fontScaleDecimal = fontScalePercent / 100;
+
+            const styleData = {
+                folder: folderNumber,
+                preset: document.getElementById('highlight-preset').value,
+                textColor: document.getElementById('highlight-text-color').value,
+                glowColor: document.getElementById('highlight-glow-color').value,
+                glowBlur: document.getElementById('highlight-glow-blur').value,
+                fontWeight: document.getElementById('highlight-font-weight').value,
+                // Karaoke mode settings
+                karaokeMode: document.getElementById('karaoke-mode').value,
+                fontSizeScale: fontScaleDecimal,
+                pastColor: document.getElementById('past-color').value
+            };
+
+            try {
+                const response = await fetch('/api/save-highlight-style', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(styleData)
+                });
+
+                if (!response.ok) {
+                    console.warn('⚠️ Failed to save highlight style');
+                }
+            } catch (error) {
+                console.error('❌ Error saving highlight style:', error);
+            }
+        }
+
+        // Load highlight style from server
+        async function loadHighlightStyle() {
+            try {
+                const response = await fetch(`/api/get-highlight-style?folder=${folderNumber}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.style) {
+                        // Apply loaded style to inputs
+                        document.getElementById('highlight-text-color').value = data.style.textColor || '#ffff00';
+                        document.getElementById('highlight-glow-color').value = data.style.glowColor || '#ffff00';
+                        document.getElementById('highlight-glow-blur').value = data.style.glowBlur || '10';
+                        document.getElementById('highlight-font-weight').value = data.style.fontWeight || 'bold';
+
+                        // Load karaoke mode settings
+                        document.getElementById('karaoke-mode').value = data.style.karaoke_mode || 'normal';
+
+                        // Convert font scale from decimal to percentage
+                        const fontScaleDecimal = data.style.font_size_scale !== undefined ? data.style.font_size_scale : 1.0;
+                        const fontScalePercent = Math.round(fontScaleDecimal * 100);
+                        document.getElementById('font-size-scale').value = fontScalePercent;
+                        document.getElementById('font-scale-value').textContent = fontScalePercent + '%';
+
+                        // Load past color
+                        document.getElementById('past-color').value = data.style.past_color || '#808080';
+
+                        // Use saved preset if available, otherwise try to match
+                        if (data.style.preset && highlightPresets[data.style.preset]) {
+                            document.getElementById('highlight-preset').value = data.style.preset;
+                        } else {
+                            // Check if loaded style matches any preset
+                            let matchedPreset = 'custom';
+                            for (const [presetName, presetValues] of Object.entries(highlightPresets)) {
+                                if (data.style.textColor === presetValues.textColor &&
+                                    data.style.glowColor === presetValues.glowColor &&
+                                    data.style.glowBlur === presetValues.glowBlur &&
+                                    data.style.fontWeight === presetValues.fontWeight) {
+                                    matchedPreset = presetName;
+                                    break;
+                                }
+                            }
+                            document.getElementById('highlight-preset').value = matchedPreset;
+                        }
+
+                        // Update the actual CSS
+                        updateHighlightStyle();
+                    }
+                }
+            } catch (error) {
+                console.warn('⚠️ Could not load highlight style, using defaults');
+            }
+        }
+
+        // Reset highlight style to defaults
+        function resetHighlightStyle() {
+            document.getElementById('highlight-text-color').value = '#ffff00';
+            document.getElementById('highlight-glow-color').value = '#ffff00';
+            document.getElementById('highlight-glow-blur').value = '10';
+            document.getElementById('highlight-font-weight').value = 'bold';
+            document.getElementById('highlight-preset').value = 'yellow-glow';
+            document.getElementById('karaoke-mode').value = 'normal';
+            document.getElementById('font-size-scale').value = '100';
+            document.getElementById('font-scale-value').textContent = '100%';
+            document.getElementById('past-color').value = '#808080';
+            updateHighlightStyle();
+            saveHighlightStyle();
+        }
+
+        // Preset style definitions
+        const highlightPresets = {
+            'yellow-glow': { textColor: '#ffff00', glowColor: '#ffff00', glowBlur: '10', fontWeight: 'bold' },
+            'red-bold': { textColor: '#ff3333', glowColor: '#ff0000', glowBlur: '8', fontWeight: 'bold' },
+            'cyan-neon': { textColor: '#00ffff', glowColor: '#00ffff', glowBlur: '20', fontWeight: 'bold' },
+            'green-underline': { textColor: '#00ff00', glowColor: '#00ff00', glowBlur: '12', fontWeight: 'bold' },
+            'pink-soft': { textColor: '#ff69b4', glowColor: '#ff1493', glowBlur: '15', fontWeight: '500' },
+            'orange-fire': { textColor: '#ff8c00', glowColor: '#ff4500', glowBlur: '18', fontWeight: 'bold' },
+            'white-clean': { textColor: '#ffffff', glowColor: '#ffffff', glowBlur: '5', fontWeight: 'normal' },
+            'purple-vibe': { textColor: '#da70d6', glowColor: '#9932cc', glowBlur: '16', fontWeight: 'bold' }
+        };
+
+        // Apply preset style
+        function applyPresetStyle(presetName) {
+            if (presetName === 'custom') return; // Don't change if custom is selected
+
+            const preset = highlightPresets[presetName];
+            if (preset) {
+                document.getElementById('highlight-text-color').value = preset.textColor;
+                document.getElementById('highlight-glow-color').value = preset.glowColor;
+                document.getElementById('highlight-glow-blur').value = preset.glowBlur;
+                document.getElementById('highlight-font-weight').value = preset.fontWeight;
+                updateHighlightStyle();
+                saveHighlightStyle();
+            }
+        }
+
+        // Setup event listeners for karaoke controls
+        console.log('🎤 Setting up karaoke control event listeners...');
+
+        const karaokeModeSelect = document.getElementById('karaoke-mode');
+        const fontSizeScaleInput = document.getElementById('font-size-scale');
+        const pastColorInput = document.getElementById('past-color');
+
+        if (karaokeModeSelect) {
+            console.log('   ✓ karaoke-mode element found');
+        } else {
+            console.error('   ✗ karaoke-mode element NOT found!');
+        }
+
+        if (fontSizeScaleInput) {
+            console.log('   ✓ font-size-scale element found');
+        } else {
+            console.error('   ✗ font-size-scale element NOT found!');
+        }
+
+        if (pastColorInput) {
+            console.log('   ✓ past-color element found');
+        } else {
+            console.error('   ✗ past-color element NOT found!');
+        }
+
+        // Add event listeners for new karaoke controls
+        // These controls affect ASS generation, so they need to regenerate the ASS file
+        document.getElementById('karaoke-mode').addEventListener('change', async (e) => {
+            console.log('🎤 Karaoke mode changed to:', e.target.value);
+            await saveHighlightStyle();
+            await regenerateAssWithCurrentSettings();
+        });
+        document.getElementById('font-size-scale').addEventListener('change', async (e) => {
+            const percent = e.target.value;
+            console.log('🎤 Font size scale changed to:', percent + '%');
+            document.getElementById('font-scale-value').textContent = percent + '%';
+            await saveHighlightStyle();
+            await regenerateAssWithCurrentSettings();
+        });
+        document.getElementById('past-color').addEventListener('change', async (e) => {
+            console.log('🎤 Past color changed to:', e.target.value);
+            await saveHighlightStyle();
+            await regenerateAssWithCurrentSettings();
+        });
+
+        // Add event listeners for style controls
+        document.getElementById('highlight-preset').addEventListener('change', (e) => {
+            applyPresetStyle(e.target.value);
+        });
+
+        document.getElementById('highlight-text-color').addEventListener('input', () => {
+            document.getElementById('highlight-preset').value = 'custom';
+            updateHighlightStyle();
+            saveHighlightStyle();
+        });
+        document.getElementById('highlight-glow-color').addEventListener('input', () => {
+            document.getElementById('highlight-preset').value = 'custom';
+            updateHighlightStyle();
+            saveHighlightStyle();
+        });
+        document.getElementById('highlight-glow-blur').addEventListener('input', () => {
+            document.getElementById('highlight-preset').value = 'custom';
+            updateHighlightStyle();
+            saveHighlightStyle();
+        });
+        document.getElementById('highlight-font-weight').addEventListener('change', () => {
+            document.getElementById('highlight-preset').value = 'custom';
+            updateHighlightStyle();
+            saveHighlightStyle();
+        });
+        document.getElementById('reset-highlight-style').addEventListener('click', resetHighlightStyle);
+
+        // Canvas mode toggle button
+        document.getElementById('toggle-canvas-mode').addEventListener('click', async () => {
+            canvasMode = !canvasMode;
+            const btn = document.getElementById('toggle-canvas-mode');
+            const canvas = document.getElementById('karaoke-canvas');
+            const canvasIndicator = document.getElementById('canvas-mode-indicator');
+            const previewVideo = document.getElementById('preview-video');
+            const subtitleOverlay = document.getElementById('subtitle-overlay');
+
+            if (canvasMode) {
+                // Enable canvas mode
+                btn.textContent = 'Canvas Preview: ON';
+                btn.style.background = '#4CAF50';
+
+                // Set canvas to match the video wrapper's actual pixel size
+                const wrapper = canvas.parentElement;
+                const rect = wrapper.getBoundingClientRect();
+                canvas.width = rect.width;
+                canvas.height = rect.height;
+
+                console.log('[Canvas] Canvas size set to:', canvas.width, 'x', canvas.height, 'wrapper rect:', rect);
+
+                // Show canvas overlay (video remains visible underneath)
+                canvas.style.display = 'block';
+                canvasIndicator.style.display = 'block';
+                subtitleOverlay.style.display = 'none';
+
+                // Remove VTT track element completely (most aggressive hiding)
+                const trackElements = previewVideo.querySelectorAll('track');
+                trackElements.forEach(track => {
+                    track.remove();
+                    console.log('[Canvas] Removed track element:', track.src);
+                });
+
+                // Disable ALL VTT subtitles tracks
+                console.log('[Canvas] Disabling VTT tracks, total tracks:', previewVideo.textTracks?.length);
+                if (previewVideo.textTracks) {
+                    for (let i = 0; i < previewVideo.textTracks.length; i++) {
+                        const track = previewVideo.textTracks[i];
+                        console.log('[Canvas] Disabling track', i, 'kind:', track.kind, 'mode was:', track.mode);
+                        track.mode = 'disabled';
+                    }
+                }
+
+                // Also add a class to the video to hide VTT cues via CSS
+                previewVideo.classList.add('canvas-mode-active');
+
+                // Initialize canvas renderer
+                if (!canvasRenderer) {
+                    // Make sure word timestamps are loaded
+                    await loadWordTimestamps();
+
+                    const canvasEl = document.getElementById('karaoke-canvas');
+                    const settings = {
+                        mode: document.getElementById('karaoke-mode')?.value || 'normal',
+                        fontSize: parseInt(document.getElementById('subtitle-size')?.value || '48'),
+                        textColor: document.getElementById('highlight-text-color')?.value || '#ffff00',
+                        past_color: document.getElementById('past-color')?.value || '#808080',
+                        font_name: document.getElementById('subtitle-font')?.value || 'Arial',
+                        font_weight: document.getElementById('highlight-font-weight')?.value || 'bold'
+                    };
+
+                    console.log('Canvas renderer: wordTimestamps =', wordTimestamps ? wordTimestamps.length : 0, 'words');
+                    canvasRenderer = new KaraokeCanvasRenderer(canvasEl, previewVideo, wordTimestamps, settings);
+                    console.log('✅ Canvas renderer initialized');
+                }
+
+                // Render initial frame - get text from editor and highlighted word index
+                if (canvasRenderer && previewVideo) {
+                    const editorEl = document.getElementById('subtitle-text');
+
+                    // Try to get text from editor first, if empty, find current cue from allThemeCues
+                    let subtitleText = editorEl?.innerText?.trim() || '';
+
+                    if (!subtitleText && allThemeCues && allThemeCues.length > 0) {
+                        const currentTime = previewVideo.currentTime;
+                        console.log('[Canvas Init] Looking for cue at time:', currentTime);
+
+                        // Find the current subtitle cue based on video time
+                        const currentCue = allThemeCues.find(cue => {
+                            const cueStart = parseTime(cue.start);
+                            const cueEnd = parseTime(cue.end);
+                            const match = currentTime >= cueStart && currentTime <= cueEnd;
+                            if (match) {
+                                console.log('[Canvas Init] Cue match:', { cueStart, cueEnd, currentTime, text: cue.text.substring(0, 30) });
+                            }
+                            return match;
+                        });
+
+                        if (currentCue) {
+                            subtitleText = currentCue.text;
+                            console.log('[Canvas Init] Found cue from allThemeCues:', currentCue);
+                        } else {
+                            // Find the nearest cue for debugging
+                            const nearestCue = allThemeCues.find(cue => {
+                                const cueStart = parseTime(cue.start);
+                                return cueStart > currentTime - 5 && cueStart < currentTime + 5;
+                            });
+                            console.log('[Canvas Init] No cue found at current time, nearest:', nearestCue);
+                        }
+                    }
+
+                    console.log('[Canvas Init] subtitleText:', subtitleText);
+                    console.log('[Canvas Init] editorEl:', editorEl);
+                    console.log('[Canvas Init] canvas size:', canvas.width, 'x', canvas.height);
+
+                    // Get highlighted word index from DOM (if any)
+                    const previewEl = document.getElementById('subtitle-preview-text');
+                    let highlightedWordIndex = -1;
+                    const highlightedSpans = previewEl?.querySelectorAll('.word-highlight');
+                    if (highlightedSpans && highlightedSpans.length > 0) {
+                        highlightedWordIndex = parseInt(highlightedSpans[0].dataset.wordIndex || '-1');
+                    }
+
+                    console.log('[Canvas Init] highlightedWordIndex:', highlightedWordIndex);
+
+                    // Use renderFrameWithHighlight for preview (transparent canvas)
+                    canvasRenderer.renderFrameWithHighlight(previewVideo.currentTime, subtitleText, highlightedWordIndex);
+                    console.log('[Canvas Init] renderFrameWithHighlight called');
+                }
+
+                showToast('Canvas mode enabled', 'success');
+            } else {
+                // Disable canvas mode
+                btn.textContent = 'Canvas Preview: OFF';
+                btn.style.background = '#2196F3';
+
+                // Show video, hide canvas
+                canvas.style.display = 'none';
+                canvasIndicator.style.display = 'none';
+                previewVideo.style.opacity = '1';
+                subtitleOverlay.style.display = 'block';
+
+                // Remove canvas mode class to show VTT again
+                previewVideo.classList.remove('canvas-mode-active');
+
+                // Re-enable VTT subtitles tracks
+                console.log('[Canvas] Re-enabling VTT tracks');
+                if (previewVideo.textTracks) {
+                    for (let i = 0; i < previewVideo.textTracks.length; i++) {
+                        previewVideo.textTracks[i].mode = 'showing';
+                    }
+                }
+
+                showToast('Canvas mode disabled', 'info');
+            }
+        });
 
         // Lock video controls button
         document.getElementById('lock-video-btn').addEventListener('click', () => {
@@ -4865,6 +6367,8 @@
                 setPositionMode('global'); // Default to global mode
                 // Load karaoke setting
                 loadKaraokeSetting();
+                // Load word timestamps for preview highlighting
+                loadWordTimestamps();
             });
         } else {
             document.getElementById('loading').classList.add('hidden');

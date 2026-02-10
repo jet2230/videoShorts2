@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Dict, List
 import configparser
 from datetime import datetime
+import json
 
 from shorts_creator import YouTubeShortsCreator, load_settings
 
@@ -44,6 +45,14 @@ app_logger.addHandler(console_handler)
 app = Flask(__name__, static_folder='static')
 CORS(app)
 
+# Required for SharedArrayBuffer (ffmpeg.wasm support)
+@app.after_request
+def set_headers(response):
+    """Set security headers required for SharedArrayBuffer (ffmpeg.wasm)."""
+    response.headers['Cross-Origin-Embedder-Policy'] = 'require-corp'
+    response.headers['Cross-Origin-Opener-Policy'] = 'same-origin'
+    return response
+
 # Global state
 creator = YouTubeShortsCreator()
 settings = load_settings()
@@ -52,6 +61,10 @@ settings = load_settings()
 tasks: Dict[str, Dict] = {}
 task_counter = 0
 task_lock = threading.Lock()
+
+# Canvas karaoke export progress tracking
+canvas_karaoke_progress: Dict[str, Dict] = {}
+canvas_karaoke_lock = threading.Lock()
 
 
 class OutputCapture:
@@ -894,7 +907,6 @@ def get_all_subtitles(folder_number: str):
 @app.route('/api/save-subtitle-formatting', methods=['POST'])
 def save_subtitle_formatting():
     """Save subtitle formatting metadata for a theme."""
-    import json
     data = request.json
     folder_number = data.get('folder')
     theme_number = data.get('theme')
@@ -939,7 +951,6 @@ def save_subtitle_formatting():
 @app.route('/api/subtitle-formatting/<folder_number>/<theme_number>', methods=['GET'])
 def get_subtitle_formatting(folder_number: str, theme_number: str):
     """Get subtitle formatting metadata for a theme."""
-    import json
 
     base_dir = Path(settings.get('video', 'output_dir'))
     folder = None
@@ -1821,7 +1832,6 @@ def check_word_timestamps():
     if exists:
         try:
             with open(word_timestamps_file, 'r') as f:
-                import json
                 data = json.load(f)
                 video_duration = data.get('duration')
         except:
@@ -2004,6 +2014,80 @@ def get_karaoke_setting():
     return jsonify({'enabled': True})
 
 
+@app.route('/api/save-highlight-style', methods=['POST'])
+def save_highlight_style():
+    """Save highlight style settings to JSON file."""
+    import re
+    data = request.json
+    folder_number = data.get('folder')
+    style_data = {
+        'preset': data.get('preset', 'yellow-glow'),
+        'textColor': data.get('textColor', '#ffff00'),
+        'glowColor': data.get('glowColor', '#ffff00'),
+        'glowBlur': data.get('glowBlur', '10'),
+        'fontWeight': data.get('fontWeight', 'bold'),
+        # Karaoke mode settings
+        'karaoke_mode': data.get('karaokeMode', 'normal'),
+        'font_size_scale': data.get('fontSizeScale', 1.0),
+        'past_color': data.get('pastColor', None)
+    }
+
+    if not folder_number:
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    # Find the folder
+    base_dir = Path(settings.get('video', 'output_dir'))
+    folder = None
+    for f in base_dir.iterdir():
+        if f.is_dir() and f.name.startswith(f"{folder_number}_"):
+            folder = f
+            break
+
+    if not folder:
+        return jsonify({'error': 'Folder not found'}), 404
+
+    # Path to highlight style file (saved in parent folder, applies to all themes)
+    style_file = folder / 'highlight_style.json'
+
+    # Save as JSON
+    with open(style_file, 'w', encoding='utf-8') as f:
+        json.dump(style_data, f, indent=2)
+
+    return jsonify({'success': True, 'style': style_data})
+
+
+@app.route('/api/get-highlight-style', methods=['GET'])
+def get_highlight_style():
+    """Get highlight style settings from highlight_style.json file."""
+    folder_number = request.args.get('folder')
+
+    if not folder_number:
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    # Find the folder
+    base_dir = Path(settings.get('video', 'output_dir'))
+    folder = None
+    for f in base_dir.iterdir():
+        if f.is_dir() and f.name.startswith(f"{folder_number}_"):
+            folder = f
+            break
+
+    if not folder:
+        return jsonify({'error': 'Folder not found'}), 404
+
+    # Path to highlight style file
+    style_file = folder / 'highlight_style.json'
+
+    # Read style from file
+    if style_file.exists():
+        with open(style_file, 'r', encoding='utf-8') as f:
+            style_data = json.load(f)
+            return jsonify({'style': style_data})
+
+    # Default: return empty style (will use defaults)
+    return jsonify({'style': None})
+
+
 @app.route('/api/regenerate-ass', methods=['POST'])
 def regenerate_ass():
     """Regenerate ASS files with karaoke on/off."""
@@ -2027,31 +2111,47 @@ def regenerate_ass():
         return jsonify({'error': 'Folder not found'}), 404
 
     # Find SRT and word timestamps files
-    srt_file = None
-    for file in folder.glob('*.srt'):
-        if 'theme' not in file.name:  # Get the main SRT, not theme SRTs
-            srt_file = file
-            break
+    # Use the theme-specific SRT from the shorts folder, not the main video SRT
+    srt_file = folder / 'shorts' / f'theme_{int(theme_number):03d}.srt'
+    if not srt_file.exists():
+        return jsonify({'error': 'Theme SRT file not found'}), 404
 
-    if not srt_file:
-        return jsonify({'error': 'SRT file not found'}), 404
-
+    # Word timestamps are in the parent folder (from the main video transcription)
+    # Find any word timestamps file in the parent folder
     word_timestamps = None
-    word_timestamps_file = folder / f"{srt_file.stem}_word_timestamps.json"
-    if word_timestamps_file.exists():
-        import json
+    for file in folder.glob('*_word_timestamps.json'):
         try:
-            with open(word_timestamps_file, 'r') as f:
+            with open(file, 'r') as f:
                 word_data = json.load(f)
                 word_timestamps = word_data.get('words', [])
+                print(f"    Loaded {len(word_timestamps)} word timestamps from {file.name}")
+                break
         except Exception as e:
-            print(f"Warning: Could not load word timestamps: {e}")
+            print(f"Warning: Could not load word timestamps from {file.name}: {e}")
 
     # Check for formatting JSON
     formatting_json_path = folder / 'shorts' / f'theme_{int(theme_number):03d}_formatting.json'
 
     # Check for adjust.md
     adjust_md_path = folder / 'shorts' / f'theme_{int(theme_number):03d}_adjust.md'
+
+    # Load highlight style settings if karaoke is enabled
+    karaoke_style = None
+    if karaoke and word_timestamps is not None:
+        style_file = folder / 'highlight_style.json'
+        if style_file.exists():
+            try:
+                with open(style_file, 'r', encoding='utf-8') as f:
+                    style_data = json.load(f)
+                    # Convert JSON format to karaoke_style dict
+                    karaoke_style = {
+                        'mode': style_data.get('karaoke_mode', 'normal'),
+                        'font_size_scale': style_data.get('font_size_scale', 1.0),
+                        'past_color': style_data.get('past_color', None),
+                        'textColor': style_data.get('textColor', '#ffff00')
+                    }
+            except Exception as e:
+                print(f"Warning: Could not load highlight style: {e}")
 
     try:
         # Create ASS formatter
@@ -2067,7 +2167,8 @@ def regenerate_ass():
             formatting_json_path,
             ass_output_path,
             adjust_md_path,
-            use_karaoke=karaoke and word_timestamps is not None
+            use_karaoke=karaoke and word_timestamps is not None,
+            karaoke_style=karaoke_style
         )
 
         if success:
@@ -2100,6 +2201,413 @@ def format_duration(seconds):
         return f'{minutes}m {secs}s'
     else:
         return f'{secs}s'
+
+
+@app.route('/api/word-timestamps/<folder_number>', methods=['GET'])
+def get_word_timestamps_api(folder_number):
+    """Get word timestamps JSON for a video."""
+    if not folder_number:
+        return jsonify({'error': 'folder is required'}), 400
+
+    # Find the folder
+    base_dir = Path(settings.get('video', 'output_dir'))
+    folder = None
+    for f in base_dir.iterdir():
+        if f.is_dir() and f.name.startswith(f"{folder_number}_"):
+            folder = f
+            break
+
+    if not folder:
+        return jsonify({'error': 'Folder not found'}), 404
+
+    # Find word timestamps file
+    word_timestamps_file = None
+    for file in folder.glob('*_word_timestamps.json'):
+        word_timestamps_file = file
+        break
+
+    if not word_timestamps_file or not word_timestamps_file.exists():
+        return jsonify({'words': []})
+
+    # Read and return word timestamps
+    try:
+        with open(word_timestamps_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            return jsonify(data)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/encode-canvas-karaoke', methods=['POST'])
+def encode_canvas_karaoke():
+    """Generate and encode canvas karaoke video server-side (fast)."""
+    try:
+        data = request.get_json()
+        folder_number = data.get('folder')
+        theme_number = data.get('theme')
+        karaoke_settings = data.get('settings', {})
+
+        if not folder_number or not theme_number:
+            return jsonify({'error': 'Missing folder or theme number'}), 400
+
+        # Get folder path
+        base_dir = Path(settings.get('video', 'output_dir'))
+        folder = None
+
+        for f in base_dir.iterdir():
+            if f.is_dir() and f.name.startswith(f"{folder_number}_"):
+                folder = f
+                break
+
+        if not folder:
+            return jsonify({'error': 'Folder not found'}), 404
+
+        # Get video file
+        video_files = list(folder.glob('*.mp4'))
+        if not video_files:
+            return jsonify({'error': 'No video file found'}), 404
+        video_file = video_files[0]
+
+        # Get theme timing from themes.md
+        themes_file = folder / 'themes.md'
+        if not themes_file.exists():
+            return jsonify({'error': 'themes.md not found'}), 404
+
+        with open(themes_file, 'r', encoding='utf-8') as f:
+            themes_content = f.read()
+
+        # Parse time range
+        import re
+        time_pattern = r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})'
+        time_match = re.search(time_pattern, themes_content)
+
+        if not time_match:
+            return jsonify({'error': 'Could not parse theme time range from themes.md'}), 400
+
+        def parse_time_str(time_str):
+            h, m, s = map(int, time_str.split(':'))
+            return h * 3600 + m * 60 + s
+
+        start_time = parse_time_str(time_match.group(1))
+        end_time = parse_time_str(time_match.group(2))
+
+        # Get word timestamps
+        word_timestamps_file = None
+        for file in folder.glob('*_word_timestamps.json'):
+            word_timestamps_file = file
+            break
+
+        if not word_timestamps_file or not word_timestamps_file.exists():
+            return jsonify({'error': 'Word timestamps not found'}), 404
+
+        # Get theme SRT
+        srt_file = folder / 'shorts' / f'theme_{int(theme_number):03d}.srt'
+        if not srt_file.exists():
+            srt_file = folder / 'adjust.srt'
+
+        if not srt_file.exists():
+            return jsonify({'error': 'Subtitle file not found'}), 404
+
+        # Output path
+        output_path = folder / 'shorts' / f'theme_{theme_number}_canvas_karaoke.mp4'
+        output_path.parent.mkdir(exist_ok=True)
+
+        # Create job ID
+        job_id = f"{folder_number}_{theme_number}"
+
+        # Initialize progress tracking
+        with canvas_karaoke_lock:
+            canvas_karaoke_progress[job_id] = {
+                'progress': 0,
+                'stage': 'starting',
+                'message': 'Initializing...',
+                'complete': False,
+                'error': None,
+                'output_path': str(output_path)
+            }
+
+        # Progress callback
+        def progress_callback(progress, stage, message):
+            with canvas_karaoke_lock:
+                if job_id in canvas_karaoke_progress:
+                    canvas_karaoke_progress[job_id].update({
+                        'progress': progress,
+                        'stage': stage,
+                        'message': message,
+                        'complete': (stage == 'complete'),
+                        'error': (message if stage == 'error' else None)
+                    })
+
+        # Background rendering function
+        def render_in_background():
+            try:
+                app_logger.info(f"Starting server-side canvas karaoke export for theme {theme_number}")
+
+                # Import the renderer
+                import canvas_karaoke_exporter
+
+                # Render video with progress callback
+                success = canvas_karaoke_exporter.render_canvas_karaoke_video(
+                    str(video_file),
+                    str(word_timestamps_file),
+                    str(srt_file),
+                    str(output_path),
+                    start_time,
+                    end_time,
+                    {
+                        'fontSize': karaoke_settings.get('fontSize', 48) * 2,  # Double for 1080x1920
+                        'fontName': karaoke_settings.get('fontName', 'Arial'),
+                        'textColor': karaoke_settings.get('textColor', '#ffff00'),
+                        'pastColor': karaoke_settings.get('pastColor', '#808080'),
+                        'mode': karaoke_settings.get('mode', 'normal')
+                    },
+                    progress_callback
+                )
+
+                if not success:
+                    progress_callback(-1, 'error', 'Rendering failed')
+
+            except Exception as e:
+                import traceback
+                app_logger.error(f"Export error: {traceback.format_exc()}")
+                progress_callback(-1, 'error', str(e))
+
+        # Start background thread
+        thread = threading.Thread(target=render_in_background, daemon=True)
+        thread.start()
+
+        # Return immediately with job ID
+        return jsonify({
+            'success': True,
+            'job_id': job_id,
+            'message': 'Export started'
+        })
+
+    except Exception as e:
+        import traceback
+        app_logger.error(f"Export error: {traceback.format_exc()}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/canvas-karaoke-progress/<job_id>')
+def canvas_karaoke_progress_endpoint(job_id):
+    """Get progress for a canvas karaoke export job."""
+    with canvas_karaoke_lock:
+        if job_id not in canvas_karaoke_progress:
+            return jsonify({'error': 'Job not found'}), 404
+
+        progress_info = canvas_karaoke_progress[job_id].copy()
+
+        # Clean up old completed jobs (older than 5 minutes)
+        if progress_info.get('complete') or progress_info.get('error'):
+            # Keep it for now so client can get final status
+            pass
+
+        return jsonify(progress_info)
+
+
+@app.route('/api/download-canvas-karaoke/<folder>/<theme>')
+def download_canvas_karaoke(folder, theme):
+    """Download the canvas karaoke video."""
+    try:
+        base_dir = Path(settings.get('video', 'output_dir'))
+        folder = None
+
+        for f in base_dir.iterdir():
+            if f.is_dir() and f.name.startswith(f"{folder}_"):
+                folder = f
+                break
+
+        if not folder:
+            return jsonify({'error': 'Folder not found'}), 404
+
+        video_path = folder / 'shorts' / f'theme_{theme}_canvas_karaoke.mp4'
+
+        if not video_path.exists():
+            return jsonify({'error': 'Video not found'}), 404
+
+        return send_file(str(video_path), as_attachment=True, download_name=video_path.name)
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/export-canvas-karaoke', methods=['POST'])
+def export_canvas_karaoke():
+    """Export canvas karaoke video using FFmpeg on server (fast processing)."""
+    try:
+        data = request.get_json()
+        folder_number = data.get('folder')
+        theme_number = data.get('theme')
+        karaoke_settings = data.get('settings', {})
+
+        if not folder_number or not theme_number:
+            return jsonify({'error': 'Missing folder or theme number'}), 400
+
+        # Get folder path (same pattern as other endpoints)
+        base_dir = Path(settings.get('video', 'output_dir'))
+        folder = None
+
+        for f in base_dir.iterdir():
+            if f.is_dir() and f.name.startswith(f"{folder_number}_"):
+                folder = f
+                break
+
+        if not folder:
+            return jsonify({'error': 'Folder not found'}), 404
+
+        # Get video file
+        video_files = list(folder.glob('*.mp4'))
+        if not video_files:
+            return jsonify({'error': 'No video file found'}), 404
+        video_file = video_files[0]
+
+        # Get theme timing from themes.md file
+        themes_file = folder / 'themes.md'
+        if not themes_file.exists():
+            return jsonify({'error': 'themes.md not found'}), 404
+
+        with open(themes_file, 'r', encoding='utf-8') as f:
+            themes_content = f.read()
+
+        # Parse time range for the theme (format: "00:00:48 - 00:02:00")
+        import re
+        time_pattern = r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})'
+
+        # Find the time range for the specific theme
+        # Look for the theme section first
+        theme_section_pattern = rf'### Theme {theme_number}:.*?\*\*Time Range:\*\*\s*(\d{{2}}:\d{{2}}:\d{{2}})\s*-\s*(\d{{2}}:\d{{2}}:\d{{2}})'
+
+        time_match = re.search(theme_section_pattern, themes_content, re.DOTALL)
+
+        if not time_match:
+            # Fallback: try to find any time range in the file
+            time_match = re.search(time_pattern, themes_content)
+
+        if not time_match:
+            return jsonify({'error': 'Could not parse theme time range from themes.md'}), 400
+
+        start_time_str = time_match.group(1)
+        end_time_str = time_match.group(2)
+
+        # Convert "HH:MM:SS" to seconds
+        def parse_time_str(time_str):
+            h, m, s = map(int, time_str.split(':'))
+            return h * 3600 + m * 60 + s
+
+        start_time = parse_time_str(start_time_str)
+        end_time = parse_time_str(end_time_str)
+
+        # Output path
+        output_path = folder / 'shorts' / f'theme_{theme_number}_canvas_karaoke.mp4'
+        output_path.parent.mkdir(exist_ok=True)
+
+        # Get word timestamps
+        word_timestamps_file = None
+        for file in folder.glob('*_word_timestamps.json'):
+            word_timestamps_file = file
+            break
+
+        if not word_timestamps_file or not word_timestamps_file.exists():
+            return jsonify({'error': 'Word timestamps not found'}), 404
+
+        with open(word_timestamps_file, 'r', encoding='utf-8') as f:
+            word_timestamps_data = json.load(f)
+            words = word_timestamps_data.get('words', [])
+
+        # Get theme subtitles for the text
+        srt_file = folder / 'shorts' / f'theme_{int(theme_number):03d}.srt'
+        if not srt_file.exists():
+            # Fall back to adjust.srt
+            srt_file = folder / 'adjust.srt'
+
+        if not srt_file.exists():
+            return jsonify({'error': 'Subtitle file not found'}), 404
+
+        # Use existing ASS file with karaoke effects
+        # The regenerate-ass endpoint already creates these: theme_XXX_normal.ass, theme_XXX_cumulative.ass
+        if karaoke_settings.get('mode') == 'cumulative':
+            ass_file = folder / 'shorts' / f'theme_{int(theme_number):03d}_cumulative.ass'
+        else:
+            ass_file = folder / 'shorts' / f'theme_{int(theme_number):03d}_normal.ass'
+
+        if not ass_file.exists():
+            # Fallback to any theme ASS file
+            ass_files = list(folder.glob('shorts/theme_*.ass'))
+            if not ass_files:
+                return jsonify({'error': 'No ASS subtitle file found. Please regenerate ASS files first.'}), 404
+            ass_file = ass_files[0]
+
+        # Use FFmpeg to burn subtitles into video with 9:16 aspect ratio
+        # For 16:9 to 9:16: scale height to 1920, then crop width to 1080, then apply subtitles
+        video_filter = f'scale=-1:1920,crop=1080:1920:(in_w-1080)/2:(in_h-1920)/2,ass={ass_file}'
+
+        ffmpeg_cmd = [
+            'ffmpeg',
+            '-y',  # Overwrite output file
+            '-ss', str(start_time),  # Start time (input seeking)
+            '-i', str(video_file),  # Input video
+            '-t', str(end_time - start_time),  # Duration
+            '-vf', video_filter,
+            '-c:v', 'libx264',  # Video codec
+            '-preset', 'medium',  # Encoding preset
+            '-crf', '23',  # Quality
+            '-c:a', 'aac',  # Audio codec
+            '-b:a', '128k',  # Audio bitrate
+            '-movflags', '+faststart',  # Fast start for web
+            str(output_path)  # Output file
+        ]
+
+        app_logger.info(f"Running FFmpeg command for canvas karaoke export: {' '.join(ffmpeg_cmd)}")
+
+        app_logger.info(f"Running FFmpeg command for canvas karaoke export: {' '.join(ffmpeg_cmd)}")
+
+        # Run FFmpeg
+        result = subprocess.run(
+            ffmpeg_cmd,
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minute timeout
+        )
+
+        if result.returncode != 0:
+            app_logger.error(f"FFmpeg error: {result.stderr}")
+            return jsonify({'error': f'FFmpeg failed: {result.stderr}'}), 500
+
+        return jsonify({
+            'success': True,
+            'output_path': str(output_path),
+            'message': 'Video exported successfully'
+        })
+
+    except subprocess.TimeoutExpired:
+        return jsonify({'error': 'Export timed out (5 minutes)'}), 500
+    except Exception as e:
+        import traceback
+        app_logger.error(f"Export error: {traceback.format_exc()}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/download-video/<folder>/<theme>/<type>')
+def download_video(folder, theme, type):
+    """Download exported video."""
+    try:
+        folder = get_video_folder_by_number(folder)
+        if not folder:
+            return jsonify({'error': 'Folder not found'}), 404
+
+        if type == 'canvas_karaoke':
+            video_path = folder / 'shorts' / f'theme_{theme}_canvas_karaoke.mp4'
+        else:
+            return jsonify({'error': 'Invalid type'}), 400
+
+        if not video_path.exists():
+            return jsonify({'error': 'Video not found'}), 404
+
+        return send_file(str(video_path), as_attachment=True, download_name=video_path.name)
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':

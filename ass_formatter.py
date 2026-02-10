@@ -20,20 +20,49 @@ class ASSFormatter:
         """Initialize ASS formatter with optional settings.
 
         Args:
-            settings: Dictionary with settings like resolution, font, etc.
+            settings: ConfigParser object or dictionary with settings like resolution, font, etc.
                      If None, uses defaults.
         """
-        self.settings = settings or {}
-        self.width = int(self.settings.get('video', {}).get('resolution_width', 1080))
-        self.height = int(self.settings.get('video', {}).get('resolution_height', 1920))
-        self.font_name = self.settings.get('subtitle', {}).get('font_name', 'Arial')
-        # Use ass_font_size for ASS files (separate from SRT font_size)
-        self.font_size = int(self.settings.get('subtitle', {}).get('ass_font_size', 48))
+        self.settings = settings
+        self.width = 1080
+        self.height = 1920
+        self.font_name = 'Arial'
+        self.font_size = 48
+
+        # Load settings if provided
+        if settings:
+            try:
+                if hasattr(settings, 'sections'):
+                    # This is a ConfigParser object - use has_option to safely check
+                    try:
+                        if settings.has_option('video', 'resolution_width'):
+                            self.width = int(settings.get('video', 'resolution_width'))
+                        if settings.has_option('video', 'resolution_height'):
+                            self.height = int(settings.get('video', 'resolution_height'))
+                        if settings.has_option('subtitle', 'font_name'):
+                            self.font_name = settings.get('subtitle', 'font_name')
+                        if settings.has_option('subtitle', 'ass_font_size'):
+                            self.font_size = int(settings.get('subtitle', 'ass_font_size'))
+                    except Exception as e:
+                        print(f"Warning: Could not load ConfigParser settings: {e}")
+                        pass  # Use defaults on error
+                elif isinstance(settings, dict):
+                    # Plain dict
+                    video_settings = settings.get('video', {})
+                    subtitle_settings = settings.get('subtitle', {})
+                    self.width = int(video_settings.get('resolution_width', 1080))
+                    self.height = int(video_settings.get('resolution_height', 1920))
+                    self.font_name = subtitle_settings.get('font_name', 'Arial')
+                    self.font_size = int(subtitle_settings.get('ass_font_size', 48))
+            except Exception as e:
+                print(f"Warning: Could not load settings: {e}")
+                pass  # Use defaults on error
 
     # === File Generation ===
 
     def create_ass_file(self, srt_path: Path, formatting_json_path: Path, output_ass_path: Path,
-                       adjust_md_path: Optional[Path] = None, use_karaoke: bool = True) -> bool:
+                       adjust_md_path: Optional[Path] = None, use_karaoke: bool = True,
+                       karaoke_style: dict = None) -> bool:
         """Create ASS subtitle file from SRT and formatting JSON.
 
         Args:
@@ -42,16 +71,14 @@ class ASSFormatter:
             output_ass_path: Path where ASS file should be written
             adjust_md_path: Optional path to adjust.md with global position settings
             use_karaoke: Whether to use karaoke tags if word timestamps available (default: True)
-
-        Args:
-            srt_path: Path to input SRT file
-            formatting_json_path: Path to JSON with HTML formatting data
-            output_ass_path: Path where ASS file should be written
-            adjust_md_path: Optional path to adjust.md with global position settings
+            karaoke_style: Dict with karaoke style settings (mode, font_size_scale, etc.)
 
         Returns:
             True if successful, False otherwise
         """
+        print(f"       create_ass_file called with karaoke_style={karaoke_style}")
+        if karaoke_style:
+            print(f"       → mode={karaoke_style.get('mode')}, font_scale={karaoke_style.get('font_size_scale')}")
         # Load formatting data (may not exist if only using global position)
         formatting_data = {}
         if formatting_json_path.exists():
@@ -120,22 +147,34 @@ class ASSFormatter:
 
         # Parse SRT segments
         segments = self._parse_srt_segments(srt_path)
+        print(f"       Parsed {len(segments)} segments from SRT")
 
         # Build a mapping of text to formatting for quick lookup
         # JSON keys are sequence numbers, values contain 'html', 'timestamp', '_text', etc.
         text_to_formatting = {}
         for seq_key, fmt_data in formatting_data.items():
             if isinstance(fmt_data, dict) and '_text' in fmt_data:
-                # Store formatting keyed by plain text
-                text_to_formatting[fmt_data['_text']] = fmt_data
+                # Store formatting keyed by plain text (ensure it's a string)
+                text_key = fmt_data['_text']
+                if isinstance(text_key, str):
+                    text_to_formatting[text_key] = fmt_data
+                else:
+                    print(f"    Warning: _text is not a string for sequence {seq_key}: {type(text_key)}")
 
         # Build ASS file
         with open(output_ass_path, 'w', encoding='utf-8') as f:
             # Write header
             f.write(self.create_ass_header())
-            f.write(self.create_ass_styles(position_override, custom_position))
+
+            # Get primary color for karaoke highlighting (from karaoke_style)
+            primary_color = None
+            if karaoke_style and karaoke_style.get('textColor'):
+                primary_color = karaoke_style.get('textColor')
+
+            f.write(self.create_ass_styles(position_override, custom_position, primary_color))
 
             # Write events
+            dialogue_count = 0
             for segment in segments:
                 start_time = segment['start']
                 end_time = segment['end']
@@ -155,6 +194,9 @@ class ASSFormatter:
                     # Try partial match - check if JSON text is contained in SRT text or vice versa
                     text_normalized = text.strip().lower()
                     for json_text, fmt in text_to_formatting.items():
+                        # Ensure json_text is a string
+                        if not isinstance(json_text, str):
+                            continue
                         json_normalized = json_text.strip().lower()
                         # Check if JSON text is a substring of SRT text
                         if json_normalized in text_normalized or text_normalized in json_normalized:
@@ -164,12 +206,20 @@ class ASSFormatter:
                 # Get HTML if available, otherwise use plain text
                 display_text = formatting.get('html', text) if formatting else text
 
+                # Check if karaoke will be applied
+                applying_karaoke = use_karaoke and word_timestamps and display_text == text
+                if formatting and display_text != text:
+                    print(f"       Segment {start_time}-{end_time}: has formatting HTML, skipping karaoke")
+
                 # Apply karaoke highlighting if enabled, word timestamps available, and no custom HTML
-                if use_karaoke and word_timestamps and display_text == text:
+                if applying_karaoke:
                     # Find matching word timestamps for this segment
                     segment_words = self._find_words_for_segment(text, word_timestamps, start_time, end_time)
                     if segment_words:
-                        display_text = self.create_karaoke_tags(segment_words, text, start_time)
+                        display_text = self.create_karaoke_tags(segment_words, text, start_time, karaoke_style)
+                        print(f"       Segment {start_time}-{end_time}: applied karaoke ({len(segment_words)} words), mode={karaoke_style.get('mode') if karaoke_style else 'None'}")
+                    else:
+                        print(f"       Segment {start_time}-{end_time}: no matching words found")
 
                 # Parse HTML formatting to ASS tags (if not karaoke)
                 # Skip HTML parsing if we already have karaoke tags (they contain backslashes)
@@ -188,7 +238,9 @@ class ASSFormatter:
                     dialogue_line = f"Dialogue: 0,{start_ass},{end_ass},Default,,0,0,0,,{display_text}\n"
 
                 f.write(dialogue_line)
+                dialogue_count += 1
 
+        print(f"       Wrote {dialogue_count} dialogue lines to ASS file")
         return True
 
     def create_ass_header(self) -> str:
@@ -204,13 +256,24 @@ ScaledBorderAndShadow: yes
 
 """
 
-    def create_ass_styles(self, position_override=None, custom_position=None) -> str:
+    def create_ass_styles(self, position_override=None, custom_position=None, primary_color=None) -> str:
         """Generate ASS style definitions.
 
         Args:
             position_override: Optional preset position ('top', 'middle', 'bottom').
             custom_position: Optional dict with custom X/Y coordinates.
+            primary_color: Optional primary color in ASS format (BGR, e.g., '&H0000FF&').
+                          Used for karaoke highlighting. Defaults to white.
         """
+        # Default primary color (yellow for karaoke highlight)
+        if primary_color is None:
+            primary_color = '&H00ffff&'  # Yellow in ASS BGR format (#ffff00)
+        elif not primary_color.startswith('&H'):
+            # If hex color provided, convert to ASS format
+            primary_color = f'&H{self._hex_to_ass_color(primary_color)}&'
+
+        # Secondary color is the "unhighlighted" text color (white)
+        secondary_color = '&H00ffffff&'  # White in ASS BGR format
         # Use position from override if available, otherwise use defaults from settings
         alignment = 2  # Default: center
         margin_v = 10   # Default: 10px from bottom
@@ -234,12 +297,20 @@ ScaledBorderAndShadow: yes
                 margin_v = 35  # From bottom (35px default)
         else:
             # Use values from settings.ini
-            alignment = int(self.settings.get('subtitle', {}).get('alignment', 2))
-            margin_v = int(self.settings.get('subtitle', {}).get('margin_v', 35))
+            if hasattr(self.settings, 'sections'):
+                # ConfigParser object
+                if self.settings.has_option('subtitle', 'alignment'):
+                    alignment = int(self.settings.get('subtitle', 'alignment'))
+                if self.settings.has_option('subtitle', 'margin_v'):
+                    margin_v = int(self.settings.get('subtitle', 'margin_v'))
+            elif isinstance(self.settings, dict):
+                # Plain dict
+                alignment = int(self.settings.get('subtitle', {}).get('alignment', 2))
+                margin_v = int(self.settings.get('subtitle', {}).get('margin_v', 35))
 
         return f"""[V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{self.font_name},{self.font_size},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,0,{alignment},{10},{10},{margin_v},1
+Style: Default,{self.font_name},{self.font_size},{primary_color},{secondary_color},&H00000000,&H00000000,0,0,0,0,100,100,0,0,0,{alignment},{10},{10},{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -645,22 +716,57 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
     # === Karaoke Tag Generation ===
 
-    def create_karaoke_tags(self, word_timestamps: list, segment_text: str, segment_start: float) -> str:
-        """Generate ASS karaoke tags (\k) from word timestamps.
+    def create_karaoke_tags(self, word_timestamps: list, segment_text: str, segment_start: float,
+                           karaoke_style: dict = None) -> str:
+        """Generate ASS karaoke tags from word timestamps with different styles.
 
-        The \k tag in ASS creates a karaoke-style highlighting effect where
-        each word highlights for its duration when spoken.
+        ASS karaoke tags:
+        - \kXX  - normal, word highlights then returns to normal color
+        - \KXX  - cumulative, word stays highlighted after being spoken
+        - \kfXX - fill from bottom (karaoke fill effect)
+        - \koXX - outline fill (karaoke border effect)
 
         Args:
             word_timestamps: List of dicts with 'word', 'start', 'end' keys
             segment_text: Full text of the segment
             segment_start: Start time of the segment in seconds
+            karaoke_style: Dict with style settings:
+                - mode: 'normal', 'cumulative', 'fill', 'outline'
+                - font_size_scale: multiplier for font size (e.g., 1.5 for 50% bigger)
+                - past_color: color for words already spoken (hex, e.g., '#808080')
 
         Returns:
             String with karaoke tags and words, e.g., "{\\k50}Hello{\\k30}world"
         """
+        # Default style settings
+        if karaoke_style is None:
+            karaoke_style = {}
+
+        mode = karaoke_style.get('mode', 'normal')
+        font_size_scale = karaoke_style.get('font_size_scale', 1.0)
+        past_color = karaoke_style.get('past_color', None)
+
+        # Choose karaoke tag based on mode
+        # NOTE: For cumulative mode, we use \k (not \K) because \K fills ALL remaining text,
+        # which would overwrite the gray color of past words
+        karaoke_tag_map = {
+            'normal': 'k',      # \k - highlights then returns to normal
+            'cumulative': 'k',  # \k - we manually manage gray color for past words
+            'fill': 'kf',       # \kf - fill from bottom
+            'outline': 'ko'     # \ko - outline fill
+        }
+        tag_char = karaoke_tag_map.get(mode, 'k')
+
         result = ""
         last_end = segment_start
+
+        # Start text in white (will be overridden by yellow during karaoke)
+        result += r"{\c&H00ffffff&}"
+
+        # Add font size tag if needed
+        if font_size_scale != 1.0:
+            scaled_size = int(self.font_size * font_size_scale)
+            result += f"{{\\fs{scaled_size}}}"
 
         # Normalize segment text for matching (remove punctuation, lowercase)
         segment_words = segment_text.strip().lower().split()
@@ -679,18 +785,67 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             # Calculate duration in centiseconds (ASS \k uses cs)
             duration_cs = int((word_end - word_start) * 100)
 
+            # Set text to yellow (highlight color) before karaoke
+            highlight_color_ass = self._hex_to_ass_color('#ffff00')  # Yellow
+
             # Handle gaps between words (pause time)
             gap_cs = int((word_start - last_end) * 100)
             if gap_cs > 0:
-                result += f"{{\\k{gap_cs}}}"
+                # Set yellow before gap karaoke so it transitions yellow → white
+                result += f"{{\\c&H{highlight_color_ass}}}{{\\{tag_char}{gap_cs}}}"
 
             # Add word with karaoke tag
-            result += f"{{\\k{duration_cs}}}{word}"
+
+            # For cumulative mode, set the past_color as the fill target
+            # This makes words fill to gray instead of yellow, creating the "past words in gray" effect
+            if mode == 'cumulative' and past_color:
+                # Convert hex to ASS color format (BGR in hex, prefixed with &H)
+                past_color_ass = self._hex_to_ass_color(past_color)
+                # Set gray as fill target - word will fill from white (SecondaryColour) to gray
+                result += f"{{\\c&H{past_color_ass}}}{{\\{tag_char}{duration_cs}}}{word}"
+            else:
+                # Normal mode: TWO-STAGE karaoke
+                # Stage 1: Fill to yellow (highlight during speech)
+                # Stage 2: Fill back to white (fade after speech)
+                white_color_ass = self._hex_to_ass_color('#ffffff')
+
+                # Use most of the duration for highlight, short time to fade back
+                highlight_duration = int(duration_cs * 0.9)  # 90% for highlight
+                fade_duration = int(duration_cs * 0.1)       # 10% to fade back
+
+                # First: fill white → yellow
+                result += f"{{\\c&H{highlight_color_ass}}}{{\\{tag_char}{highlight_duration}}}{word}"
+                # Second: fill yellow → white (fade back)
+                result += f"{{\\c&H{white_color_ass}}}{{\\{tag_char}{fade_duration}}}"
 
             last_end = word_end
             word_idx += 1
 
+        # Reset font size if we changed it
+        if font_size_scale != 1.0:
+            result += "{\\r}"
+
         return result
+
+    def _hex_to_ass_color(self, hex_color: str) -> str:
+        """Convert hex color (#RRGGBB) to ASS color format (BGR, lowercase &H prefix).
+
+        Args:
+            hex_color: Hex color string like '#ff0000'
+
+        Returns:
+            ASS color string like '0000ff' (BGR format for &H0000ff&)
+        """
+        # Remove # if present
+        hex_color = hex_color.lstrip('#')
+
+        # Parse RGB
+        r = int(hex_color[0:2], 16)
+        g = int(hex_color[2:4], 16)
+        b = int(hex_color[4:6], 16)
+
+        # Convert to BGR and format as hex
+        return f"{b:02x}{g:02x}{r:02x}"
 
     def _find_words_for_segment(self, segment_text: str, all_word_timestamps: list,
                                 segment_start: float, segment_end: float) -> list:
