@@ -378,13 +378,25 @@ class CanvasKaraokeRenderer:
         return width
 
     def get_frame_at_time(self, time_sec: float) -> Optional[np.ndarray]:
-        """Get video frame at specific time."""
+        """Get video frame at specific time using random access."""
         self.cap.set(cv2.CAP_PROP_POS_MSEC, int(time_sec * 1000))
         ret, frame = self.cap.read()
 
         if not ret:
             return None
 
+        return frame
+
+    def seek_to_time(self, time_sec: float) -> bool:
+        """Seek video to specific time position for sequential reading."""
+        self.cap.set(cv2.CAP_PROP_POS_MSEC, int(time_sec * 1000))
+        return True
+
+    def read_next_frame(self) -> Optional[np.ndarray]:
+        """Read next frame sequentially (much faster than random access)."""
+        ret, frame = self.cap.read()
+        if not ret:
+            return None
         return frame
 
     def release(self):
@@ -444,20 +456,39 @@ def render_canvas_karaoke_video(
         # Generate frames
         fps = 30
         total_frames = int((end_time - start_time) * fps)
-        frame_pattern = temp_dir / 'frame_%06d.png'
+        frame_pattern = temp_dir / 'frame_%06d.jpg'  # Use JPEG for faster I/O
 
-        logger.info(f"Generating {total_frames} frames from {start_time}s to {end_time}s")
+        logger.info(f"Generating {total_frames} frames from {start_time}s to {end_time}s (sequential reading + JPEG)")
 
         if progress_callback:
-            progress_callback(0, "rendering", "Generating frames...")
+            progress_callback(0, "rendering", "Seeking to start position...")
+
+        # OPTIMIZATION 1: Sequential frame reading instead of random access
+        # Seek to start position once, then read frames sequentially
+        # This is much faster because video codecs are optimized for sequential playback
+        start_frame_number = int(start_time * fps)
+        renderer.cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame_number)
+
+        # Read first frame to verify we're at the right position
+        ret, first_frame = renderer.cap.read()
+        if not ret:
+            logger.error(f"Could not seek to frame {start_frame_number}")
+            return False
+
+        # Put back the first frame since we'll read it in the loop
+        # Actually, let's just seek again to be safe
+        renderer.cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame_number)
+
+        if progress_callback:
+            progress_callback(1, "rendering", "Rendering frames...")
 
         for frame_idx in range(total_frames):
             current_time = start_time + (frame_idx / fps)
 
-            # Get video frame
-            frame = renderer.get_frame_at_time(current_time)
-            if frame is None:
-                logger.warning(f"Could not get frame at {current_time}s")
+            # OPTIMIZATION 1: Read next frame sequentially (no random seek)
+            ret, frame = renderer.cap.read()
+            if not ret:
+                logger.warning(f"Could not read frame {frame_idx} at time {current_time}s")
                 break
 
             # Find subtitle for this time
@@ -478,9 +509,11 @@ def render_canvas_karaoke_video(
             rendered_frame = renderer.render_frame(frame, current_time, subtitle_text, subtitle_start, subtitle_end)
 
             # Save frame
-            frame_filename = f"frame_{frame_idx:06d}.png"
+            # OPTIMIZATION 2: Use JPEG instead of PNG for faster compression and smaller files
+            frame_filename = f"frame_{frame_idx:06d}.jpg"
             frame_path = temp_dir / frame_filename
-            cv2.imwrite(str(frame_path), rendered_frame)
+            # JPEG quality 95 provides good quality with much faster compression
+            cv2.imwrite(str(frame_path), rendered_frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
 
             # Progress callback (every 10 frames for responsiveness)
             if frame_idx % 10 == 0:
@@ -491,22 +524,22 @@ def render_canvas_karaoke_video(
                     logger.info(f"Progress: {progress:.1f}% ({frame_idx}/{total_frames})")
 
         # Encode with FFmpeg
-        # Note: -ss and -t must come AFTER -i for the second input (audio source)
         if progress_callback:
             progress_callback(70, "encoding", "Encoding video with FFmpeg...")
 
+        # Update frame pattern to use JPEG
         ffmpeg_cmd = [
             'ffmpeg',
             '-y',
             '-framerate', str(fps),
-            '-i', str(temp_dir / 'frame_%06d.png'),
+            '-i', str(temp_dir / 'frame_%06d.jpg'),  # Changed to .jpg
             '-ss', str(start_time),
             '-i', str(video_path),
             '-t', str(end_time - start_time),
             '-map', '0:v:0',
             '-map', '1:a:0?',
             '-c:v', 'libx264',
-            '-preset', 'fast',  # Faster preset for encoding
+            '-preset', 'fast',
             '-crf', '23',
             '-c:a', 'aac',
             '-b:a', '128k',
