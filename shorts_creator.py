@@ -380,7 +380,7 @@ Video Path: {video_info['video_path']}
 
         _log_msg(f"Created video info file: {info_path}")
 
-    def generate_subtitles(self, video_info: Dict[str, str], model_size: str = None, progress_callback=None) -> str:
+    def generate_subtitles(self, video_info: Dict[str, str], model_size: str = None, language: str = None, progress_callback=None) -> str:
         """Generate subtitles using Whisper CLI."""
         def _log_msg(msg):
             if progress_callback:
@@ -392,8 +392,12 @@ Video Path: {video_info['video_path']}
         if model_size is None:
             model_size = settings.get('whisper', 'model')
 
-        # Get language and task from settings
-        language = settings.get('whisper', 'language')
+        # Use language parameter if provided, otherwise get from settings
+        if language is None:
+            language = settings.get('whisper', 'language')
+        # Use None for auto language detection (supports mixed content)
+        if language and language.lower() in ('auto', 'none', ''):
+            language = None
         task = settings.get('whisper', 'task')
 
         # Stop AI model to free GPU memory
@@ -504,6 +508,13 @@ Video Path: {video_info['video_path']}
             else:
                 print(msg)
 
+        # Get language from settings
+        language = settings.get('whisper', 'language')
+        # Use None for auto language detection
+        if language and language.lower() in ('auto', 'none', ''):
+            language = None
+        language_display = language if language else 'auto'
+
         # Read from SRT file for both transcript and timing
         srt_file = Path(video_info['folder']) / f"{Path(video_info['video_path']).stem}.srt"
 
@@ -611,6 +622,7 @@ Video Path: {video_info['video_path']}
             f.write(f"**Total Duration:** {total_duration}\n\n")
             f.write(f"**Number of Themes:** {len(themes)}\n\n")
             f.write(f"**Whisper Model:** {model_size}\n\n")
+            f.write(f"**Language:** {language_display}\n\n")
 
             # Indicate whether AI was used for title generation
             if ai_used:

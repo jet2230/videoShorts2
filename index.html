@@ -133,6 +133,138 @@
             border-color: var(--accent);
         }
 
+        /* YouTube Search Results */
+        .search-results-container {
+            position: relative;
+        }
+
+        .search-results-dropdown {
+            position: absolute;
+            top: 100%;
+            left: -7.5px;
+            width: calc(100% + 15px);
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-top: 4px;
+            max-height: 400px;
+            overflow-y: auto;
+            z-index: 1000;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .search-results-dropdown.hidden {
+            display: none;
+        }
+
+        .search-result-item {
+            display: flex;
+            gap: 12px;
+            padding: 12px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--border);
+            transition: background 0.2s;
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .search-result-item:last-child {
+            border-bottom: none;
+        }
+
+        .search-result-item:hover {
+            background: var(--bg-secondary);
+        }
+
+        .search-result-item.selected {
+            background: rgba(255, 0, 80, 0.1);
+            border-color: var(--accent);
+        }
+
+        .search-result-thumbnail {
+            width: 120px;
+            height: 68px;
+            border-radius: 4px;
+            object-fit: cover;
+            flex-shrink: 0;
+            background: var(--bg-primary);
+        }
+
+        .search-result-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .search-result-title {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+        }
+
+        .search-result-meta {
+            font-size: 12px;
+            color: var(--text-secondary);
+            display: flex;
+            gap: 8px;
+        }
+
+        .search-result-channel {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .search-result-channel-avatar {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--bg-primary);
+        }
+
+        .search-loading,
+        .search-error {
+            padding: 20px;
+            text-align: center;
+            color: var(--text-secondary);
+        }
+
+        .search-error {
+            color: var(--error);
+        }
+
+        .search-pagination {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px;
+            border-top: 1px solid var(--border);
+        }
+
+        .search-pagination button {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.2s;
+        }
+
+        .search-pagination button:hover:not(:disabled) {
+            background: var(--border);
+        }
+
+        .search-pagination button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
         /* Buttons */
         .btn {
             padding: 12px 24px;
@@ -214,6 +346,7 @@
             justify-content: space-between;
             align-items: center;
             margin-bottom: 8px;
+            gap: 12px;
         }
 
         .folder-number {
@@ -222,6 +355,7 @@
             display: flex;
             align-items: center;
             gap: 8px;
+            position: relative;
         }
 
         .play-video-btn {
@@ -245,6 +379,153 @@
             transform: scale(1.1);
         }
 
+        .delete-folder-btn {
+            background: rgba(255, 68, 68, 0.2);
+            border: 1px solid rgba(255, 68, 68, 0.5);
+            color: var(--error);
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 14px;
+            line-height: 1;
+            margin-left: auto;
+            flex-shrink: 0;
+            position: relative;
+        }
+
+        .delete-folder-btn:hover {
+            background: rgba(255, 68, 68, 0.4);
+            transform: scale(1.1);
+        }
+
+        .delete-confirmation {
+            position: fixed;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            z-index: 99999;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+            min-width: 320px;
+            max-width: 450px;
+            text-align: left;
+        }
+
+        .delete-confirmation-text {
+            color: var(--text-primary);
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .delete-confirmation-files {
+            max-height: 250px;
+            overflow-y: auto;
+            margin-bottom: 16px;
+            background: var(--bg-primary);
+            border-radius: 6px;
+            padding: 10px;
+            font-size: 12px;
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+        }
+
+        .delete-confirmation-files::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .delete-confirmation-files::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+            border-radius: 4px;
+        }
+
+        .delete-confirmation-files::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+
+        .delete-confirmation-files::-webkit-scrollbar-thumb:hover {
+            background: var(--text-secondary);
+        }
+
+        .delete-file-summary {
+            color: var(--text-primary);
+            font-weight: 600;
+            margin-bottom: 10px;
+            padding: 6px 8px;
+            background: var(--bg-secondary);
+            border-radius: 4px;
+        }
+
+        .delete-file-item {
+            padding: 6px 8px;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            line-height: 1.4;
+        }
+
+        .delete-file-item:last-child {
+            border-bottom: none;
+        }
+
+        .delete-file-directory {
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .delete-file-loading {
+            color: var(--text-secondary);
+            font-style: italic;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .delete-confirmation-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .delete-confirmation-buttons button {
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+        }
+
+        .delete-confirm-btn {
+            background: var(--error);
+            color: white;
+        }
+
+        .delete-confirm-btn:hover {
+            background: #ff4444;
+            transform: translateY(-1px);
+        }
+
+        .delete-cancel-btn {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .delete-cancel-btn:hover {
+            background: var(--bg-primary);
+            border-color: var(--text-secondary);
+        }
+
         .library-video-player {
             width: 100%;
             max-height: 75vh;
@@ -254,6 +535,27 @@
         .folder-name {
             font-size: 14px;
             color: var(--text-secondary);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 100%;
+            position: relative;
+            cursor: help;
+        }
+
+        /* Custom tooltip for folder names */
+        .folder-name-tooltip {
+            position: fixed;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            z-index: 9999;
+            pointer-events: none;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            white-space: nowrap;
         }
 
         .folder-meta {
@@ -832,9 +1134,17 @@
             <div class="card">
                 <div class="card-title">Add New Video</div>
 
-                <div class="form-group">
-                    <label>YouTube URL</label>
-                    <input type="url" id="url-input" placeholder="https://www.youtube.com/watch?v=...">
+                <div style="display: flex; gap: 20px;">
+                    <div class="form-group search-results-container" style="flex: 1;">
+                        <label>YouTube Search or URL</label>
+                        <input type="text" id="url-input" placeholder="Search YouTube or paste URL..." autocomplete="off">
+                        <div class="search-results-dropdown hidden" id="search-results"></div>
+                    </div>
+
+                    <div class="form-group" style="flex: 1;">
+                        <label>Local Video File</label>
+                        <input type="file" id="file-input" accept="video/*">
+                    </div>
                 </div>
 
                 <div class="form-group">
@@ -848,11 +1158,27 @@
                     </select>
                 </div>
 
-                <div style="text-align: center; margin: 20px 0; color: var(--text-secondary);">OR</div>
+                <div class="form-group">
+                    <label>Whisper Model</label>
+                    <select id="model-input">
+                        <option value="base" selected>Base (Recommended)</option>
+                        <option value="tiny">Tiny (Fastest)</option>
+                        <option value="small">Small</option>
+                        <option value="medium">Medium (More Accurate)</option>
+                        <option value="large">Large (Most Accurate)</option>
+                    </select>
+                </div>
 
                 <div class="form-group">
-                    <label>Local Video File</label>
-                    <input type="file" id="file-input" accept="video/*">
+                    <label>Language</label>
+                    <select id="language-input">
+                        <option value="en" selected>English</option>
+                        <option value="ar">Arabic</option>
+                        <option value="auto">Auto Detect</option>
+                        <option value="es">Spanish</option>
+                        <option value="fr">French</option>
+                        <option value="de">German</option>
+                    </select>
                 </div>
 
                 <button class="btn btn-primary" id="process-btn" style="width: 100%; text-align: center;">
@@ -1043,14 +1369,17 @@
                     return;
                 }
 
-                container.innerHTML = folders.map(folder => `
+                container.innerHTML = folders.map(folder => {
+                    const displayName = folder.name.length > 50 ? folder.name.substring(0, 50) + '...' : folder.name;
+                    return `
                     <div class="folder-item" data-folder="${folder.number}" data-video="${folder.video_file}" data-folder-name="${folder.name}" data-folder-path="${folder.name}">
                         <div class="folder-header">
                             <span class="folder-number">
                                 #${folder.number}
                                 <button class="play-video-btn" data-play-folder="${folder.name}" data-play-video="${folder.video_file}" title="Play video">▶</button>
                             </span>
-                            <span class="folder-name">${folder.name}</span>
+                            <span class="folder-name" data-full-name="${folder.name}">${displayName}</span>
+                            <button class="delete-folder-btn" data-delete-folder="${folder.number}" title="Delete Library for #${folder.number}">✕</button>
                         </div>
                         <div class="folder-meta">
                             <span>${folder.video_file}</span>
@@ -1058,7 +1387,8 @@
                             ${folder.shorts_count > 0 ? `<span>${folder.shorts_count} shorts</span>` : ''}
                         </div>
                     </div>
-                `).join('');
+                    `;
+                }).join('');
 
                 // Add click handlers
                 container.querySelectorAll('.folder-item').forEach(item => {
@@ -1071,10 +1401,47 @@
                             return;
                         }
 
+                        // Check if delete button was clicked
+                        if (e.target.classList.contains('delete-folder-btn')) {
+                            e.stopPropagation();
+                            const folderNumber = e.target.dataset.deleteFolder;
+                            showDeleteConfirmation(e.target, folderNumber);
+                            return;
+                        }
+
                         // Regular folder selection
                         document.querySelectorAll('.folder-item').forEach(i => i.classList.remove('selected'));
                         item.classList.add('selected');
                         selectFolder(item.dataset.folder);
+                    });
+                });
+
+                // Add hover handlers for folder name tooltips
+                container.querySelectorAll('.folder-name').forEach(nameEl => {
+                    const fullName = nameEl.getAttribute('data-full-name');
+
+                    nameEl.addEventListener('mouseenter', (e) => {
+                        if (!fullName || fullName === nameEl.textContent) return;
+
+                        // Create tooltip
+                        const tooltip = document.createElement('div');
+                        tooltip.className = 'folder-name-tooltip';
+                        tooltip.textContent = fullName;
+                        document.body.appendChild(tooltip);
+
+                        // Position tooltip below
+                        const rect = nameEl.getBoundingClientRect();
+                        tooltip.style.top = (rect.bottom + 5) + 'px';
+                        tooltip.style.left = rect.left + 'px';
+
+                        nameEl._tooltip = tooltip;
+                    });
+
+                    nameEl.addEventListener('mouseleave', () => {
+                        if (nameEl._tooltip) {
+                            nameEl._tooltip.remove();
+                            nameEl._tooltip = null;
+                        }
                     });
                 });
             } catch (error) {
@@ -1105,6 +1472,138 @@
                 await player.play();
             } catch (error) {
             }
+        }
+
+        // Delete folder
+        async function deleteFolder(folderNumber) {
+            try {
+                const response = await fetch(`${API_BASE}/folder/${folderNumber}`, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to delete folder');
+                }
+
+                showNotification(`Folder #${folderNumber} deleted successfully`, 'success');
+
+                // Reload folders
+                loadFolders();
+
+                // Clear themes panel if the deleted folder was selected
+                if (selectedFolder === folderNumber) {
+                    selectedFolder = null;
+                    document.getElementById('themes-panel').style.display = 'none';
+                }
+            } catch (error) {
+                showNotification('Error deleting folder: ' + error.message, 'error');
+            }
+        }
+
+        // Show inline delete confirmation
+        async function showDeleteConfirmation(button, folderNumber) {
+            // Remove any existing confirmations
+            document.querySelectorAll('.delete-confirmation').forEach(el => el.remove());
+
+            // Create confirmation popup
+            const confirmation = document.createElement('div');
+            confirmation.className = 'delete-confirmation';
+            confirmation.innerHTML = `
+                <div class="delete-confirmation-text">Delete folder #${folderNumber}?</div>
+                <div class="delete-confirmation-files">
+                    <div class="delete-file-loading">Loading files...</div>
+                </div>
+                <div class="delete-confirmation-buttons">
+                    <button class="delete-confirm-btn">Yes</button>
+                    <button class="delete-cancel-btn">No</button>
+                </div>
+            `;
+
+            // Add to body and position relative to button
+            document.body.appendChild(confirmation);
+
+            // Position the popup to the left of the button
+            const buttonRect = button.getBoundingClientRect();
+            confirmation.style.left = (buttonRect.left - 10) + 'px';
+
+            // Position vertically - center on button, but ensure it doesn't go off screen
+            const viewportHeight = window.innerHeight;
+            const topPosition = buttonRect.top + (buttonRect.height / 2);
+            confirmation.style.top = topPosition + 'px';
+            confirmation.style.transform = 'translate(-100%, -50%)';
+
+            // Function to adjust position to stay in viewport
+            const adjustPosition = () => {
+                const popupRect = confirmation.getBoundingClientRect();
+                const viewportHeight = window.innerHeight;
+                const bottomOverflow = popupRect.bottom - viewportHeight + 40; // More padding from bottom
+
+                if (bottomOverflow > 0) {
+                    // Calculate new top position accounting for transform
+                    const currentTransformY = popupRect.height / 2; // The -50% transform
+                    // Move up by overflow amount minus a larger offset so it appears lower
+                    const adjustAmount = bottomOverflow - 30;
+                    const newTop = popupRect.top - adjustAmount - currentTransformY;
+                    confirmation.style.top = newTop + 'px';
+                }
+            };
+
+            // Check and adjust position after render and after files are loaded
+            requestAnimationFrame(adjustPosition);
+
+            // Fetch files list
+            try {
+                const response = await fetch(`${API_BASE}/folder/${folderNumber}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    const filesContainer = confirmation.querySelector('.delete-confirmation-files');
+
+                    let filesHtml = `<div class="delete-file-summary">📊 ${data.total_count} items • ${data.total_size_human}</div>`;
+
+                    data.files.forEach(file => {
+                        if (file.type === 'directory') {
+                            filesHtml += `<div class="delete-file-item delete-file-directory">📁 ${file.path}</div>`;
+                        } else {
+                            filesHtml += `<div class="delete-file-item">📄 ${file.path} <span style="color: var(--text-secondary); font-size: 11px;">(${file.size_human})</span></div>`;
+                        }
+                    });
+
+                    filesContainer.innerHTML = filesHtml;
+                    // Adjust position after files are loaded
+                    setTimeout(adjustPosition, 50);
+                } else {
+                    const filesContainer = confirmation.querySelector('.delete-confirmation-files');
+                    filesContainer.innerHTML = '<div class="delete-file-loading">Could not load files list</div>';
+                }
+            } catch (error) {
+                const filesContainer = confirmation.querySelector('.delete-confirmation-files');
+                filesContainer.innerHTML = '<div class="delete-file-loading">Could not load files list</div>';
+            }
+
+            // Handle Yes click
+            confirmation.querySelector('.delete-confirm-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                confirmation.remove();
+                deleteFolder(button.dataset.deleteFolder);
+            });
+
+            // Handle No click
+            confirmation.querySelector('.delete-cancel-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                confirmation.remove();
+            });
+
+            // Close on click outside
+            setTimeout(() => {
+                const closeHandler = (e) => {
+                    if (!confirmation.contains(e.target) && e.target !== button) {
+                        confirmation.remove();
+                        document.removeEventListener('click', closeHandler);
+                    }
+                };
+                document.addEventListener('click', closeHandler);
+            }, 100);
         }
 
         // Select folder and load themes
@@ -1571,6 +2070,201 @@
             tooltip.style.top = Math.min(y, maxY) + 'px';
         }
 
+        // YouTube Search functionality
+        const urlInput = document.getElementById('url-input');
+        const searchResults = document.getElementById('search-results');
+        let searchTimeout = null;
+        let currentSearchQuery = '';
+        let currentSearchResults = [];
+        let currentPage = 0;
+        const resultsPerPage = 5;
+
+        // YouTube URL patterns
+        const youtubeUrlPatterns = [
+            /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=[\w-]+)/,
+            /^(https?:\/\/)?(www\.)?(youtu\.be\/[\w-]+)/,
+            /^(https?:\/\/)?(www\.)?(youtube\.com\/embed\/[\w-]+)/,
+        ];
+
+        // Check if input is a direct YouTube URL
+        function isYouTubeUrl(text) {
+            return youtubeUrlPatterns.some(pattern => pattern.test(text));
+        }
+
+        // Search YouTube using Invidious API
+        async function searchYouTube(query) {
+            if (searchTimeout) {
+                clearTimeout(searchTimeout);
+            }
+
+            // Hide results if query is too short or is a direct URL
+            if (query.length < 3 || isYouTubeUrl(query)) {
+                searchResults.classList.add('hidden');
+                return;
+            }
+
+            searchTimeout = setTimeout(async () => {
+                try {
+                    searchResults.innerHTML = '<div class="search-loading">Searching...</div>';
+                    searchResults.classList.remove('hidden');
+
+                    // Use server-side proxy to avoid CORS
+                    const response = await fetch(`${API_BASE}/youtube-search?q=${encodeURIComponent(query)}`);
+
+                    if (!response.ok) {
+                        throw new Error('Search failed');
+                    }
+
+                    const results = await response.json();
+
+                    if (!results || results.length === 0) {
+                        searchResults.innerHTML = '<div class="search-error">No results found</div>';
+                        return;
+                    }
+
+                    currentSearchQuery = query;
+                    currentSearchResults = results;
+                    currentPage = 0;
+                    displaySearchResults();
+                } catch (error) {
+                    console.error('Search error:', error);
+                    searchResults.innerHTML = '<div class="search-error">Search failed. Please try again.</div>';
+                }
+            }, 400); // Debounce: wait 400ms after typing stops
+        }
+
+        function displaySearchResults() {
+            const totalPages = Math.ceil(currentSearchResults.length / resultsPerPage);
+            const start = currentPage * resultsPerPage;
+            const end = start + resultsPerPage;
+            const pageResults = currentSearchResults.slice(start, end);
+
+            let html = pageResults.map(video => {
+                const thumbnails = video.videoThumbnails || [];
+                const initialThumb = thumbnails.find(t => t.quality === 'hqdefault')?.url ||
+                                     thumbnails.find(t => t.quality === 'mqdefault')?.url ||
+                                     thumbnails[0]?.url ||
+                                     '';
+                const videoUrl = `https://www.youtube.com/watch?v=${video.videoId}`;
+
+                return `
+                <a href="${videoUrl}" target="_blank" class="search-result-item" data-thumbnails='${JSON.stringify(thumbnails)}' onclick="event.preventDefault(); window.selectVideo('${videoUrl}');">
+                    <img class="search-result-thumbnail" src="${initialThumb}" alt="" onerror="window.handleThumbnailError(this)">
+                    <div class="search-result-info">
+                        <div class="search-result-title">${video.title || 'Untitled'}</div>
+                        <div class="search-result-meta">
+                            <span>${formatDuration(video.lengthSeconds || 0)}</span>
+                            <span>•</span>
+                            <span class="search-result-channel">
+                                ${video.author || 'Unknown'}
+                            </span>
+                        </div>
+                    </div>
+                </a>
+                `;
+            }).join('');
+
+            // Add pagination controls
+            if (totalPages > 1) {
+                html += `
+                <div class="search-pagination">
+                    <button onclick="event.stopPropagation(); window.prevSearchPage()" ${currentPage === 0 ? 'disabled' : ''}>← Previous</button>
+                    <span style="color: var(--text-secondary); font-size: 13px;">Page ${currentPage + 1} of ${totalPages}</span>
+                    <button onclick="event.stopPropagation(); window.nextSearchPage()" ${currentPage >= totalPages - 1 ? 'disabled' : ''}>Next →</button>
+                </div>
+                `;
+            }
+
+            searchResults.innerHTML = html;
+        }
+
+        window.selectVideo = function(videoUrl) {
+            urlInput.value = videoUrl;
+            searchResults.classList.add('hidden');
+            urlInput.dispatchEvent(new Event('input'));
+        };
+
+        window.nextSearchPage = function() {
+            const totalPages = Math.ceil(currentSearchResults.length / resultsPerPage);
+            if (currentPage < totalPages - 1) {
+                currentPage++;
+                displaySearchResults();
+                searchResults.scrollTop = 0;
+            }
+        };
+
+        window.prevSearchPage = function() {
+            if (currentPage > 0) {
+                currentPage--;
+                displaySearchResults();
+                searchResults.scrollTop = 0;
+            }
+        };
+
+        // Handle thumbnail errors by trying next quality
+        window.handleThumbnailError = function(img) {
+            const item = img.closest('.search-result-item');
+            if (!item) return;
+
+            const thumbnails = JSON.parse(item.dataset.thumbnails || '[]');
+            const currentSrc = img.src;
+            const currentIndex = thumbnails.findIndex(t => t.url === currentSrc);
+
+            // Try next thumbnail quality
+            if (currentIndex < thumbnails.length - 1) {
+                img.src = thumbnails[currentIndex + 1].url;
+            } else {
+                // All failed, use placeholder
+                img.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 68"><rect fill="%23252525" width="120" height="68"/><text fill="%23808080" x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" font-size="12">No Image</text></svg>';
+            }
+        }
+
+        // Format duration (seconds to MM:SS)
+        function formatDuration(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        // Input event handler
+        urlInput.addEventListener('input', () => {
+            const value = urlInput.value.trim();
+
+            if (isYouTubeUrl(value)) {
+                // Direct URL - hide search results
+                searchResults.classList.add('hidden');
+            } else if (value.length > 0) {
+                // Search query
+                searchYouTube(value);
+            } else {
+                // Empty input
+                searchResults.classList.add('hidden');
+            }
+        });
+
+        // Focus event handler - show cached results if available
+        urlInput.addEventListener('focus', () => {
+            const value = urlInput.value.trim();
+            // Show cached results if we have them and input hasn't changed to a URL
+            if (currentSearchResults.length > 0 && value === currentSearchQuery && !isYouTubeUrl(value)) {
+                searchResults.classList.remove('hidden');
+            }
+        });
+
+        // Hide search results when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.search-results-container')) {
+                searchResults.classList.add('hidden');
+            }
+        });
+
+        // Hide search results on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                searchResults.classList.add('hidden');
+            }
+        });
+
         // Update create shorts button
         function updateCreateButton() {
             const checked = document.querySelectorAll('.theme-checkbox:checked').length;
@@ -1597,7 +2291,8 @@
             const url = document.getElementById('url-input').value.trim();
             const file = document.getElementById('file-input').files[0];
             const resolution = document.getElementById('resolution-input').value;
-            const model = 'small'; // Default model
+            const model = document.getElementById('model-input').value;
+            const language = document.getElementById('language-input').value;
 
             if (!url && !file) {
                 showNotification('Please enter a URL or select a file', 'error');
@@ -1631,7 +2326,7 @@
             cancelBtn.style.display = 'inline-block';
 
             try {
-                const payload = { model };
+                const payload = { model, language };
                 if (url) {
                     payload.url = url;
                     payload.resolution = resolution;

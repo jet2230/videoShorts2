@@ -16,6 +16,9 @@ from typing import Dict, List
 import configparser
 from datetime import datetime
 import json
+import urllib.request
+import urllib.parse
+import urllib.error
 
 from shorts_creator import YouTubeShortsCreator, load_settings
 
@@ -322,6 +325,99 @@ def list_folders():
                     })
 
     return jsonify(folders)
+
+
+@app.route('/api/folder/<folder_number>', methods=['GET'])
+def get_folder_contents(folder_number: str):
+    """Get list of files in a folder before deletion."""
+    base_dir = Path(settings.get('video', 'output_dir'))
+    folder = None
+
+    for f in base_dir.iterdir():
+        if f.is_dir() and f.name.startswith(f"{folder_number}_"):
+            folder = f
+            break
+
+    if not folder:
+        return jsonify({'error': 'Folder not found'}), 404
+
+    try:
+        files = []
+        total_size = 0
+
+        def scan_directory(path, relative_path=""):
+            nonlocal total_size
+            items = sorted(path.iterdir(), key=lambda x: (not x.is_dir(), x.name))
+
+            for item in items:
+                rel_path = f"{relative_path}/{item.name}" if relative_path else item.name
+
+                if item.is_dir():
+                    files.append({
+                        'name': item.name,
+                        'path': rel_path,
+                        'type': 'directory',
+                        'size': 0
+                    })
+                    scan_directory(item, rel_path)
+                else:
+                    size = item.stat().st_size
+                    total_size += size
+                    files.append({
+                        'name': item.name,
+                        'path': rel_path,
+                        'type': 'file',
+                        'size': size,
+                        'size_human': format_size(size)
+                    })
+
+        scan_directory(folder)
+
+        return jsonify({
+            'folder_name': folder.name,
+            'files': files,
+            'total_count': len(files),
+            'total_size': total_size,
+            'total_size_human': format_size(total_size)
+        })
+    except Exception as e:
+        app_logger.error(f"Error listing folder contents: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+def format_size(bytes_size):
+    """Format bytes to human readable size."""
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if bytes_size < 1024.0:
+            return f"{bytes_size:.1f} {unit}"
+        bytes_size /= 1024.0
+    return f"{bytes_size:.1f} TB"
+
+
+@app.route('/api/folder/<folder_number>', methods=['DELETE'])
+def delete_folder(folder_number: str):
+    """Delete a video folder and all its contents."""
+    base_dir = Path(settings.get('video', 'output_dir'))
+    folder = None
+
+    # Find the folder by number
+    for f in base_dir.iterdir():
+        if f.is_dir() and f.name.startswith(f"{folder_number}_"):
+            folder = f
+            break
+
+    if not folder:
+        return jsonify({'error': 'Folder not found'}), 404
+
+    try:
+        # Delete the entire folder and all its contents
+        import shutil
+        shutil.rmtree(folder)
+        app_logger.info(f"Deleted folder: {folder}")
+        return jsonify({'success': True, 'message': f'Folder {folder.name} deleted successfully'})
+    except Exception as e:
+        app_logger.error(f"Error deleting folder {folder}: {e}")
+        return jsonify({'error': f'Failed to delete folder: {str(e)}'}), 500
 
 
 @app.route('/api/folder/<folder_number>/themes', methods=['GET'])
@@ -1294,6 +1390,66 @@ def list_shorts():
     return jsonify(shorts)
 
 
+@app.route('/api/youtube-search', methods=['GET'])
+def youtube_search():
+    """Proxy YouTube search using yt-dlp to avoid CORS."""
+    query = request.args.get('q', '').strip()
+    page = request.args.get('page', 1, type=int)
+
+    if not query:
+        return jsonify({'error': 'Query parameter is required'}), 400
+
+    try:
+        # Use yt-dlp to search YouTube
+        import yt_dlp
+
+        # Get 20 results per page (2 pages of 10 for pagination)
+        results_per_page = 20
+
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': True,
+            'playlistend': results_per_page,
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            search_url = f'ytsearch{results_per_page}:{query}'
+            result = ydl.extract_info(search_url, download=False)
+
+            if not result or 'entries' not in result:
+                return jsonify({'error': 'No results found'}), 404
+
+            # Format results to match expected structure
+            videos = []
+            for entry in result['entries']:
+                if entry:
+                    video_id = entry.get('id', '')
+
+                    # Build thumbnails array with different sizes
+                    thumbnails = []
+                    for quality in ['maxresdefault', 'sddefault', 'hqdefault', 'mqdefault']:
+                        thumbnails.append({
+                            'url': f'https://img.youtube.com/vi/{video_id}/{quality}.jpg',
+                            'quality': quality
+                        })
+
+                    videos.append({
+                        'videoId': video_id,
+                        'title': entry.get('title', 'Unknown'),
+                        'author': entry.get('uploader', 'Unknown'),
+                        'lengthSeconds': entry.get('duration', 0),
+                        'videoThumbnails': thumbnails,
+                        'authorThumbnails': []
+                    })
+
+            return jsonify(videos)
+
+    except Exception as e:
+        app_logger.error(f"YouTube search error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/process', methods=['POST'])
 def process_video():
     """Process a new video (URL or local file)."""
@@ -1303,6 +1459,7 @@ def process_video():
     url = data.get('url', '').strip()
     local_file = data.get('local_file', '').strip()
     model = data.get('model', settings.get('whisper', 'model'))
+    language = data.get('language', settings.get('whisper', 'language'))
     resolution = data.get('resolution', 'best')
 
     if not url and not local_file:
@@ -1322,7 +1479,7 @@ def process_video():
     # Start background task - pass task_id directly (daemon=True to allow Ctrl+C)
     thread = threading.Thread(
         target=run_task_with_callback,
-        args=(task_id, _process_video, url, local_file, model, resolution),
+        args=(task_id, _process_video, url, local_file, model, language, resolution),
         daemon=True
     )
     thread.start()
@@ -1330,7 +1487,7 @@ def process_video():
     return jsonify({'task_id': task_id})
 
 
-def _process_video(url: str, local_file: str, model: str, resolution: str = 'best', progress_callback=None, cancel_check=None):
+def _process_video(url: str, local_file: str, model: str, language: str, resolution: str = 'best', progress_callback=None, cancel_check=None):
     """Process video in background."""
     # Initialize AI generator
     ai_generator = None
@@ -1359,7 +1516,7 @@ def _process_video(url: str, local_file: str, model: str, resolution: str = 'bes
     if cancel_check and cancel_check():
         raise Exception('Cancelled by user')
 
-    creator.generate_subtitles(video_info, model_size=model, progress_callback=progress_callback)
+    creator.generate_subtitles(video_info, model_size=model, language=language, progress_callback=progress_callback)
 
     if cancel_check and cancel_check():
         raise Exception('Cancelled by user')
