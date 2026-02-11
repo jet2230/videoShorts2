@@ -1102,3 +1102,35 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     })
 
         return segments
+
+# Utility functions for SRT time parsing/formatting
+
+def parse_srt_time(srt_time: str) -> str:
+    """Parse SRT time format (HH:MM:SS,mmm) to decimal seconds."""
+    if not srt_time or '-->' in srt_time:
+        return '-->:-->:-->'
+    
+    parts = srt_time.split(':')
+    hours = int(parts[0])
+    minutes = int(parts[1])
+    seconds_and_ms = parts[2].split('.')
+    
+    result = float(hours) * 3600 + float(minutes) * 60
+    if len(seconds_and_ms) == 2:
+        seconds = int(seconds_and_ms[0])
+        ms = int(seconds_and_ms[1]) if len(seconds_and_ms[1]) == 3 else 0
+        result += float(seconds) + float(ms) / 1000
+    else:
+        result = float(hours) * 3600 + float(minutes)
+    
+    return str(result)
+
+
+def format_srt_time(seconds: float, decimal_places: int = 3) -> str:
+    """Format decimal seconds to SRT time format (HH:MM:SS,mmm)."""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    ms = int((seconds % 1) * 1000)
+    
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}{ms:03d}"
