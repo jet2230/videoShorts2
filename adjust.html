@@ -1467,6 +1467,11 @@
                     <span class="info-label">Directory location</span>
                     <span class="info-value" id="folder-location" title="">-</span>
                 </div>
+                <div class="info-row" style="margin-top: 10px;">
+                    <button id="re-transcribe-btn" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
+                        🔄 Re-transcribe Video
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -1504,8 +1509,8 @@
                 <span style="font-size: 12px; color: #aaa;">Canvas</span>
             </div>
 
-            <div class="subtitle-editor">
-                <div class="subtitle-section">
+            <div class="subtitle-editor" id="subtitle-editor">
+                <div class="subtitle-section" id="subtitle-text-section">
                     <h3>Subtitle Text</h3>
 
                     <!-- Action buttons toolbar -->
@@ -1540,7 +1545,7 @@
                     <div class="subtitle-text-area" id="subtitle-text" contenteditable="true" data-placeholder="Edit subtitle text here..."></div>
                 </div>
 
-                <div class="subtitle-section">
+                <div class="subtitle-section" id="global-settings-section">
                     <h3>Global Subtitle Settings</h3>
                     <div class="form-row">
                         <div class="form-group">
@@ -1609,8 +1614,10 @@
                             </div>
                         </div>
                     </div>
+                </div>
 
-                    <!-- Karaoke Highlighting Section -->
+                <!-- Karaoke Highlighting Section - separate from Global Settings -->
+                <div class="subtitle-section" id="karaoke-section">
                     <div class="form-row">
                         <div class="form-group" style="width: 100%;">
                             <label style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
@@ -1716,10 +1723,65 @@
                             </div>
                         </div>
                     </div>
-                </div>
+                </div>  <!-- End of karaoke-section -->
             </div>
 
             <div id="message" style="margin-top: 16px;"></div>
+        </div>
+    </div>
+
+    <!-- Re-transcribe Modal -->
+    <div id="re-transcribe-modal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2>Re-transcribe Video</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Whisper Model</label>
+                    <select id="retranscribe-model" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #222; color: #fff;">
+                        <option value="base">base (fastest, less accurate)</option>
+                        <option value="small" selected>small (balanced)</option>
+                        <option value="medium">medium (more accurate)</option>
+                        <option value="large">large (most accurate, slower)</option>
+                    </select>
+                </div>
+
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Language</label>
+                    <select id="retranscribe-language" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #222; color: #fff;">
+                        <option value="">Auto-detect</option>
+                        <option value="en" selected>English</option>
+                        <option value="es">Spanish</option>
+                        <option value="fr">French</option>
+                        <option value="de">German</option>
+                        <option value="it">Italian</option>
+                        <option value="pt">Portuguese</option>
+                        <option value="ru">Russian</option>
+                        <option value="ar">Arabic</option>
+                        <option value="hi">Hindi</option>
+                        <option value="zh">Chinese</option>
+                    </select>
+                </div>
+
+                <!-- Progress bar -->
+                <div id="retranscribe-progress-container" style="display: none; margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 13px;">
+                        <span id="retranscribe-progress-text">Initializing...</span>
+                        <span id="retranscribe-progress-percent">0%</span>
+                    </div>
+                    <div style="height: 8px; background: #333; border-radius: 4px; overflow: hidden;">
+                        <div id="retranscribe-progress-fill" style="height: 100%; width: 0%; background: linear-gradient(90deg, #4CAF50, #45a049); transition: width 0.3s ease;"></div>
+                    </div>
+                </div>
+
+                <div id="retranscribe-message" style="font-size: 13px; color: #aaa; margin-bottom: 12px; min-height: 18px;"></div>
+            </div>
+            <div class="modal-footer" style="padding: 16px; border-top: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: flex-end; gap: 12px;">
+                <button id="cancel-retranscribe-btn" class="btn btn-secondary">Cancel</button>
+                <button id="start-retranscribe-btn" class="btn btn-primary">Start Transcription</button>
+            </div>
         </div>
     </div>
 
@@ -1805,6 +1867,7 @@
         let subtitleAutoSaveTimeout = null;
         let currentCueInfo = null; // Track current cue {sequence, timestamp, start, end, text}
         let allThemeCues = []; // Cache all theme cues
+        let subtitleEdits = {}; // Cache subtitle text edits { "start_end": "edited text" }
         let subtitleFormatting = { bold: false, italic: false, color: null, size: null };
         let allCueFormatting = {}; // Store formatting for all cues: {sequence: {sequence, timestamp, html, _text}}
         let isProgrammaticUpdate = false; // Flag to prevent auto-save during programmatic updates
@@ -2497,7 +2560,7 @@
                 // This allows styling subtitles in expanded timeline areas
                 // Add cache-buster to ensure we get fresh response
                 const cacheBuster = Date.now();
-                const response = await fetch(`/api/all-subtitles/${folderNumber}?_=${cacheBuster}`);
+                const response = await fetch(`/api/all-subtitles/${folderNumber}?theme=${themeNumber}&_=${cacheBuster}`);
 
 
                 if (!response.ok) {
@@ -2506,11 +2569,40 @@
                     if (!fallbackResponse.ok) return [];
                     const data = await fallbackResponse.json();
                     allThemeCues = data.cues;
+
+                    // Load subtitle edits from server into cache
+                    if (data.edits && Object.keys(data.edits).length > 0) {
+                        subtitleEdits = {};
+                        for (const [key, editData] of Object.entries(data.edits)) {
+                            subtitleEdits[key] = typeof editData === 'string' ? editData : editData.text;
+                        }
+                    }
+
                     return allThemeCues;
                 }
 
                 const data = await response.json();
                 allThemeCues = data.cues;
+
+                // Load subtitle edits from server into cache
+                // This ensures edits persist across page refreshes
+                if (data.edits && Object.keys(data.edits).length > 0) {
+                    subtitleEdits = {};
+                    for (const [key, editData] of Object.entries(data.edits)) {
+                        // editData is either a string (old format) or an object with 'text' property (new format)
+                        subtitleEdits[key] = typeof editData === 'string' ? editData : editData.text;
+                    }
+                }
+
+                // Apply any cached subtitle edits
+                for (const [key, editText] of Object.entries(subtitleEdits)) {
+                    const [start, end] = key.split('_');
+                    const cueIndex = allThemeCues.findIndex(cue => cue.start === start && cue.end === end);
+                    if (cueIndex !== -1) {
+                        allThemeCues[cueIndex].text = editText;
+                    }
+                }
+
                 return allThemeCues;
             } catch (error) {
                 return [];
@@ -2789,7 +2881,7 @@
                     const newText = textarea.innerText.trim();
 
                     // Don't save if there's no text or no current cue
-                    if (!newText) {
+                    if (!newText || !currentCueInfo) {
                         return;
                     }
 
@@ -2798,20 +2890,40 @@
                     indicator.textContent = '⏳ Saving...';
                     indicator.classList.add('show', 'saving');
 
-                    // If we have currentCueInfo, update that specific cue
-                    if (currentCueInfo) {
-                        // Find and update the current cue
-                        const cueIndex = allThemeCues.findIndex(cue =>
-                            cue.start === currentCueInfo.start && cue.end === currentCueInfo.end
-                        );
+                    // Save to server
+                    const themeStart = parseFloat(previewVideo.dataset.themeStart) || 0;
+                    const saveResponse = await fetch('/api/save-cue-text', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            folder: folderNumber,
+                            theme: themeNumber,
+                            theme_start: themeStart,
+                            cue_start: currentCueInfo.start,
+                            cue_end: currentCueInfo.end,
+                            text: newText
+                        })
+                    });
 
-                        if (cueIndex !== -1) {
-                            allThemeCues[cueIndex].text = newText;
-                        }
+                    if (!saveResponse.ok) {
+                        const errorData = await saveResponse.json();
+                        throw new Error(errorData.error || 'Failed to save to server');
                     }
 
-                    // Note: Cue text edits are kept in memory only (allThemeCues)
-                    // The shorts_creator will create its own trimmed SRT from original source
+                    const saveResult = await saveResponse.json();
+
+                    // Store edit in local cache for persistence across page interactions
+                    const editKey = `${currentCueInfo.start}_${currentCueInfo.end}`;
+                    subtitleEdits[editKey] = newText;
+
+                    // Update in-memory cues
+                    const cueIndex = allThemeCues.findIndex(cue =>
+                        cue.start === currentCueInfo.start && cue.end === currentCueInfo.end
+                    );
+
+                    if (cueIndex !== -1) {
+                        allThemeCues[cueIndex].text = newText;
+                    }
 
                     // Reload the subtitle track to show changes
                     if (previewVideo) {
@@ -3212,12 +3324,20 @@
                     });
 
                     // Fallback: match by timestamp only if text matching fails
-                    // (handles cases where text has subtle differences)
+                    // (handles cases where text has subtle differences OR was edited)
                     if (!matchingCue) {
                         matchingCue = allThemeCues.find(cue =>
                             cue.start === absoluteTimestampKey && cue.end === absoluteEndTimeKey
                         );
                         if (matchingCue) {
+                            // IMPORTANT: Update the cue text with edited text from VTT track
+                            // The VTT has edits applied from the server JSON, so use that text
+                            if (matchingCue.text !== currentCue.text) {
+                                matchingCue.text = currentCue.text;
+                                // Also update local cache
+                                const cacheKey = `${matchingCue.start}_${matchingCue.end}`;
+                                subtitleEdits[cacheKey] = currentCue.text;
+                            }
                         }
                     }
 
@@ -3608,7 +3728,7 @@
                 newTrack.srclang = 'en';
                 newTrack.label = 'English';
                 newTrack.default = false;
-                newTrack.src = `/api/subtitles/${folderNumber}/${themeNumber}.vtt?start=${startSeconds}&end=${endSeconds}`;
+                newTrack.src = `/api/subtitles/${folderNumber}/${themeNumber}.vtt?start=${startSeconds}&end=${endSeconds}&t=${Date.now()}`;
 
                 // Add to DOM
                 previewVideo.appendChild(newTrack);
@@ -5316,6 +5436,168 @@
         // Export button event listener
         document.getElementById('export-canvas-video')?.addEventListener('click', exportCanvasKaraokeVideo);
 
+        // Re-transcribe button event listener
+        const retranscribeModal = document.getElementById('re-transcribe-modal');
+        const startRetranscribeBtn = document.getElementById('start-retranscribe-btn');
+        const cancelRetranscribeBtn = document.getElementById('cancel-retranscribe-btn');
+        const closeRetranscribeModal = retranscribeModal.querySelector('.close');
+        let retranscribePolling = null;
+        let retranscribeTaskId = null;
+
+        // Helper function to add/remove " (current)" from dropdown options
+        function updateDropdownWithCurrent(selectId, currentValue) {
+            const select = document.getElementById(selectId);
+            // First, remove any existing " (current)" from all options
+            Array.from(select.options).forEach(opt => {
+                opt.text = opt.text.replace(' (current)', '');
+            });
+
+            // If currentValue is not empty/undefined, add " (current)" to matching option
+            if (currentValue) {
+                const matchingOption = Array.from(select.options).find(opt => opt.value === currentValue);
+                if (matchingOption) {
+                    matchingOption.text = matchingOption.text + ' (current)';
+                    select.value = currentValue;
+                }
+            }
+        }
+
+        // Open modal
+        document.getElementById('re-transcribe-btn')?.addEventListener('click', async () => {
+            retranscribeModal.style.display = 'block';
+            // Reset state
+            document.getElementById('retranscribe-progress-container').style.display = 'none';
+            document.getElementById('retranscribe-message').textContent = '';
+            document.getElementById('retranscribe-progress-text').textContent = 'Initializing...';
+            document.getElementById('retranscribe-progress-percent').textContent = '0%';
+            document.getElementById('retranscribe-progress-fill').style.width = '0%';
+            startRetranscribeBtn.disabled = false;
+            cancelRetranscribeBtn.disabled = false;
+
+            // Fetch current settings from theme.md
+            try {
+                const response = await fetch(`/api/re-transcribe-settings/${folderNumber}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    // Update dropdowns with current values
+                    updateDropdownWithCurrent('retranscribe-model', data.current_model);
+                    updateDropdownWithCurrent('retranscribe-language', data.current_language);
+                }
+            } catch (error) {
+                console.error('Failed to fetch current settings:', error);
+            }
+        });
+
+        // Close modal handlers
+        closeRetranscribeModal.addEventListener('click', () => {
+            retranscribeModal.style.display = 'none';
+            // Stop polling if active
+            if (retranscribePolling) {
+                clearInterval(retranscribePolling);
+                retranscribePolling = null;
+            }
+        });
+
+        cancelRetranscribeBtn.addEventListener('click', () => {
+            retranscribeModal.style.display = 'none';
+            // Stop polling if active
+            if (retranscribePolling) {
+                clearInterval(retranscribePolling);
+                retranscribePolling = null;
+            }
+        });
+
+        // Start transcription
+        startRetranscribeBtn.addEventListener('click', async () => {
+            const model = document.getElementById('retranscribe-model').value;
+            const language = document.getElementById('retranscribe-language').value;
+
+            // Show progress
+            document.getElementById('retranscribe-progress-container').style.display = 'block';
+            document.getElementById('retranscribe-message').textContent = 'Starting transcription...';
+            document.getElementById('retranscribe-progress-text').textContent = 'Starting...';
+            document.getElementById('retranscribe-progress-percent').textContent = '0%';
+            document.getElementById('retranscribe-progress-fill').style.width = '0%';
+
+            startRetranscribeBtn.disabled = true;
+            cancelRetranscribeBtn.disabled = true;
+
+            try {
+                const response = await fetch('/api/re-transcribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        folder: folderNumber,
+                        model: model,
+                        language: language
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.task_id) {
+                    // Start polling for progress
+                    retranscribeTaskId = data.task_id;
+                    pollRetranscribeProgress();
+                } else {
+                    throw new Error(data.error || 'Failed to start transcription');
+                }
+            } catch (error) {
+                document.getElementById('retranscribe-message').textContent = 'Error: ' + error.message;
+                document.getElementById('retranscribe-message').style.color = '#ff6b6b';
+                startRetranscribeBtn.disabled = false;
+                cancelRetranscribeBtn.disabled = false;
+            }
+        });
+
+        // Poll for progress
+        function pollRetranscribeProgress() {
+            retranscribePolling = setInterval(async () => {
+                if (!retranscribeTaskId) {
+                    clearInterval(retranscribePolling);
+                    retranscribePolling = null;
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`/api/re-transcribe-status/${retranscribeTaskId}`);
+                    const data = await response.json();
+
+                    if (data.status === 'processing' || data.status === 'pending') {
+                        // Update progress
+                        document.getElementById('retranscribe-message').textContent = data.log || 'Processing...';
+                        document.getElementById('retranscribe-progress-text').textContent = data.log || 'Processing...';
+                    } else if (data.status === 'complete') {
+                        // Done!
+                        clearInterval(retranscribePolling);
+                        retranscribePolling = null;
+
+                        document.getElementById('retranscribe-progress-text').textContent = 'Complete!';
+                        document.getElementById('retranscribe-progress-percent').textContent = '100%';
+                        document.getElementById('retranscribe-progress-fill').style.width = '100%';
+                        document.getElementById('retranscribe-message').textContent = 'Transcription complete! Reloading page...';
+                        document.getElementById('retranscribe-message').style.color = '#4CAF50';
+
+                        // Reload page after showing completion
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 2000);
+                    } else if (data.status === 'error') {
+                        // Error
+                        clearInterval(retranscribePolling);
+                        retranscribePolling = null;
+
+                        document.getElementById('retranscribe-message').textContent = 'Error: ' + (data.error || 'Unknown error');
+                        document.getElementById('retranscribe-message').style.color = '#ff6b6b';
+                        startRetranscribeBtn.disabled = false;
+                        cancelRetranscribeBtn.disabled = false;
+                    }
+                } catch (error) {
+                    console.error('Polling error:', error);
+                }
+            }, 1000);  // Poll every 1 second
+        }
+
         // Toast notification system
         function showToast(message, type = 'info') {
             // Remove existing toast if any
@@ -5790,6 +6072,19 @@
                 canvasIndicator.style.display = 'block';
                 subtitleOverlay.style.display = 'none';
 
+                // Hide Subtitle Text section and Global Settings (keep Karaoke visible)
+                const hideSection = (id) => {
+                    const el = document.getElementById(id);
+                    el.style.visibility = 'hidden';
+                    el.style.pointerEvents = 'none';
+                    el.style.height = '0';
+                    el.style.overflow = 'hidden';
+                    el.style.margin = '0';
+                    el.style.padding = '0';
+                };
+                hideSection('subtitle-text-section');
+                hideSection('global-settings-section');
+
                 // Disable ALL VTT subtitles tracks (don't remove, just disable)
                 if (previewVideo.textTracks) {
                     for (let i = 0; i < previewVideo.textTracks.length; i++) {
@@ -5876,6 +6171,19 @@
                 canvasIndicator.style.display = 'none';
                 previewVideo.style.opacity = '1';
                 subtitleOverlay.style.display = 'block';
+
+                // Show Subtitle Text section and Global Settings when canvas mode is off
+                const showSection = (id) => {
+                    const el = document.getElementById(id);
+                    el.style.visibility = 'visible';
+                    el.style.pointerEvents = 'auto';
+                    el.style.height = '';
+                    el.style.overflow = '';
+                    el.style.margin = '';
+                    el.style.padding = '';
+                };
+                showSection('subtitle-text-section');
+                showSection('global-settings-section');
 
                 // Remove canvas mode class to show VTT again
                 previewVideo.classList.remove('canvas-mode-active');
@@ -6057,44 +6365,6 @@
             }
         });
 
-        // Keyboard controls for preview video
-        document.addEventListener('keydown', (e) => {
-            // Only handle keyboard events when not in textarea/input or editing theme name
-            if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT' || e.target.id === 'theme-name') {
-                return;
-            }
-
-            // Space key for play/pause
-            if (e.code === 'Space') {
-                e.preventDefault();
-                if (!videoControlsLocked) {
-                    if (previewVideo.paused) {
-                        previewVideo.play();
-                    } else {
-                        previewVideo.pause();
-                    }
-                }
-                return;
-            }
-
-            // Arrow keys for seeking (only when video controls are not locked)
-            if (!videoControlsLocked && (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) {
-                e.preventDefault();
-
-                const themeStart = parseFloat(previewVideo.dataset.themeStart);
-                const themeEnd = parseFloat(previewVideo.dataset.themeEnd);
-                const seekAmount = 5; // Seek by 5 seconds
-
-                if (e.code === 'ArrowLeft') {
-                    // Seek backward
-                    previewVideo.currentTime = Math.max(themeStart, previewVideo.currentTime - seekAmount);
-                } else {
-                    // Seek forward
-                    previewVideo.currentTime = Math.min(themeEnd, previewVideo.currentTime + seekAmount);
-                }
-            }
-        });
-
         // Subtitle Editor Modal
         let themeSubtitles = []; // Store all subtitles for the theme
         const subtitleModal = document.getElementById('subtitle-modal');
@@ -6115,6 +6385,28 @@
 
                 const data = await response.json();
                 themeSubtitles = data.cues;
+
+                // Load edits from server response into cache (for persistence)
+                if (data.edits && Object.keys(data.edits).length > 0) {
+                    subtitleEdits = {};
+                    for (const [key, editData] of Object.entries(data.edits)) {
+                        subtitleEdits[key] = typeof editData === 'string' ? editData : editData.text;
+                    }
+                }
+
+                // Store original text before applying edits (for comparison when saving)
+                themeSubtitles.forEach(cue => {
+                    cue._originalText = cue.text;
+                });
+
+                // Apply any cached subtitle edits to the loaded cues
+                for (const [key, editText] of Object.entries(subtitleEdits)) {
+                    const [start, end] = key.split('_');
+                    const cueIndex = themeSubtitles.findIndex(cue => cue.start === start && cue.end === end);
+                    if (cueIndex !== -1) {
+                        themeSubtitles[cueIndex].text = editText;
+                    }
+                }
 
                 renderSubtitleCues();
                 subtitleModal.style.display = 'block';
@@ -6174,11 +6466,154 @@
             });
         }
 
+        // Central sync function - ensures all subtitle sources stay in sync
+        // Updates: text area, preview (via VTT reload), canvas (via allThemeCues)
+        function syncAllSubtitleSources(start, end, newText) {
+            const textArea = document.getElementById('subtitle-text');
+            if (!textArea) return;
+
+            // Always update the text area with the edited text
+            // The user just edited a subtitle, they want to see the result
+            textArea.innerHTML = newText;
+
+            // Update currentCueInfo to match this edited subtitle
+            const editedCue = allThemeCues.find(c => c.start === start && c.end === end);
+            if (editedCue) {
+                currentCueInfo = {
+                    sequence: editedCue.sequence,
+                    timestamp: editedCue.timestamp,
+                    start: editedCue.start,
+                    end: editedCue.end,
+                    text: newText
+                };
+
+                // Seek to the start of this subtitle in the preview video
+                // This ensures the preview shows the edited subtitle
+                if (previewVideo) {
+                    const cueStartTime = parseTime(start);
+                    previewVideo.currentTime = cueStartTime;
+                }
+            }
+
+            // Note: Canvas updates automatically from allThemeCues
+            // Preview updates automatically from VTT reload
+        }
+
         // Save subtitles
         saveSubsBtn.addEventListener('click', async () => {
-            const messageDiv = document.getElementById('message');
-            messageDiv.textContent = 'Subtitles are saved automatically when timeline is adjusted';
-            messageDiv.className = 'success';
+            // Collect all edited subtitle texts
+            const cueItems = document.querySelectorAll('.subtitle-cue-item');
+            const edits = [];
+
+            cueItems.forEach((cueItem, index) => {
+                const textArea = cueItem.querySelector('.cue-textarea');
+                const startInput = cueItem.querySelector('input[data-field="start"]');
+                const endInput = cueItem.querySelector('input[data-field="end"]');
+
+                if (textArea && startInput && endInput) {
+                    const cue = themeSubtitles[index];
+                    const newText = textArea.value;
+
+                    // Only save if text was changed from original
+                    if (cue._originalText !== newText) {
+                        edits.push({
+                            sequence: cue.sequence,
+                            start: startInput.value,
+                            end: endInput.value,
+                            oldText: cue.text,
+                            newText: newText
+                        });
+
+                        // Update local cache
+                        const editKey = `${cue.start}_${cue.end}`;
+                        subtitleEdits[editKey] = newText;
+
+                        // Update allThemeCues
+                        const cueIndex = allThemeCues.findIndex(c =>
+                            c.start === cue.start && c.end === cue.end
+                        );
+                        if (cueIndex !== -1) {
+                            allThemeCues[cueIndex].text = newText;
+                        }
+
+                        // Update themeSubtitles
+                        cue.text = newText;
+                        cue._originalText = newText; // Update original text too
+                    }
+                }
+            });
+
+            if (edits.length > 0) {
+                // Save all edits to server
+                try {
+                    for (const edit of edits) {
+                        await fetch('/api/save-cue-text', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                folder: folderNumber,
+                                theme: themeNumber,
+                                cue_start: edit.start,
+                                cue_end: edit.end,
+                                text: edit.newText
+                            })
+                        });
+                    }
+
+                    // Reload VTT track to show changes
+                    if (previewVideo) {
+                        const existingTracks = previewVideo.querySelectorAll('track');
+                        existingTracks.forEach(track => track.remove());
+
+                        while (previewVideo.textTracks.length > 0) {
+                            previewVideo.textTracks[0].mode = 'disabled';
+                        }
+
+                        const newTrack = document.createElement('track');
+                        newTrack.id = 'preview-subtitle-track';
+                        newTrack.kind = 'subtitles';
+                        newTrack.srclang = 'en';
+                        newTrack.label = 'English';
+                        newTrack.default = false;
+                        newTrack.src = `/api/subtitles/${folderNumber}/${themeNumber}.vtt?start=${startSeconds}&end=${endSeconds}&t=${Date.now()}`;
+
+                        // Add load event listener before appending
+                        newTrack.addEventListener('load', () => {
+                            // Track loaded, now enable it
+                            if (previewVideo.textTracks.length > 0) {
+                                previewVideo.textTracks[0].mode = 'showing';
+                            }
+                        });
+
+                        // Also set a timeout fallback
+                        setTimeout(() => {
+                            if (previewVideo.textTracks.length > 0 && previewVideo.textTracks[0].mode !== 'showing') {
+                                previewVideo.textTracks[0].mode = 'showing';
+                            }
+                        }, 500);
+
+                        previewVideo.appendChild(newTrack);
+
+                        // Sync all subtitle sources to ensure consistency
+                        edits.forEach(edit => {
+                            syncAllSubtitleSources(edit.start, edit.end, edit.newText);
+                        });
+                    }
+
+                    const messageDiv = document.getElementById('message');
+                    messageDiv.textContent = `Saved ${edits.length} subtitle edit(s)`;
+                    messageDiv.className = 'success';
+                } catch (error) {
+                    const messageDiv = document.getElementById('message');
+                    messageDiv.textContent = `Error saving: ${error.message}`;
+                    messageDiv.className = 'error';
+                }
+            } else {
+                const messageDiv = document.getElementById('message');
+                messageDiv.textContent = 'No changes to save';
+                messageDiv.className = 'success';
+            }
+
             subtitleModal.style.display = 'none';
 
             setTimeout(() => {

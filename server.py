@@ -7,6 +7,7 @@ from flask import Flask, jsonify, request, send_from_directory, send_file
 from flask_cors import CORS
 import subprocess
 import threading
+import time
 import queue
 import os
 import sys
@@ -1823,6 +1824,191 @@ def cancel_task(task_id: str):
                             traceback.print_exc()
 
     return jsonify({'success': True})
+
+
+@app.route('/api/re-transcribe-settings/<folder_number>', methods=['GET'])
+def get_retranscribe_settings(folder_number: str):
+    """Get the language and model used for transcribing this video (from theme.md)."""
+    try:
+        # Find the folder
+        base_dir = Path(settings.get('video', 'output_dir'))
+        folder = None
+        for f in base_dir.iterdir():
+            if f.is_dir() and f.name.startswith(f"{folder_number}_"):
+                folder = f
+                break
+
+        if not folder:
+            return jsonify({'error': 'Folder not found'}), 404
+
+        # Read theme.md to get current settings
+        themes_file = folder / 'themes.md'
+        if not themes_file.exists():
+            return jsonify({'error': 'themes.md not found'}), 404
+
+        with open(themes_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        # Parse model and language from theme.md
+        import re
+        # Handle markdown formatting with **
+        model_match = re.search(r'\*\*Whisper Model:\*\*\s*(\w+)', content)
+        language_match = re.search(r'\*\*Language:\*\*\s*(\w+)', content)
+
+        current_model = model_match.group(1) if model_match else settings.get('whisper', 'model')
+        current_language = language_match.group(1) if language_match else settings.get('whisper', 'language')
+
+        return jsonify({
+            'current_model': current_model,
+            'current_language': current_language
+        })
+
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
+
+def _run_retranscribe_task(task_id, folder_number, folder, video_file, model, language, base_dir):
+    """Module-level function for re-transcription task (can be pickled for multiprocessing)."""
+    try:
+        # Update task status
+        with task_lock:
+            tasks[task_id]['status'] = 'processing'
+            tasks[task_id]['log'] = 'Starting transcription...'
+
+        # Create video_info dict
+        video_info = {
+            'folder': str(folder),
+            'folder_number': folder_number,
+            'video_path': str(video_file),
+            'title': video_file.stem
+        }
+
+        # Progress callback to update task log
+        def progress_callback(msg):
+            print(f"[Re-transcribe Progress] {msg}")  # Log to stdout
+            with task_lock:
+                if task_id in tasks:
+                    tasks[task_id]['log'] = msg
+
+        # Get or create YouTubeShortsCreator instance
+        from shorts_creator import YouTubeShortsCreator
+        creator = YouTubeShortsCreator(base_dir)
+
+        # Generate new subtitles
+        srt_path = creator.generate_subtitles(
+            video_info,
+            model_size=model,
+            language=language,
+            progress_callback=progress_callback
+        )
+
+        # Update themes.md with new model and language
+        themes_file = folder / 'themes.md'
+        if themes_file.exists():
+            with open(themes_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            # Update Whisper Model and Language in themes.md
+            import re
+            # Handle markdown formatting with **
+            content = re.sub(r'\*\*Whisper Model:\*\*\s*\w+', f'**Whisper Model:** {model}', content)
+            lang_display = language if language else 'Auto'
+            content = re.sub(r'\*\*Language:\*\*\s*\w+', f'**Language:** {lang_display}', content)
+
+            with open(themes_file, 'w', encoding='utf-8') as f:
+                f.write(content)
+
+            progress_callback('Updated themes.md with new settings')
+
+        # Mark as complete
+        with task_lock:
+            if task_id in tasks:
+                tasks[task_id]['status'] = 'complete'
+                tasks[task_id]['log'] = 'Transcription complete!'
+
+    except Exception as e:
+        import traceback
+        error_msg = str(e)
+        with task_lock:
+            if task_id in tasks:
+                tasks[task_id]['status'] = 'error'
+                tasks[task_id]['error'] = error_msg
+                tasks[task_id]['log'] = f'Error: {error_msg}'
+        print(f"[Re-transcribe Error] {error_msg}\n{traceback.format_exc()}")
+
+
+@app.route('/api/re-transcribe', methods=['POST'])
+def re_transcribe():
+    """Re-transcribe an existing video in the library with progress tracking."""
+    try:
+        data = request.json
+        folder_number = data.get('folder')
+        model = data.get('model', settings.get('whisper', 'model'))
+        language = data.get('language', settings.get('whisper', 'language'))
+
+        if not folder_number:
+            return jsonify({'error': 'Folder number is required'}), 400
+
+        # Find the folder
+        base_dir = Path(settings.get('video', 'output_dir'))
+        folder = None
+        for f in base_dir.iterdir():
+            if f.is_dir() and f.name.startswith(f"{folder_number}_"):
+                folder = f
+                break
+
+        if not folder:
+            return jsonify({'error': 'Folder not found'}), 404
+
+        # Find the video file
+        video_files = list(folder.glob('*.mp4')) + list(folder.glob('*.mkv')) + list(folder.glob('*.webm'))
+        if not video_files:
+            return jsonify({'error': 'No video file found'}), 404
+        video_file = video_files[0]
+
+        # Create a task ID for progress tracking
+        task_id = f"retranscribe_{folder_number}_{int(time.time())}"
+
+        # Initialize task tracking
+        with task_lock:
+            tasks[task_id] = {
+                'type': 'retranscribe',
+                'status': 'pending',
+                'folder': folder_number,
+                'model': model,
+                'language': language,
+                'log': 'Initializing...',
+                'error': None
+            }
+
+        # Start background thread
+        thread = threading.Thread(
+            target=_run_retranscribe_task,
+            args=(task_id, folder_number, folder, video_file, model, language, base_dir),
+            daemon=True
+        )
+        thread.start()
+
+        return jsonify({'task_id': task_id})
+
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
+
+
+@app.route('/api/re-transcribe-status/<task_id>')
+def retranscribe_status(task_id: str):
+    """Get the status of a re-transcribe task."""
+    with task_lock:
+        if task_id not in tasks:
+            return jsonify({'error': 'Task not found'}), 404
+
+        task = tasks[task_id].copy()
+        return jsonify({
+            'status': task['status'],
+            'log': task.get('log', ''),
+            'error': task.get('error')
+        })
 
 
 # Track edit processes for cancellation

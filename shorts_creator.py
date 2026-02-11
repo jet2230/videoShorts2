@@ -262,9 +262,23 @@ class YouTubeShortsCreator:
 
         import shutil
 
-        video_file = Path(video_path).resolve()
+        # Handle special characters in filename (like full-width question mark "？")
+        # Use the path directly without resolve() to avoid encoding issues
+        video_file = Path(video_path)
+
         if not video_file.exists():
-            raise FileNotFoundError(f"Video file not found: {video_path}")
+            # If direct path doesn't work, try globbing for the file
+            # This handles encoding issues with special characters
+            parent_dir = video_file.parent
+            # Try with and without extension
+            filename_stem = video_file.stem
+            possible_files = list(parent_dir.glob(f"{filename_stem}*.mp4")) + list(parent_dir.glob(f"{filename_stem}*.MP4"))
+
+            if possible_files:
+                video_file = possible_files[0]
+                _log_msg(f"Found video using glob search: {video_file}")
+            else:
+                raise FileNotFoundError(f"Video file not found: {video_path}")
 
         # Check if video is already in the correct folder structure (videos/XXX_name/)
         parent_folder = video_file.parent
@@ -407,6 +421,16 @@ Video Path: {video_info['video_path']}
         except Exception:
             pass
 
+        # Clear any cached GPU memory from PyTorch
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+                print("\033[91mCleared CUDA cache\033[0m")
+        except Exception:
+            pass
+
         video_path = video_info['video_path']
         folder = video_info['folder']
 
@@ -418,10 +442,37 @@ Video Path: {video_info['video_path']}
         import time
         import threading
 
-        # Load model
+        # Load model - try GPU first, fall back to CPU if out of memory
         _log_msg(f"Loading Whisper model ({model_size})...")
-        model = whisper_module.load_model(model_size)
-        _log_msg(f"Model loaded. Processing audio...")
+
+        # Check if CUDA is available and has memory before trying
+        import torch
+        use_cuda = False
+        if torch.cuda.is_available():
+            try:
+                # Check GPU memory availability
+                gpu_memory_free = torch.cuda.get_device_properties(0).total_memory - torch.cuda.memory_allocated(0)
+                _log_msg(f"GPU memory free: {gpu_memory_free / 1024**2:.0f} MB")
+                # Only use CUDA if at least 2GB free (large model needs ~3GB)
+                if gpu_memory_free > 2 * 1024**3:  # 2GB in bytes
+                    use_cuda = True
+            except Exception as e:
+                _log_msg(f"GPU memory check failed: {e}")
+
+        device = "cuda" if use_cuda else "cpu"
+        _log_msg(f"Using device: {device}")
+
+        try:
+            model = whisper_module.load_model(model_size, device=device)
+            _log_msg(f"Model loaded on {device}. Processing audio...")
+        except RuntimeError as e:
+            if use_cuda and ("CUDA out of memory" in str(e) or "out of memory" in str(e)):
+                _log_msg("GPU out of memory. Falling back to CPU...")
+                device = "cpu"
+                model = whisper_module.load_model(model_size, device="cpu")
+                _log_msg(f"Model loaded on CPU. Processing audio...")
+            else:
+                raise
 
         # Start a background thread to simulate progress
         stop_progress = threading.Event()
@@ -434,17 +485,19 @@ Video Path: {video_info['video_path']}
                 _log_msg(f"Progress: {i}%")
                 time.sleep(1)
 
-        progress_thread = threading.Thread(target=progress_simulator)
+        progress_thread = threading.Thread(target=progress_simulator, daemon=True)
         progress_thread.start()
 
         try:
             # Transcribe with word-level timestamps for karaoke highlighting
+            # Use fp16=False for CPU (fp16 is CUDA-only)
             result = model.transcribe(
                 str(video_path),
                 language=language,
                 task=task,
                 word_timestamps=True,  # Enable word-level timestamps
-                verbose=False
+                verbose=False,
+                fp16=(device == "cuda")  # Only use fp16 on CUDA
             )
         finally:
             stop_progress.set()
