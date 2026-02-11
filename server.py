@@ -2049,9 +2049,47 @@ def get_retranscribe_settings(folder_number: str):
         current_model = model_match.group(1) if model_match else settings.get('whisper', 'model')
         current_language = language_match.group(1) if language_match else settings.get('whisper', 'language')
 
+        # Get video file info
+        video_files = list(folder.glob('*.mp4')) + list(folder.glob('*.mkv')) + list(folder.glob('*.webm'))
+        video_info = None
+        if video_files:
+            video_file = video_files[0]
+            import cv2
+            cap = cv2.VideoCapture(str(video_file))
+            duration_sec = 0
+            fps = 0
+            width = 0
+            height = 0
+            if cap.isOpened():
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                if fps > 0:
+                    duration_sec = frame_count / fps
+                cap.release()
+
+            video_size = video_file.stat().st_size
+
+            # Format duration
+            minutes = int(duration_sec // 60)
+            seconds = int(duration_sec % 60)
+            duration_str = f"{minutes}:{seconds:02d}" if minutes > 0 else f"{seconds}s"
+
+            video_info = {
+                'filename': video_file.name,
+                'duration_seconds': duration_sec,
+                'duration_formatted': duration_str,
+                'size_bytes': video_size,
+                'size_formatted': format_size(video_size),
+                'resolution': f"{width}x{height}" if width > 0 and height > 0 else 'unknown',
+                'fps': round(fps, 2) if fps > 0 else 0
+            }
+
         return jsonify({
             'current_model': current_model,
-            'current_language': current_language
+            'current_language': current_language,
+            'video_info': video_info
         })
 
     except Exception as e:
@@ -2060,11 +2098,14 @@ def get_retranscribe_settings(folder_number: str):
 
 def _run_retranscribe_task(task_id, folder_number, folder, video_file, model, language, base_dir):
     """Module-level function for re-transcription task (can be pickled for multiprocessing)."""
+    app_logger.info(f"[DEBUG] _run_retranscribe_task started for {task_id}")
     try:
         # Update task status
         with task_lock:
+            app_logger.info(f"[DEBUG] Acquired task_lock, updating status")
             tasks[task_id]['status'] = 'processing'
             tasks[task_id]['log'] = 'Starting transcription...'
+            app_logger.info(f"[DEBUG] Task status updated: {tasks[task_id]}")
 
         # Create video_info dict
         video_info = {
@@ -2074,12 +2115,17 @@ def _run_retranscribe_task(task_id, folder_number, folder, video_file, model, la
             'title': video_file.stem
         }
 
-        # Progress callback to update task log
+        # Progress callback to update task log and progress percentage
         def progress_callback(msg):
             print(f"[Re-transcribe Progress] {msg}")  # Log to stdout
             with task_lock:
                 if task_id in tasks:
                     tasks[task_id]['log'] = msg
+                    # Parse percentage from messages like "Progress: 50%"
+                    import re
+                    match = re.search(r'Progress:\s*(\d+)%', msg)
+                    if match:
+                        tasks[task_id]['progress'] = int(match.group(1))
 
         # Get or create YouTubeShortsCreator instance
         from shorts_creator import YouTubeShortsCreator
@@ -2169,16 +2215,20 @@ def re_transcribe():
                 'model': model,
                 'language': language,
                 'log': 'Initializing...',
+                'progress': 0,
                 'error': None
             }
+            app_logger.info(f"[DEBUG] Task created: {task_id}, tasks dict keys: {list(tasks.keys())}")
 
         # Start background thread
+        app_logger.info(f"[DEBUG] Starting thread for task {task_id}")
         thread = threading.Thread(
             target=_run_retranscribe_task,
             args=(task_id, folder_number, folder, video_file, model, language, base_dir),
             daemon=True
         )
         thread.start()
+        app_logger.info(f"[DEBUG] Thread started for task {task_id}, is_alive: {thread.is_alive()}")
 
         return jsonify({'task_id': task_id})
 
@@ -2190,16 +2240,27 @@ def re_transcribe():
 @app.route('/api/re-transcribe-status/<task_id>')
 def retranscribe_status(task_id: str):
     """Get the status of a re-transcribe task."""
+    app_logger.info(f"[DEBUG] Status requested for task {task_id}, tasks keys: {list(tasks.keys())}")
     with task_lock:
         if task_id not in tasks:
+            app_logger.info(f"[DEBUG] Task {task_id} NOT FOUND in tasks dict")
             return jsonify({'error': 'Task not found'}), 404
+        app_logger.info(f"[DEBUG] Task {task_id} found: {tasks[task_id]}")
 
         task = tasks[task_id].copy()
-        return jsonify({
+        response = jsonify({
             'status': task['status'],
             'log': task.get('log', ''),
-            'error': task.get('error')
+            'error': task.get('error'),
+            'progress': task.get('progress', 0)
         })
+        app_logger.info(f"[DEBUG] Returning response for {task_id}")
+        return response
+
+# Add a simple test route
+@app.route('/api/test')
+def test_route():
+    return jsonify({'status': 'ok', 'message': 'Test route works'})
 
 
 # Track edit processes for cancellation
@@ -3195,4 +3256,4 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT, signal_handler)  # Ctrl+C
     signal.signal(signal.SIGTERM, signal_handler)
 
-    app.run(host='127.0.0.1', port=5000, debug=True, use_reloader=True)
+    app.run(host='127.0.0.1', port=5000, debug=False)

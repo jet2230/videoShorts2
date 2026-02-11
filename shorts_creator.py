@@ -21,6 +21,7 @@ if torch.cuda.is_available():
     torch.cuda.empty_cache()
 
 from ass_formatter import ASSFormatter
+from transcribe_whisper import TranscribeWhisper
 
 
 def load_settings(settings_file: str = 'settings.ini') -> configparser.ConfigParser:
@@ -395,13 +396,17 @@ Video Path: {video_info['video_path']}
         _log_msg(f"Created video info file: {info_path}")
 
     def generate_subtitles(self, video_info: Dict[str, str], model_size: str = None, language: str = None, progress_callback=None) -> str:
-        """Generate subtitles using Whisper CLI."""
-        def _log_msg(msg):
-            if progress_callback:
-                progress_callback(msg)
-            else:
-                print(msg)
+        """Generate subtitles using Whisper transcription class.
 
+        Args:
+            video_info: Dict with 'video_path' and 'folder' keys
+            model_size: Whisper model size ('base', 'small', 'medium', 'large')
+            language: Language code or None for auto-detect
+            progress_callback: Optional callback for progress updates
+
+        Returns:
+            Path to generated SRT file
+        """
         # Use settings if model_size not provided
         if model_size is None:
             model_size = settings.get('whisper', 'model')
@@ -412,146 +417,30 @@ Video Path: {video_info['video_path']}
         # Use None for auto language detection (supports mixed content)
         if language and language.lower() in ('auto', 'none', ''):
             language = None
+
+        # Create transcriber instance
+        transcriber = TranscribeWhisper(model_size, language)
+
+        # Prepare resources (stop Ollama, clear CUDA cache)
+        transcriber.prepare_resources()
+
+        # Load Whisper model
+        transcriber.load_model(progress_callback)
+
+        # Get task from settings
         task = settings.get('whisper', 'task')
 
-        # Stop AI model to free GPU memory
-        try:
-            subprocess.run(['ollama', 'stop', 'llama3'], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-            print("\033[91mStopped Ollama llama3 model\033[0m")
-        except Exception:
-            pass
-
-        # Clear any cached GPU memory from PyTorch
-        try:
-            import torch
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                torch.cuda.synchronize()
-                print("\033[91mCleared CUDA cache\033[0m")
-        except Exception:
-            pass
-
+        # Run transcription
         video_path = video_info['video_path']
         folder = video_info['folder']
+        srt_path = transcriber.transcribe(
+            video_path,
+            folder,
+            task,
+            progress_callback
+        )
 
-        _log_msg(f"Transcribing with Whisper ({model_size})...")
-
-        # Use Python API with simulated progress
-        import whisper as whisper_module
-        from whisper.utils import get_writer
-        import time
-        import threading
-
-        # Load model - try GPU first, fall back to CPU if out of memory
-        _log_msg(f"Loading Whisper model ({model_size})...")
-
-        # Check if CUDA is available and has memory before trying
-        import torch
-        use_cuda = False
-        if torch.cuda.is_available():
-            try:
-                # Check GPU memory availability
-                gpu_memory_free = torch.cuda.get_device_properties(0).total_memory - torch.cuda.memory_allocated(0)
-                _log_msg(f"GPU memory free: {gpu_memory_free / 1024**2:.0f} MB")
-                # Only use CUDA if at least 2GB free (large model needs ~3GB)
-                if gpu_memory_free > 2 * 1024**3:  # 2GB in bytes
-                    use_cuda = True
-            except Exception as e:
-                _log_msg(f"GPU memory check failed: {e}")
-
-        device = "cuda" if use_cuda else "cpu"
-        _log_msg(f"Using device: {device}")
-
-        try:
-            model = whisper_module.load_model(model_size, device=device)
-            _log_msg(f"Model loaded on {device}. Processing audio...")
-        except RuntimeError as e:
-            if use_cuda and ("CUDA out of memory" in str(e) or "out of memory" in str(e)):
-                _log_msg("GPU out of memory. Falling back to CPU...")
-                device = "cpu"
-                model = whisper_module.load_model(model_size, device="cpu")
-                _log_msg(f"Model loaded on CPU. Processing audio...")
-            else:
-                raise
-
-        # Start a background thread to simulate progress
-        stop_progress = threading.Event()
-
-        def progress_simulator():
-            """Simulate progress updates during transcription."""
-            for i in range(0, 101, 10):
-                if stop_progress.is_set():
-                    break
-                _log_msg(f"Progress: {i}%")
-                time.sleep(1)
-
-        progress_thread = threading.Thread(target=progress_simulator, daemon=True)
-        progress_thread.start()
-
-        try:
-            # Transcribe with word-level timestamps for karaoke highlighting
-            # Use fp16=False for CPU (fp16 is CUDA-only)
-            result = model.transcribe(
-                str(video_path),
-                language=language,
-                task=task,
-                word_timestamps=True,  # Enable word-level timestamps
-                verbose=False,
-                fp16=(device == "cuda")  # Only use fp16 on CUDA
-            )
-        finally:
-            stop_progress.set()
-            progress_thread.join()
-            _log_msg("Progress: 100%")
-
-        # Save SRT file
-        base_name = Path(video_path).stem
-        srt_path = Path(folder) / f"{base_name}.srt"
-
-        # Use get_writer to write SRT
-        writer = get_writer('srt', str(folder))
-        writer(result, srt_path)
-
-        # Save word-level timestamps for karaoke highlighting
-        word_timestamps_path = Path(folder) / f"{base_name}_word_timestamps.json"
-        self._save_word_timestamps(result, word_timestamps_path)
-        if word_timestamps_path.exists():
-            _log_msg(f"Created word timestamps: {word_timestamps_path}")
-
-        if srt_path.exists():
-            _log_msg(f"Created subtitles: {srt_path}")
-            _log_msg("Subtitles: Complete")
-        else:
-            raise FileNotFoundError(f"Whisper CLI did not create expected subtitle file: {srt_path}")
-
-        return str(srt_path)
-
-    def _save_word_timestamps(self, result: dict, output_path: Path) -> None:
-        """Save word-level timestamps from Whisper result to JSON file.
-
-        This enables karaoke-style word highlighting in ASS subtitles.
-
-        Args:
-            result: Whisper result dict with word timestamps
-            output_path: Path to save JSON file
-        """
-        import json
-
-        word_data = []
-        for segment in result.get("segments", []):
-            for word_info in segment.get("words", []):
-                word_data.append({
-                    "word": word_info["word"],
-                    "start": word_info["start"],
-                    "end": word_info["end"]
-                })
-
-        with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump({
-                "language": result.get("language"),
-                "duration": result.get("duration"),
-                "words": word_data
-            }, f, indent=2, ensure_ascii=False)
+        return srt_path
 
     def generate_themes(self, video_info: Dict[str, str], ai_generator=None, model_size='base', progress_callback=None) -> None:
         """Generate themes for YouTube Shorts from subtitles."""

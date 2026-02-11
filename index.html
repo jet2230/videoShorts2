@@ -403,6 +403,34 @@
             transform: scale(1.1);
         }
 
+        .retranscribe-folder-btn {
+            background: rgba(76, 175, 80, 0.2);
+            border: 1px solid rgba(76, 175, 80, 0.5);
+            color: var(--success);
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 14px;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+
+        .retranscribe-folder-btn:hover {
+            background: rgba(76, 175, 80, 0.4);
+            transform: scale(1.1);
+        }
+
+        #folder-stats {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
         .delete-confirmation {
             position: fixed;
             background: var(--bg-tertiary);
@@ -1103,6 +1131,65 @@
             font-size: 12px;
             color: var(--text-secondary);
         }
+
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+        }
+
+        .modal-content {
+            background-color: #1e1e1e;
+            margin: 5% auto;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            font-size: 20px;
+        }
+
+        .close {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .close:hover,
+        .close:focus {
+            color: #fff;
+        }
+
+        .modal-body {
+            padding: 20px;
+        }
+
+        .modal-footer {
+            padding: 16px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
     </style>
 </head>
 <body>
@@ -1606,6 +1693,256 @@
             }, 100);
         }
 
+        // Re-transcribe modal
+        let retranscribeTaskId = null;
+        let retranscribePolling = null;
+        let currentFolderNumber = null;
+
+        function openRetranscribeModal(folderNumber, folderName) {
+            currentFolderNumber = folderNumber;
+            const retranscribeModal = document.getElementById('re-transcribe-modal');
+            const startRetranscribeBtn = document.getElementById('start-retranscribe-btn');
+            const cancelRetranscribeBtn = document.getElementById('cancel-retranscribe-btn');
+
+            // Reset state
+            retranscribeModal.style.display = 'block';
+            document.getElementById('retranscribe-progress-container').style.display = 'none';
+            document.getElementById('retranscribe-message').textContent = '';
+            document.getElementById('retranscribe-message').style.color = '#aaa';
+            document.getElementById('retranscribe-progress-text').textContent = 'Initializing...';
+            document.getElementById('retranscribe-progress-percent').textContent = '0%';
+            document.getElementById('retranscribe-progress-fill').style.width = '0%';
+            startRetranscribeBtn.disabled = false;
+            cancelRetranscribeBtn.disabled = false;
+
+            // Fetch current settings from theme.md
+            fetch(`/api/re-transcribe-settings/${folderNumber}`)
+                .then(response => response.json())
+                .then(data => {
+                    updateDropdownWithCurrent('retranscribe-model', data.current_model);
+                    updateDropdownWithCurrent('retranscribe-language', data.current_language);
+                    displayVideoInfo(data.video_info);
+                })
+                .catch(error => {
+                    console.error('Failed to fetch current settings:', error);
+                });
+        }
+
+        function displayVideoInfo(videoInfo) {
+            const detailsDiv = document.getElementById('retranscribe-video-details');
+            if (!videoInfo) {
+                detailsDiv.innerHTML = '<span style="color: #ff6b6b;">Video information not available</span>';
+                return;
+            }
+
+            detailsDiv.innerHTML = `
+                <div style="display: grid; grid-template-columns: auto 1fr; gap: 4px 12px;">
+                    <span style="color: #888;">File:</span>
+                    <span>${videoInfo.filename}</span>
+
+                    <span style="color: #888;">Duration:</span>
+                    <span>${videoInfo.duration_formatted} (${Math.round(videoInfo.duration_seconds)}s)</span>
+
+                    <span style="color: #888;">Size:</span>
+                    <span>${videoInfo.size_formatted}</span>
+
+                    <span style="color: #888;">Resolution:</span>
+                    <span>${videoInfo.resolution}</span>
+
+                    <span style="color: #888;">FPS:</span>
+                    <span>${videoInfo.fps}</span>
+                </div>
+                <div id="retranscribe-estimate" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(100, 149, 237, 0.2);">
+                    ${getEstimateText(videoInfo.duration_seconds, document.getElementById('retranscribe-model')?.value || 'small')}
+                </div>
+            `;
+
+            // Update estimate when model changes
+            const modelSelect = document.getElementById('retranscribe-model');
+            modelSelect?.addEventListener('change', () => {
+                updateEstimate(videoInfo.duration_seconds);
+            });
+        }
+
+        function getEstimateText(durationSeconds, model) {
+            // Estimated transcription times (multipliers relative to video duration on GPU)
+            const modelMultipliers = {
+                'base': 0.05,   // ~1/20th of video length
+                'small': 0.10,  // ~1/10th of video length
+                'medium': 0.25, // ~1/4th of video length
+                'large': 0.50   // ~1/2 of video length
+            };
+
+            const multiplier = modelMultipliers[model] || modelMultipliers['small'];
+            const estimatedSeconds = Math.round(durationSeconds * multiplier);
+
+            // Format time
+            if (estimatedSeconds < 60) {
+                return `<span style="color: #4CAF50;">⏱️ Estimated time: ~${estimatedSeconds} seconds</span>`;
+            } else {
+                const minutes = Math.ceil(estimatedSeconds / 60);
+                return `<span style="color: #4CAF50;">⏱️ Estimated time: ~${minutes} minute${minutes > 1 ? 's' : ''}</span>`;
+            }
+        }
+
+        function updateEstimate(durationSeconds) {
+            const model = document.getElementById('retranscribe-model')?.value || 'small';
+            const estimateDiv = document.getElementById('retranscribe-estimate');
+            if (estimateDiv && durationSeconds) {
+                estimateDiv.innerHTML = getEstimateText(durationSeconds, model);
+            }
+        }
+
+        function updateDropdownWithCurrent(selectId, currentValue) {
+            const select = document.getElementById(selectId);
+            if (!select) return;
+
+            // Remove any existing " (current)" from all options
+            Array.from(select.options).forEach(opt => {
+                opt.text = opt.text.replace(' (current)', '');
+            });
+
+            // If currentValue is not empty/undefined, add " (current)" to matching option
+            if (currentValue) {
+                const matchingOption = Array.from(select.options).find(opt => opt.value === currentValue);
+                if (matchingOption) {
+                    matchingOption.text = matchingOption.text + ' (current)';
+                    select.value = currentValue;
+                }
+            }
+        }
+
+        function pollRetranscribeProgress() {
+            retranscribePolling = setInterval(async () => {
+                if (!retranscribeTaskId) {
+                    clearInterval(retranscribePolling);
+                    retranscribePolling = null;
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`/api/re-transcribe-status/${retranscribeTaskId}`);
+                    const data = await response.json();
+
+                    if (data.status === 'processing' || data.status === 'pending') {
+                        // Update progress
+                        const progress = data.progress || 0;
+                        document.getElementById('retranscribe-message').textContent = data.log || 'Processing...';
+                        document.getElementById('retranscribe-progress-text').textContent = data.log || 'Processing...';
+                        document.getElementById('retranscribe-progress-percent').textContent = `${progress}%`;
+                        document.getElementById('retranscribe-progress-fill').style.width = `${progress}%`;
+                    } else if (data.status === 'complete') {
+                        // Done!
+                        clearInterval(retranscribePolling);
+                        retranscribePolling = null;
+
+                        document.getElementById('retranscribe-progress-text').textContent = 'Complete!';
+                        document.getElementById('retranscribe-progress-percent').textContent = '100%';
+                        document.getElementById('retranscribe-progress-fill').style.width = '100%';
+                        document.getElementById('retranscribe-message').textContent = 'Transcription complete! Reloading page...';
+                        document.getElementById('retranscribe-message').style.color = '#4CAF50';
+
+                        // Reload page after showing completion
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 2000);
+                    } else if (data.status === 'error') {
+                        // Error
+                        clearInterval(retranscribePolling);
+                        retranscribePolling = null;
+
+                        document.getElementById('retranscribe-message').textContent = 'Error: ' + (data.error || 'Unknown error');
+                        document.getElementById('retranscribe-message').style.color = '#ff6b6b';
+                        document.getElementById('start-retranscribe-btn').disabled = false;
+                        document.getElementById('cancel-retranscribe-btn').disabled = false;
+                    }
+                } catch (error) {
+                    console.error('Polling error:', error);
+                }
+            }, 1000);
+        }
+
+        // Re-transcribe modal event listeners
+        document.addEventListener('DOMContentLoaded', () => {
+            const retranscribeModal = document.getElementById('re-transcribe-modal');
+            const closeBtn = retranscribeModal?.querySelector('.close');
+            const startRetranscribeBtn = document.getElementById('start-retranscribe-btn');
+            const cancelRetranscribeBtn = document.getElementById('cancel-retranscribe-btn');
+
+            // Close button
+            closeBtn?.addEventListener('click', () => {
+                retranscribeModal.style.display = 'none';
+                if (retranscribePolling) {
+                    clearInterval(retranscribePolling);
+                    retranscribePolling = null;
+                }
+            });
+
+            // Cancel button
+            cancelRetranscribeBtn?.addEventListener('click', () => {
+                retranscribeModal.style.display = 'none';
+                if (retranscribePolling) {
+                    clearInterval(retranscribePolling);
+                    retranscribePolling = null;
+                }
+            });
+
+            // Start transcription button
+            startRetranscribeBtn?.addEventListener('click', async () => {
+                const model = document.getElementById('retranscribe-model').value;
+                const language = document.getElementById('retranscribe-language').value;
+
+                // Show progress
+                document.getElementById('retranscribe-progress-container').style.display = 'block';
+                document.getElementById('retranscribe-message').textContent = 'Starting transcription...';
+                document.getElementById('retranscribe-message').style.color = '#aaa';
+                document.getElementById('retranscribe-progress-text').textContent = 'Starting...';
+                document.getElementById('retranscribe-progress-percent').textContent = '0%';
+                document.getElementById('retranscribe-progress-fill').style.width = '0%';
+
+                startRetranscribeBtn.disabled = true;
+                cancelRetranscribeBtn.disabled = true;
+
+                try {
+                    const response = await fetch('/api/re-transcribe', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            folder: currentFolderNumber,
+                            model: model,
+                            language: language
+                        })
+                    });
+
+                    const data = await response.json();
+
+                    if (data.task_id) {
+                        // Start polling for progress
+                        retranscribeTaskId = data.task_id;
+                        pollRetranscribeProgress();
+                    } else {
+                        throw new Error(data.error || 'Failed to start transcription');
+                    }
+                } catch (error) {
+                    document.getElementById('retranscribe-message').textContent = 'Error: ' + error.message;
+                    document.getElementById('retranscribe-message').style.color = '#ff6b6b';
+                    document.getElementById('start-retranscribe-btn').disabled = false;
+                    document.getElementById('cancel-retranscribe-btn').disabled = false;
+                }
+            });
+
+            // Close modal when clicking outside
+            retranscribeModal.addEventListener('click', (e) => {
+                if (e.target === retranscribeModal) {
+                    retranscribeModal.style.display = 'none';
+                    if (retranscribePolling) {
+                        clearInterval(retranscribePolling);
+                        retranscribePolling = null;
+                    }
+                }
+            });
+        });
+
         // Select folder and load themes
         async function selectFolder(folderNumber) {
             selectedFolder = folderNumber;
@@ -1971,7 +2308,19 @@
                     <div class="stat-value">${data.themes.length}</div>
                     <div class="stat-label">Themes</div>
                 </div>
+                <button class="retranscribe-folder-btn" data-retranscribe-folder="${selectedFolder}" data-folder-number="${selectedFolder}" title="Re-transcribe video">🔄</button>
             `;
+
+            // Attach click handler to the re-transcribe button
+            const retranscribeBtn = document.getElementById('folder-stats')?.querySelector('.retranscribe-folder-btn');
+            if (retranscribeBtn) {
+                retranscribeBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const folderNumber = e.target.dataset.folderNumber;
+                    const folderName = e.target.dataset.retranscribeFolder;
+                    openRetranscribeModal(folderNumber, folderName);
+                });
+            }
 
             const container = document.getElementById('themes-list');
             container.innerHTML = data.themes.map(theme => `
@@ -3012,5 +3361,77 @@
         // Initial load
         loadFolders();
     </script>
+
+    <!-- Re-transcribe Modal -->
+    <div id="re-transcribe-modal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2>Re-transcribe Video</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <!-- Video Info Section -->
+                <div id="retranscribe-video-info" style="background: rgba(100, 149, 237, 0.1); border: 1px solid rgba(100, 149, 237, 0.3); border-left: 4px solid #6495ED; padding: 12px; margin-bottom: 16px; border-radius: 4px;">
+                    <div style="color: #6495ED; font-weight: 600; margin-bottom: 8px;">📹 Video Information</div>
+                    <div id="retranscribe-video-details" style="font-size: 13px; color: #ccc;">Loading...</div>
+                </div>
+
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Whisper Model</label>
+                    <select id="retranscribe-model" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #222; color: #fff;">
+                        <option value="base">base (fastest, less accurate)</option>
+                        <option value="small" selected>small (balanced)</option>
+                        <option value="medium">medium (more accurate)</option>
+                        <option value="large">large (most accurate, slower)</option>
+                    </select>
+                </div>
+
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Language</label>
+                    <select id="retranscribe-language" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #222; color: #fff;">
+                        <option value="">Auto-detect</option>
+                        <option value="en" selected>English</option>
+                        <option value="es">Spanish</option>
+                        <option value="fr">French</option>
+                        <option value="de">German</option>
+                        <option value="it">Italian</option>
+                        <option value="pt">Portuguese</option>
+                        <option value="ru">Russian</option>
+                        <option value="ar">Arabic</option>
+                        <option value="hi">Hindi</option>
+                        <option value="zh">Chinese</option>
+                    </select>
+                </div>
+
+                <!-- Warning message -->
+                <div class="warning-box" style="background: rgba(255, 152, 0, 0.1); border: 1px solid rgba(255, 152, 0, 0.3); border-left: 4px solid #ff9800; padding: 12px; margin-bottom: 16px; border-radius: 4px;">
+                    <div style="color: #ff9800; font-weight: 600; margin-bottom: 4px;">⚠️ Warning</div>
+                    <div style="font-size: 13px; color: #ccc;">
+                        Re-transcribing will <strong>overwrite</strong> the original subtitle file (SRT) and word timestamps.
+                        Any manual subtitle edits will be <strong>permanently lost</strong>.
+                        <br><br>
+                        <strong>Preserved:</strong> Video shorts (MP4) and theme definitions will be kept.
+                    </div>
+                </div>
+
+                <!-- Progress bar -->
+                <div id="retranscribe-progress-container" style="display: none; margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 13px;">
+                        <span id="retranscribe-progress-text">Initializing...</span>
+                        <span id="retranscribe-progress-percent">0%</span>
+                    </div>
+                    <div style="height: 8px; background: #333; border-radius: 4px; overflow: hidden;">
+                        <div id="retranscribe-progress-fill" style="height: 100%; width: 0%; background: linear-gradient(90deg, #4CAF50, #45a049); transition: width 0.3s ease;"></div>
+                    </div>
+                </div>
+
+                <div id="retranscribe-message" style="font-size: 13px; color: #aaa; margin-bottom: 0; min-height: 0;"></div>
+            </div>
+            <div class="modal-footer" style="padding: 16px; border-top: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: flex-end; gap: 12px;">
+                <button id="cancel-retranscribe-btn" class="btn btn-secondary">Cancel</button>
+                <button id="start-retranscribe-btn" class="btn btn-primary">Start Transcription</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
