@@ -2881,7 +2881,7 @@
                     const newText = textarea.innerText.trim();
 
                     // Don't save if there's no text or no current cue
-                    if (!newText || !currentCueInfo) {
+                    if (!newText || !currentCueInfo || currentCueInfo.start == null || currentCueInfo.end == null) {
                         return;
                     }
 

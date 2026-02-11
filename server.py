@@ -1073,7 +1073,12 @@ def get_subtitle_formatting(folder_number: str, theme_number: str):
 @app.route('/api/save-cue-text', methods=['POST'])
 def save_cue_text():
     """Save individual subtitle edit to SRT file."""
-    data = request.json
+    app_logger.info("[DEBUG] save_cue_text endpoint called")
+    try:
+        data = request.json
+    except Exception as e:
+        app_logger.error(f"[ERROR] Failed to parse JSON: {e}")
+        return jsonify({'error': 'Invalid JSON'}), 400
     folder_number = data.get('folder')
     theme_number = data.get('theme')
     theme_start = data.get('theme_start')
@@ -1081,8 +1086,18 @@ def save_cue_text():
     cue_end = data.get('cue_end')
     text = data.get('text')
 
-    if not all([folder_number, theme_number, cue_start, cue_end, text]):
+    app_logger.info(f"[DEBUG] Received data: folder={repr(folder_number)}, theme={repr(theme_number)}, cue_start={repr(cue_start)}, cue_end={repr(cue_end)}, text={repr(text[:100] if text else None)}")
+
+    # Check for missing or None values (cue_start/cue_end can be 0, so check is None explicitly)
+    # Check for empty strings (JavaScript undefined/null becomes empty string)
+    if not folder_number or not theme_number or cue_start is None or cue_end is None or not text:
+        app_logger.warning(f"[DEBUG] Validation failed: folder_number={folder_number}, theme_number={theme_number}, cue_start={cue_start}, cue_end={cue_end}, text={text}")
         return jsonify({'error': 'Missing required fields'}), 400
+
+    # Additional check for empty string values in cue_start/cue_end
+    if cue_start == '' or cue_end == '':
+        app_logger.warning(f"[DEBUG] Empty cue times: cue_start={repr(cue_start)}, cue_end={repr(cue_end)}")
+        return jsonify({'error': 'Invalid time values: cue_start and cue_end cannot be empty'}), 400
 
     print(f"[DEBUG] Saving cue: folder={folder_number}, theme={theme_number}, start={cue_start}, end={cue_end}, text={text[:50]}...")
 
@@ -1129,55 +1144,112 @@ def save_cue_text():
 
     # Parse SRT and update the matching cue
     from ass_formatter import parse_srt_time, format_srt_time
+    import re
 
-    lines = srt_content.strip().split('\n')
-    updated_lines = []
+    try:
+        # Format target start time with comma (SRT uses comma, not period)
+        # cue_start/cue_end might be strings (from VTT) or floats
+        if isinstance(cue_start, str):
+            target_start_seconds = parse_srt_time(cue_start.replace(',', '.'))
+        else:
+            target_start_seconds = float(cue_start)
+
+        if isinstance(cue_end, str):
+            target_end_seconds = parse_srt_time(cue_end.replace(',', '.'))
+        else:
+            target_end_seconds = float(cue_end)
+    except (ValueError, TypeError) as e:
+        app_logger.error(f"[ERROR] Invalid cue_start/cue_end: cue_start={cue_start}, cue_end={cue_end}, error={e}")
+        return jsonify({'error': f'Invalid time values: {str(e)}'}), 400
+
+    # Parse SRT into blocks (each subtitle is a block: number, timestamp, text)
+    blocks = []
+    lines = srt_content.split('\n')
     i = 0
-    while i < len(lines):
-        line = lines[i].strip()
 
-        # Skip empty lines and counters
-        if not line or '-->' in line:
-            updated_lines.append(line)
-            i += 1
-            continue
+    try:
+        while i < len(lines):
+            line = lines[i].strip()
 
-        # Check if this is our target cue (by start time)
-        # Format: 00:00:00,000 --> 00:00:01,000
-        target_start = format_srt_time(float(cue_start))
+            # Skip empty lines
+            if not line:
+                i += 1
+                continue
 
-        if line.startswith(target_start):
-            # Found our cue! Update the text and skip subtitle lines
-            updated_lines.append(line)
-            i += 1
+            # Start of a new subtitle block
+            block = {'number': None, 'timestamp': None, 'text_lines': [], 'start': None, 'end': None}
 
-            # Find all lines until the next subtitle end time
-            cue_text = text.replace('\n', ' ').strip()
-            updated_lines.append(cue_text)
-            i += 1
-
-            # Skip until we find the next subtitle end time or EOF
-            while i < len(lines):
-                next_line = lines[i].strip()
-                if not next_line or '-->' in next_line:
-                    updated_lines.append(next_line)
-                    i += 1
+            # Line 1: Subtitle number
+            if line.isdigit():
+                block['number'] = line
+                i += 1
+                if i >= len(lines):
                     break
 
-                # Check if this is the end of this subtitle
-                if next_line.startswith('00:'):
-                    # Found end marker
-                    break
+                # Line 2: Timestamp
+                timestamp_line = lines[i].strip()
+                block['timestamp'] = timestamp_line
+
+                # Parse timestamp: "00:00:00,000 --> 00:00:04,400"
+                ts_match = re.match(r'(\d+:\d+:[\d,]+)\s*-->\s*(\d+:\d+:[\d,]+)', timestamp_line)
+                if ts_match:
+                    start_str = ts_match.group(1).replace(',', '.')
+                    end_str = ts_match.group(2).replace(',', '.')
+                    block['start'] = parse_srt_time(start_str)
+                    block['end'] = parse_srt_time(end_str)
+
                 i += 1
 
+                # Line 3+: Text lines (until empty line or next number)
+                while i < len(lines):
+                    text_line = lines[i].strip()
+                    if not text_line or text_line.isdigit():
+                        break
+                    block['text_lines'].append(text_line)
+                    i += 1
+
+                blocks.append(block)
+            else:
+                i += 1
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] SRT parsing failed: {traceback.format_exc()}")
+        return jsonify({'error': f'Failed to parse SRT: {str(e)}'}), 500
+
+    # Find and update matching block
+    updated_blocks = []
+    for block in blocks:
+        if block['start'] is not None and abs(block['start'] - target_start_seconds) < 0.1:
+            # Found our match! Update text
+            new_text = text.replace('\n', ' ').strip()
+            updated_blocks.append({
+                'number': block['number'],
+                'timestamp': block['timestamp'],
+                'text': new_text
+            })
+            print(f"[DEBUG] Updated subtitle {block['number']} at {block['start']}")
         else:
-            updated_lines.append(line)
-            i += 1
+            # Keep original
+            updated_blocks.append({
+                'number': block['number'],
+                'timestamp': block['timestamp'],
+                'text': '\n'.join(block['text_lines'])
+            })
+
+    # Rebuild SRT content
+    result_lines = []
+    for idx, block in enumerate(updated_blocks):
+        result_lines.append(block['number'])
+        result_lines.append(block['timestamp'])
+        result_lines.append(block['text'])
+        # Add blank line between blocks (but not after last)
+        if idx < len(updated_blocks) - 1:
+            result_lines.append('')
 
     # Write updated SRT
     try:
         with open(srt_file, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(updated_lines))
+            f.write('\n'.join(result_lines))
         print(f"[DEBUG] Successfully updated SRT file: {srt_file}")
         return jsonify({
             'success': True,
