@@ -1070,6 +1070,125 @@ def get_subtitle_formatting(folder_number: str, theme_number: str):
         return jsonify({'formatting': {}})
 
 
+@app.route('/api/save-cue-text', methods=['POST'])
+def save_cue_text():
+    """Save individual subtitle edit to SRT file."""
+    data = request.json
+    folder_number = data.get('folder')
+    theme_number = data.get('theme')
+    theme_start = data.get('theme_start')
+    cue_start = data.get('cue_start')
+    cue_end = data.get('cue_end')
+    text = data.get('text')
+
+    if not all([folder_number, theme_number, cue_start, cue_end, text]):
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    print(f"[DEBUG] Saving cue: folder={folder_number}, theme={theme_number}, start={cue_start}, end={cue_end}, text={text[:50]}...")
+
+    # Find the folder
+    base_dir = Path(settings.get('video', 'output_dir'))
+    folder = None
+    for f in base_dir.iterdir():
+        if f.is_dir() and f.name.startswith(f"{folder_number}_"):
+            folder = f
+            break
+
+    if not folder:
+        return jsonify({'error': 'Folder not found'}), 404
+
+    # Find the SRT file (handle full-width characters like ？)
+    import glob
+    srt_files = list(folder.glob('*.srt')) + list(folder.glob('*.SRT'))
+
+    if not srt_files:
+        # Try to find any file with similar name (handling encoding issues)
+        video_files = list(folder.glob('*.mp4')) + list(folder.glob('*.MP4'))
+        if video_files:
+            video_name = video_files[0].stem
+            possible_srts = list(folder.glob(f"{video_name}*.srt")) + list(folder.glob(f"{video_name}*.SRT"))
+            if possible_srts:
+                srt_file = possible_srts[0]
+                print(f"[DEBUG] Using SRT file with similar name: {srt_file}")
+            else:
+                return jsonify({'error': 'No SRT file found in folder'}), 404
+    else:
+        srt_file = srt_files[0]
+
+    # Read current SRT content
+    try:
+        # Try to read with utf-8-sig fallback for encoding issues
+        try:
+            with open(srt_file, 'r', encoding='utf-8-sig') as f:
+                srt_content = f.read()
+        except UnicodeDecodeError:
+            with open(srt_file, 'r', encoding='utf-8') as f:
+                srt_content = f.read()
+    except Exception as e:
+        return jsonify({'error': f'Failed to read SRT file: {str(e)}'}), 500
+
+    # Parse SRT and update the matching cue
+    from ass_formatter import parse_srt_time, format_srt_time
+
+    lines = srt_content.strip().split('\n')
+    updated_lines = []
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+
+        # Skip empty lines and counters
+        if not line or '-->' in line:
+            updated_lines.append(line)
+            i += 1
+            continue
+
+        # Check if this is our target cue (by start time)
+        # Format: 00:00:00,000 --> 00:00:01,000
+        target_start = format_srt_time(float(cue_start))
+
+        if line.startswith(target_start):
+            # Found our cue! Update the text and skip subtitle lines
+            updated_lines.append(line)
+            i += 1
+
+            # Find all lines until the next subtitle end time
+            cue_text = text.replace('\n', ' ').strip()
+            updated_lines.append(cue_text)
+            i += 1
+
+            # Skip until we find the next subtitle end time or EOF
+            while i < len(lines):
+                next_line = lines[i].strip()
+                if not next_line or '-->' in next_line:
+                    updated_lines.append(next_line)
+                    i += 1
+                    break
+
+                # Check if this is the end of this subtitle
+                if next_line.startswith('00:'):
+                    # Found end marker
+                    break
+                i += 1
+
+        else:
+            updated_lines.append(line)
+            i += 1
+
+    # Write updated SRT
+    try:
+        with open(srt_file, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(updated_lines))
+        print(f"[DEBUG] Successfully updated SRT file: {srt_file}")
+        return jsonify({
+            'success': True,
+            'message': f'Saved subtitle edit for theme {theme_number}'
+        })
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] Failed to save cue: {traceback.format_exc()}")
+        return jsonify({'error': f'Failed to save: {str(e)}'}), 500
+
+
 @app.route('/api/save-global-position', methods=['POST'])
 def save_global_position():
     """Save global subtitle position for a theme to the adjust.md file."""
