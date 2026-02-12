@@ -8,6 +8,9 @@ openai-whisper>=20231117
 
 # Audio processing
 ffmpeg-python>=0.2.0
+opencv-python>=4.8.0
+numpy>=1.24.0
+Pillow>=10.0.0
 
 # AI theme generation (OPTIONAL)
 # Uncomment below to enable requests library for AI theme generation

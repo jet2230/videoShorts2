@@ -31,17 +31,17 @@ log_handler.setFormatter(log_formatter)
 
 # Get Flask's logger and add file handler
 flask_logger = logging.getLogger('werkzeug')
-flask_logger.setLevel(logging.INFO)
+flask_logger.setLevel(logging.WARNING)
 flask_logger.addHandler(log_handler)
 
 # Also log our app messages
 app_logger = logging.getLogger(__name__)
-app_logger.setLevel(logging.INFO)
+app_logger.setLevel(logging.WARNING)
 app_logger.addHandler(log_handler)
 
 # Keep console output too
 console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
+console_handler.setLevel(logging.WARNING)
 console_handler.setFormatter(log_formatter)
 flask_logger.addHandler(console_handler)
 app_logger.addHandler(console_handler)
@@ -414,7 +414,7 @@ def delete_folder(folder_number: str):
         # Delete the entire folder and all its contents
         import shutil
         shutil.rmtree(folder)
-        app_logger.info(f"Deleted folder: {folder}")
+        app_logger.debug(f"Deleted folder: {folder}")
         return jsonify({'success': True, 'message': f'Folder {folder.name} deleted successfully'})
     except Exception as e:
         app_logger.error(f"Error deleting folder {folder}: {e}")
@@ -1073,7 +1073,7 @@ def get_subtitle_formatting(folder_number: str, theme_number: str):
 @app.route('/api/save-cue-text', methods=['POST'])
 def save_cue_text():
     """Save individual subtitle edit to SRT file."""
-    app_logger.info("[DEBUG] save_cue_text endpoint called")
+    app_logger.debug("[DEBUG] save_cue_text endpoint called")
     try:
         data = request.json
     except Exception as e:
@@ -1086,7 +1086,7 @@ def save_cue_text():
     cue_end = data.get('cue_end')
     text = data.get('text')
 
-    app_logger.info(f"[DEBUG] Received data: folder={repr(folder_number)}, theme={repr(theme_number)}, cue_start={repr(cue_start)}, cue_end={repr(cue_end)}, text={repr(text[:100] if text else None)}")
+    app_logger.debug(f"[DEBUG] Received data: folder={repr(folder_number)}, theme={repr(theme_number)}, cue_start={repr(cue_start)}, cue_end={repr(cue_end)}, text={repr(text[:100] if text else None)}")
 
     # Check for missing or None values (cue_start/cue_end can be 0, so check is None explicitly)
     # Check for empty strings (JavaScript undefined/null becomes empty string)
@@ -2098,14 +2098,14 @@ def get_retranscribe_settings(folder_number: str):
 
 def _run_retranscribe_task(task_id, folder_number, folder, video_file, model, language, base_dir):
     """Module-level function for re-transcription task (can be pickled for multiprocessing)."""
-    app_logger.info(f"[DEBUG] _run_retranscribe_task started for {task_id}")
+    app_logger.debug(f"[DEBUG] _run_retranscribe_task started for {task_id}")
     try:
         # Update task status
         with task_lock:
-            app_logger.info(f"[DEBUG] Acquired task_lock, updating status")
+            app_logger.debug(f"[DEBUG] Acquired task_lock, updating status")
             tasks[task_id]['status'] = 'processing'
             tasks[task_id]['log'] = 'Starting transcription...'
-            app_logger.info(f"[DEBUG] Task status updated: {tasks[task_id]}")
+            app_logger.debug(f"[DEBUG] Task status updated: {tasks[task_id]}")
 
         # Create video_info dict
         video_info = {
@@ -2218,17 +2218,17 @@ def re_transcribe():
                 'progress': 0,
                 'error': None
             }
-            app_logger.info(f"[DEBUG] Task created: {task_id}, tasks dict keys: {list(tasks.keys())}")
+            app_logger.debug(f"[DEBUG] Task created: {task_id}, tasks dict keys: {list(tasks.keys())}")
 
         # Start background thread
-        app_logger.info(f"[DEBUG] Starting thread for task {task_id}")
+        app_logger.debug(f"[DEBUG] Starting thread for task {task_id}")
         thread = threading.Thread(
             target=_run_retranscribe_task,
             args=(task_id, folder_number, folder, video_file, model, language, base_dir),
             daemon=True
         )
         thread.start()
-        app_logger.info(f"[DEBUG] Thread started for task {task_id}, is_alive: {thread.is_alive()}")
+        app_logger.debug(f"[DEBUG] Thread started for task {task_id}, is_alive: {thread.is_alive()}")
 
         return jsonify({'task_id': task_id})
 
@@ -2240,12 +2240,12 @@ def re_transcribe():
 @app.route('/api/re-transcribe-status/<task_id>')
 def retranscribe_status(task_id: str):
     """Get the status of a re-transcribe task."""
-    app_logger.info(f"[DEBUG] Status requested for task {task_id}, tasks keys: {list(tasks.keys())}")
+    app_logger.debug(f"[DEBUG] Status requested for task {task_id}, tasks keys: {list(tasks.keys())}")
     with task_lock:
         if task_id not in tasks:
-            app_logger.info(f"[DEBUG] Task {task_id} NOT FOUND in tasks dict")
+            app_logger.debug(f"[DEBUG] Task {task_id} NOT FOUND in tasks dict")
             return jsonify({'error': 'Task not found'}), 404
-        app_logger.info(f"[DEBUG] Task {task_id} found: {tasks[task_id]}")
+        app_logger.debug(f"[DEBUG] Task {task_id} found: {tasks[task_id]}")
 
         task = tasks[task_id].copy()
         response = jsonify({
@@ -2254,7 +2254,7 @@ def retranscribe_status(task_id: str):
             'error': task.get('error'),
             'progress': task.get('progress', 0)
         })
-        app_logger.info(f"[DEBUG] Returning response for {task_id}")
+        app_logger.debug(f"[DEBUG] Returning response for {task_id}")
         return response
 
 # Add a simple test route
@@ -2833,6 +2833,47 @@ def get_word_timestamps_api(folder_number):
         return jsonify({'error': str(e)}), 500
 
 
+def get_theme_adjust_settings(folder_path, theme_number):
+    """Read theme adjustment settings from theme_XXX_adjust.md."""
+    adjust_file = folder_path / 'shorts' / f'theme_{int(theme_number):03d}_adjust.md'
+    settings = {
+        'subtitle_position': 'bottom',
+        'subtitle_left': None,
+        'subtitle_top': None,
+        'subtitle_h_align': 'center',
+        'subtitle_v_align': 'bottom'
+    }
+    
+    if adjust_file.exists():
+        with open(adjust_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+            
+        # Extract subtitle position
+        import re
+        pos_match = re.search(r'\*\*subtitle_position:\*\*\s*(\w+)', content)
+        if pos_match:
+            settings['subtitle_position'] = pos_match.group(1)
+            
+        # Extract custom coordinates if they exist
+        left_match = re.search(r'\*\*subtitle_left:\*\*\s*(\d+)', content)
+        if left_match:
+            settings['subtitle_left'] = int(left_match.group(1))
+            
+        top_match = re.search(r'\*\*subtitle_top:\*\*\s*(\d+)', content)
+        if top_match:
+            settings['subtitle_top'] = int(top_match.group(1))
+            
+        h_align_match = re.search(r'\*\*subtitle_h_align:\*\*\s*(\w+)', content)
+        if h_align_match:
+            settings['subtitle_h_align'] = h_align_match.group(1)
+            
+        v_align_match = re.search(r'\*\*subtitle_v_align:\*\*\s*(\w+)', content)
+        if v_align_match:
+            settings['subtitle_v_align'] = v_align_match.group(1)
+            
+    return settings
+
+
 @app.route('/api/encode-canvas-karaoke', methods=['POST'])
 def encode_canvas_karaoke():
     """Generate and encode canvas karaoke video server-side (fast)."""
@@ -2923,6 +2964,19 @@ def encode_canvas_karaoke():
         output_path = folder / 'shorts' / f'theme_{theme_number}_canvas_karaoke.mp4'
         output_path.parent.mkdir(exist_ok=True)
 
+        # Get theme adjust settings for subtitle positioning
+        adjust_settings = get_theme_adjust_settings(folder, theme_number)
+        
+        # Merge into karaoke_settings (but let incoming data override if present)
+        final_settings = {
+            'fontSize': karaoke_settings.get('fontSize', 48) * 2,  # Double for 1080x1920
+            'fontName': karaoke_settings.get('fontName', 'Arial'),
+            'textColor': karaoke_settings.get('textColor', '#ffff00'),
+            'pastColor': karaoke_settings.get('pastColor', '#808080'),
+            'mode': karaoke_settings.get('mode', 'normal')
+        }
+        final_settings.update(adjust_settings)
+
         # Create job ID
         job_id = f"{folder_number}_{theme_number}"
 
@@ -2952,7 +3006,7 @@ def encode_canvas_karaoke():
         # Background rendering function
         def render_in_background():
             try:
-                app_logger.info(f"Starting server-side canvas karaoke export for theme {theme_number}")
+                app_logger.debug(f"Starting server-side canvas karaoke export for theme {theme_number}")
 
                 # Import the renderer
                 import canvas_karaoke_exporter
@@ -2965,13 +3019,7 @@ def encode_canvas_karaoke():
                     str(output_path),
                     start_time,
                     end_time,
-                    {
-                        'fontSize': karaoke_settings.get('fontSize', 48) * 2,  # Double for 1080x1920
-                        'fontName': karaoke_settings.get('fontName', 'Arial'),
-                        'textColor': karaoke_settings.get('textColor', '#ffff00'),
-                        'pastColor': karaoke_settings.get('pastColor', '#808080'),
-                        'mode': karaoke_settings.get('mode', 'normal')
-                    },
+                    final_settings,
                     progress_callback
                 )
 
@@ -3169,9 +3217,9 @@ def export_canvas_karaoke():
             str(output_path)  # Output file
         ]
 
-        app_logger.info(f"Running FFmpeg command for canvas karaoke export: {' '.join(ffmpeg_cmd)}")
+        app_logger.debug(f"Running FFmpeg command for canvas karaoke export: {' '.join(ffmpeg_cmd)}")
 
-        app_logger.info(f"Running FFmpeg command for canvas karaoke export: {' '.join(ffmpeg_cmd)}")
+        app_logger.debug(f"Running FFmpeg command for canvas karaoke export: {' '.join(ffmpeg_cmd)}")
 
         # Run FFmpeg
         result = subprocess.run(
@@ -3232,11 +3280,11 @@ if __name__ == '__main__':
     print("=" * 60)
 
     # Log server startup
-    app_logger.info("=" * 60)
-    app_logger.info("YouTube Shorts Creator - Web Server STARTED")
-    app_logger.info(f"Server running at: http://localhost:5000")
-    app_logger.info(f"Video directory: {settings.get('video', 'output_dir')}")
-    app_logger.info("=" * 60)
+    app_logger.debug("=" * 60)
+    app_logger.debug("YouTube Shorts Creator - Web Server STARTED")
+    app_logger.debug(f"Server running at: http://localhost:5000")
+    app_logger.debug(f"Video directory: {settings.get('video', 'output_dir')}")
+    app_logger.debug("=" * 60)
 
     # Signal handler for graceful shutdown
     def signal_handler(sig, frame):
@@ -3248,7 +3296,7 @@ if __name__ == '__main__':
                 if task.get('status') == 'running':
                     task['cancelled'] = True
         print("\033[92mServer shut down cleanly.\033[0m")
-        app_logger.info("Server shut down cleanly")
+        app_logger.debug("Server shut down cleanly")
         import sys
         sys.exit(0)
 

@@ -48,6 +48,13 @@ class CanvasKaraokeRenderer:
         self.mode = settings.get('mode', 'normal')  # 'normal' or 'cumulative'
         self.fade_duration = 0.5  # seconds
 
+        # Subtitle positioning
+        self.subtitle_position = settings.get('subtitle_position', 'bottom')
+        self.subtitle_left = settings.get('subtitle_left')
+        self.subtitle_top = settings.get('subtitle_top')
+        self.subtitle_h_align = settings.get('subtitle_h_align', 'center')
+        self.subtitle_v_align = settings.get('subtitle_v_align', 'bottom')
+
         # Calculate scaling
         self.scale_x = self.output_width / self.width
         self.scale_y = self.output_height / self.height
@@ -288,19 +295,45 @@ class CanvasKaraokeRenderer:
         max_width = self.output_width - 80  # 40px padding
         lines = self._wrap_words(colored_words, font, max_width)
 
-        # Calculate total height
+        # Calculate total height of all lines
         line_height = int(self.font_size * 1.2)
         total_height = len(lines) * line_height
 
-        # Calculate starting Y position (bottom with margin)
-        margin_bottom = 100
-        y = self.output_height - margin_bottom - (len(lines) - 1) * line_height
+        # Calculate starting Y position based on settings
+        if self.subtitle_position == 'custom' and self.subtitle_left is not None and self.subtitle_top is not None:
+            # Vertical alignment relative to top coordinate
+            if self.subtitle_v_align == 'top':
+                y = self.subtitle_top
+            elif self.subtitle_v_align == 'middle':
+                y = self.subtitle_top - (total_height / 2)
+            else: # bottom
+                y = self.subtitle_top - total_height
+        else:
+            # Preset positions
+            if self.subtitle_position == 'top':
+                margin_top = 100
+                y = margin_top
+            elif self.subtitle_position == 'middle':
+                y = (self.output_height - total_height) / 2
+            else: # bottom
+                margin_bottom = 100
+                y = self.output_height - margin_bottom - total_height
 
         # Render each line
         for line in lines:
-            # Calculate line width for centering
+            # Calculate line width
             line_width = self._get_text_width(line, font)
-            x = (self.output_width - line_width) / 2
+            
+            if self.subtitle_position == 'custom' and self.subtitle_left is not None:
+                if self.subtitle_h_align == 'left':
+                    x = self.subtitle_left
+                elif self.subtitle_h_align == 'right':
+                    x = self.subtitle_left - line_width
+                else: # center
+                    x = self.subtitle_left - (line_width / 2)
+            else:
+                # Always center for preset positions
+                x = (self.output_width - line_width) / 2
 
             # Render each word in the line
             for word_info in line:
