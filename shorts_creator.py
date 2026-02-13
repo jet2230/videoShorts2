@@ -112,13 +112,16 @@ class YouTubeShortsCreator:
         self.base_dir.mkdir(exist_ok=True)
 
     def sanitize_title(self, title: str) -> str:
-        """Sanitize video title for use as folder name."""
-        # Remove invalid characters
-        title = re.sub(r'[<>:"/\\|?*]', '', title)
-        # Replace multiple spaces with single space
-        title = re.sub(r'\s+', '_', title)
+        """Sanitize video title for use as folder and file name."""
+        # Remove ALL non-alphanumeric characters except underscore and hyphen
+        # This ensures safety for all platforms and avoids FFmpeg escaping issues
+        sanitized = re.sub(r'[^a-zA-Z0-9_\-]', '_', title)
+        # Replace multiple underscores with single underscore
+        sanitized = re.sub(r'_+', '_', sanitized)
+        # Remove leading/trailing underscores
+        sanitized = sanitized.strip('_')
         # Limit length
-        return title[:100]
+        return sanitized[:100]
 
     def get_next_folder_number(self) -> int:
         """Get the next folder number."""
@@ -204,7 +207,7 @@ class YouTubeShortsCreator:
 
         ydl_opts_download = {
             'format': format_map.get(resolution, format_map['best']),
-            'outtmpl': str(output_folder / '%(title)s.%(ext)s'),
+            'outtmpl': str(output_folder / f'{sanitized_title}.%(ext)s'),
             'quiet': True,
             'no_warnings': True,
             'progress_hooks': [ydl_progress_hook]
@@ -331,7 +334,8 @@ class YouTubeShortsCreator:
             _log_msg(f"Created folder: {output_folder}")
 
         # Copy video to project folder
-        output_video_path = output_folder / video_file.name
+        # Use sanitized filename to avoid FFmpeg issues with special characters
+        output_video_path = output_folder / f"{sanitized_title}{video_file.suffix}"
         shutil.copy2(video_file, output_video_path)
         _log_msg(f"Copied video to: {output_video_path}")
 
@@ -600,35 +604,30 @@ Video Path: {video_info['video_path']}
     def _parse_srt_segments(self, srt_path: Path) -> List[Dict]:
         """Parse SRT file to get segments with timing."""
         segments = []
+        try:
+            with open(srt_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+        except UnicodeDecodeError:
+            with open(srt_path, 'r', encoding='utf-8-sig') as f:
+                content = f.read()
 
-        with open(srt_path, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-
-        i = 0
-        while i < len(lines):
-            line = lines[i].strip()
-
-            # Look for timestamp lines (format: 00:00:00,000 --> 00:00:00,000)
-            if '-->' in line:
-                times = line.split('-->')
-                start_time = self._parse_timestamp(times[0].strip())
-                end_time = self._parse_timestamp(times[1].strip().split()[0])
-
-                # Get text for this segment
-                i += 1
-                text_lines = []
-                while i < len(lines) and lines[i].strip() and not '-->' in lines[i]:
-                    text_lines.append(lines[i].strip())
-                    i += 1
-
-                segments.append({
-                    'start': start_time,
-                    'end': end_time,
-                    'text': ' '.join(text_lines)
-                })
-            else:
-                i += 1
-
+        # Split by blocks
+        blocks = re.split(r'\n\s*\n', content.strip())
+        for block in blocks:
+            lines = [l.strip() for l in block.split('\n') if l.strip()]
+            if len(lines) >= 3:
+                # Line 0: index, Line 1: timestamp, Line 2+: text
+                ts_line = lines[1]
+                if '-->' in ts_line:
+                    times = ts_line.split('-->')
+                    start_time = self._parse_timestamp(times[0].strip())
+                    end_time = self._parse_timestamp(times[1].strip().split()[0])
+                    text = ' '.join(lines[2:])
+                    segments.append({
+                        'start': start_time,
+                        'end': end_time,
+                        'text': text
+                    })
         return segments
 
     def _parse_timestamp(self, timestamp: str) -> float:
@@ -1154,64 +1153,42 @@ Video Path: {video_info['video_path']}
         self.create_trimmed_srt(srt_path, start_seconds, end_seconds, trimmed_srt_path)
         print(f"    Created trimmed subtitles: {trimmed_srt_name}")
 
-        # Use the trimmed SRT for subtitle burning (it's already adjusted)
-        subtitle_file_for_ffmpeg = str(trimmed_srt_path).replace(':', '\\:').replace('\\', '\\\\').replace("'", "\\'")
-
+        # Path for ffmpeg subtitles filter needs special escaping
+        # We use forward slashes and escape single quotes and colons
+        sub_path = str(trimmed_srt_path).replace('\\', '/')
+        
         # Check if we need to create ASS file
-        # Create ASS if: 1) Individual formatting exists (JSON) OR 2) Global custom position exists (adjust.md) OR 3) Word timestamps exist (for karaoke)
         formatting_json_path = output_dir / f"theme_{theme['number']:03d}_formatting.json"
         adjust_md_path = theme.get('adjust_file')
         use_ass = False
 
-        # Check if there's individual formatting or global custom position
         has_formatting = formatting_json_path.exists()
         has_global_position = False
         has_word_timestamps = False
 
-        # Check for word timestamps file (for karaoke highlighting)
-        # Word timestamps are in the parent folder of the shorts directory
         video_folder = output_dir.parent
         word_timestamps_file = None
         for file in video_folder.glob('*_word_timestamps.json'):
             word_timestamps_file = file
             has_word_timestamps = True
-            print(f"    Found word timestamps: {word_timestamps_file.name}")
             break
 
         if adjust_md_path and adjust_md_path.exists():
-            # Read adjust.md to check if there's a custom position
             try:
                 with open(adjust_md_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                    import re
-                    # Check for custom position
-                    has_global_position = bool(re.search(r'\*\*subtitle_position:\*\*\s*custom', content))
-                    if has_global_position:
-                        print(f"    Found global custom position in adjust.md")
-            except:
-                pass
+                    c = f.read()
+                    has_global_position = bool(re.search(r'\*\*subtitle_position:\*\*\s*custom', c))
+            except: pass
 
-        # Create ASS if any condition is met
         if has_formatting or has_global_position or has_word_timestamps:
-            print(f"    Creating ASS file (formatting: {has_formatting}, global position: {has_global_position})...")
-            # Create ASS file from trimmed SRT using ASSFormatter
             ass_output_path = output_dir / f"theme_{theme['number']:03d}.ass"
             try:
-                # Convert settings to dict for ASSFormatter
                 settings_dict = {section: dict(settings.items(section)) for section in settings.sections()}
                 ass_formatter = ASSFormatter(settings_dict)
-                # Use the trimmed SRT for ASS generation (it contains the adjusted subtitle sequence)
-                print(f"    Using trimmed.srt (sequence {trimmed_srt_name}) for ASS generation")
-                # Pass adjust.md path for global position settings
-                # Enable karaoke if word timestamps exist
                 use_karaoke = has_word_timestamps
-
-                # Load karaoke style settings if available
                 karaoke_style = None
                 if use_karaoke:
-                    # highlight_style.json is in the parent folder, not in shorts/
                     style_file = output_dir.parent / 'highlight_style.json'
-                    print(f"    Looking for highlight style in: {style_file}")
                     if style_file.exists():
                         try:
                             import json
@@ -1223,27 +1200,12 @@ Video Path: {video_info['video_path']}
                                     'past_color': style_data.get('past_color', None),
                                     'textColor': style_data.get('textColor', '#ffff00')
                                 }
-                                print(f"    ✓ Loaded karaoke style: mode={karaoke_style['mode']}, font_scale={karaoke_style['font_size_scale']}")
-                        except Exception as e:
-                            print(f"    ✗ Error loading karaoke style: {e}")
-                    else:
-                        print(f"    ✗ highlight_style.json not found at {style_file}")
-
-                print(f"    → Calling create_ass_file with karaoke_style={karaoke_style}")
+                        except: pass
                 ass_formatter.create_ass_file(trimmed_srt_path, formatting_json_path, ass_output_path, adjust_md_path, use_karaoke=use_karaoke, karaoke_style=karaoke_style)
-                karaoke_msg = " with karaoke tags" if use_karaoke else ""
-                print(f"    Created ASS subtitles{karaoke_msg}: {ass_output_path.name}")
-                subtitle_file_for_ffmpeg = str(ass_output_path).replace(':', '\\:').replace('\\', '\\\\').replace("'", "\\'")
+                sub_path = str(ass_output_path).replace('\\', '/')
                 use_ass = True
-            except Exception as e:
-                print(f"    Warning: Failed to create ASS file, using SRT: {e}")
+            except: pass
 
-        # YouTube Shorts format: 9:16 aspect ratio
-        # Scale and crop (not pad) to achieve proper 9:16 ratio
-
-        print(f"    Burning subtitles...")
-
-        # Get settings
         width = settings.get('video', 'resolution_width')
         height = settings.get('video', 'resolution_height')
         font_name = settings.get('subtitle', 'font_name')
@@ -1254,101 +1216,145 @@ Video Path: {video_info['video_path']}
         preset = settings.get('video', 'preset')
         crf = settings.get('video', 'crf')
 
-        # Filter chain:
-        # Scale and crop to target resolution, then burn in subtitles
-        # Apply subtitles AFTER crop, with force_style to ensure correct positioning
-        # For ASS files, use force_style to override positioning (but keep embedded styling)
-        # For SRT files, apply force_style settings
-        if use_ass:
-            vf_filter = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}:(iw-ow)/2:(ih-oh)/2,subtitles={subtitle_file_for_ffmpeg}:force_style='Alignment={alignment},MarginV={margin_v},FontName={font_name}'"
-        else:
-            vf_filter = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}:(iw-ow)/2:(ih-oh)/2,subtitles={subtitle_file_for_ffmpeg}:force_style='FontSize={font_size},MarginV={margin_v},Alignment={alignment},FontName={font_name}'"
-
-        cmd = [
-            'ffmpeg',
-            '-ss', str(start_seconds),  # Input seeking
-            '-i', str(video_path),
-            '-t', str(duration),
-            '-vf', vf_filter,
-            '-c:v', codec,
-            '-preset', preset,
-            '-crf', crf,
-            '-c:a', 'aac',
-            '-b:a', '128k',
-            '-movflags', '+faststart',
-            '-y',
-            str(output_file)
-        ]
-
+        # ROBUST PATH HANDLING: Use symlinks in a temp directory to avoid escaping hell
+        import tempfile
+        import shutil
+        import os
+        
+        production_tmp_dir = Path(tempfile.mkdtemp(prefix='short_prod_'))
+        
         try:
-            # Run ffmpeg and capture progress in real-time from stderr
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                stdin=subprocess.DEVNULL,
-                universal_newlines=True,
-                bufsize=1  # Line buffered
-            )
-
-            last_progress = 0
-            import time
-
-            while True:
-                # Check if process is done
-                if process.poll() is not None:
-                    break
-
-                # Read stderr line with timeout
-                line = process.stderr.readline()
-                if not line:
-                    time.sleep(0.05)
-                    continue
-
-                line = line.strip()
-                # Parse ffmpeg progress from stderr: frame=  123 fps= 45 ... time=00:00:05.12
-                if 'time=' in line and 'frame=' in line:
-                    try:
-                        # Extract time= value
-                        time_match = line.split('time=')[1].split()[0]
-                        # Parse time format HH:MM:SS.milliseconds
-                        parts = time_match.split(':')
-                        if len(parts) == 3:
-                            hours = int(parts[0])
-                            minutes = int(parts[1])
-                            seconds_parts = parts[2].split('.')
-                            seconds = int(seconds_parts[0])
-                            current_time = hours * 3600 + minutes * 60 + seconds
-
-                            # Calculate percentage
-                            if duration > 0:
-                                percent = min(100, int((current_time / duration) * 100))
-                                # Send progress on every 5% change
-                                if percent >= last_progress + 5 or percent == 100:
-                                    last_progress = percent
-                                    # Call the callback directly if available, otherwise print
-                                    if progress_callback:
-                                        progress_callback(f"Progress: {percent}%")
-                                    else:
-                                        print(f"Progress: {percent}%")
-                    except (ValueError, IndexError):
-                        pass
-
-            # Wait for process to complete
-            return_code = process.wait()
-            if return_code == 0:
-                print(f"    ✓ Created successfully")
-                return str(output_file)
+            # Create safe symlinks for inputs
+            safe_video_link = production_tmp_dir / "input_video.mp4"
+            os.symlink(video_path.absolute(), safe_video_link)
+            
+            # Use appropriate extension for subtitles
+            sub_ext = ".ass" if use_ass else ".srt"
+            safe_sub_link = production_tmp_dir / f"subtitles{sub_ext}"
+            
+            # The actual subtitle file path
+            os.symlink(Path(sub_path).absolute(), safe_sub_link)
+            
+            # Temporary output path
+            safe_output_path = production_tmp_dir / "output.mp4"
+            
+            # In the filter, we now use the "safe" path
+            # FFmpeg filter needs the path relative to current working directory or absolute
+            # Using absolute path to the safe link is best
+            escaped_safe_sub = str(safe_sub_link.absolute()).replace(":", "\\\\:")
+            
+            if use_ass:
+                vf_filter = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}:(iw-ow)/2:(ih-oh)/2,subtitles='{escaped_safe_sub}':force_style='Alignment={alignment},MarginV={margin_v},FontName={font_name}'"
             else:
-                stderr = process.stderr.read()
-                print(f"    ✗ Failed with code {return_code}")
-                return None
+                vf_filter = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}:(iw-ow)/2:(ih-oh)/2,subtitles='{escaped_safe_sub}':force_style='FontSize={font_size},MarginV={margin_v},Alignment={alignment},FontName={font_name}'"
 
+            # Try NVIDIA hardware acceleration first
+            gpu_cmd = [
+                'ffmpeg',
+                '-ss', str(start_seconds),
+                '-i', str(safe_video_link),
+                '-t', str(duration),
+                '-vf', vf_filter,
+                '-c:v', 'h264_nvenc',
+                '-preset', 'p4',
+                '-cq', '23',
+                '-c:a', 'aac',
+                '-b:a', '128k',
+                '-movflags', '+faststart',
+                '-y',
+                str(safe_output_path)
+            ]
+
+            # Standard CPU command fallback
+            cpu_cmd = [
+                'ffmpeg',
+                '-ss', str(start_seconds),
+                '-i', str(safe_video_link),
+                '-t', str(duration),
+                '-vf', vf_filter,
+                '-c:v', codec,
+                '-preset', preset,
+                '-crf', crf,
+                '-c:a', 'aac',
+                '-b:a', '128k',
+                '-movflags', '+faststart',
+                '-y',
+                str(safe_output_path)
+            ]
+
+            def run_ffmpeg(command, description):
+                print(f"    Running FFmpeg ({description})...")
+                stderr_lines = []
+                process = subprocess.Popen(
+                    command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    stdin=subprocess.DEVNULL,
+                    universal_newlines=True,
+                    bufsize=1
+                )
+                
+                last_progress = 0
+                import time
+                while True:
+                    line = process.stderr.readline()
+                    if not line:
+                        if process.poll() is not None: break
+                        time.sleep(0.05)
+                        continue
+                    line = line.strip()
+                    stderr_lines.append(line)
+                    if 'time=' in line and 'frame=' in line:
+                        try:
+                            time_match = line.split('time=')[1].split()[0]
+                            parts = time_match.split(':')
+                            if len(parts) == 3:
+                                curr = int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2].split('.')[0])
+                                if duration > 0:
+                                    percent = min(100, int((curr / duration) * 100))
+                                    if percent >= last_progress + 5 or percent == 100:
+                                        last_progress = percent
+                                        if progress_callback: progress_callback(f"Progress: {percent}%")
+                        except: pass
+                
+                return_code = process.wait()
+                return return_code, stderr_lines
+
+            try:
+                ret_code, gpu_stderr = run_ffmpeg(gpu_cmd, "NVIDIA GPU")
+                if ret_code != 0:
+                    print(f"    ✗ GPU failed (code {ret_code}).")
+                    err_snippet = "\n".join(gpu_stderr[-10:])
+                    print(f"    Error snippet: {err_snippet}")
+                    
+                    ret_code, cpu_stderr = run_ffmpeg(cpu_cmd, "CPU")
+                    if ret_code != 0:
+                        print(f"    ✗ CPU failed (code {ret_code}).")
+                        err_snippet = "\n".join(cpu_stderr[-10:])
+                        print(f"    Final error snippet: {err_snippet}")
+                        return None
+
+                # SUCCESS! Move the output to the final destination
+                if safe_output_path.exists():
+                    shutil.move(str(safe_output_path), str(output_file))
+                    print(f"    ✓ Created: {output_file.name}")
+                    return str(output_file)
+                else:
+                    print(f"    ✗ FFmpeg finished but output file missing")
+                    return None
+                    
+            except Exception as e:
+                print(f"    ✗ System error during FFmpeg: {e}")
+                return None
+                
         except Exception as e:
             print(f"    ✗ Failed: {e}")
             import traceback
             traceback.print_exc()
             return None
+        finally:
+            # Clean up the temporary production directory
+            shutil.rmtree(production_tmp_dir, ignore_errors=True)
 
     def create_shorts(self, folder_number: str, theme_numbers: str = None, progress_callback=None, cancel_check=None) -> None:
         """Create short video clips based on themes."""

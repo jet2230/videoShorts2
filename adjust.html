@@ -2596,8 +2596,17 @@
 
                 // Apply any cached subtitle edits
                 for (const [key, editText] of Object.entries(subtitleEdits)) {
-                    const [start, end] = key.split('_');
-                    const cueIndex = allThemeCues.findIndex(cue => cue.start === start && cue.end === end);
+                    const [startKey, endKey] = key.split('_');
+                    
+                    // First try exact match
+                    let cueIndex = allThemeCues.findIndex(cue => cue.start === startKey && cue.end === endKey);
+                    
+                    // Fallback: match by start time with tolerance
+                    if (cueIndex === -1) {
+                        const targetStart = parseTime(startKey);
+                        cueIndex = allThemeCues.findIndex(cue => Math.abs(parseTime(cue.start) - targetStart) < 0.1);
+                    }
+
                     if (cueIndex !== -1) {
                         allThemeCues[cueIndex].text = editText;
                     }
@@ -3023,10 +3032,16 @@
                 document.getElementById('header-title').textContent = `Adjust Theme ${themeData.number}`;
                 document.getElementById('header-theme-name').textContent = displayTitle;
 
-                document.getElementById('subtitle-text').innerHTML = themeData.text || '';
-
                 // Load all theme cues for subtitle editing (must be awaited for sequence matching)
                 await loadThemeCues();
+
+                // Initialize subtitle-text from loaded cues if possible, otherwise fall back to themeData
+                // This ensures edited text is shown immediately on load
+                const firstCue = allThemeCues.find(cue => {
+                    const cueStart = parseTime(cue.start);
+                    return cueStart >= startSeconds - 0.5;
+                });
+                document.getElementById('subtitle-text').innerHTML = firstCue ? firstCue.text : (themeData.text || '');
 
                 // Load subtitle formatting metadata and apply to editor
                 await loadSubtitleFormatting();
@@ -3034,9 +3049,9 @@
                 // Load global position from adjust.md
                 await loadGlobalPosition();
 
-                // Load VTT subtitles
+                // Load VTT subtitles with theme parameter to get edits
                 const subtitleTrack = document.getElementById('subtitle-track');
-                subtitleTrack.src = `/api/subtitles/${folderNumber}.vtt`;
+                subtitleTrack.src = `/api/subtitles/${folderNumber}.vtt?theme=${themeNumber}&_=${Date.now()}`;
                 originalVideo.textTracks.addEventListener('addtrack', (event) => {
                     const track = event.track;
                     track.mode = 'showing';
@@ -3316,28 +3331,26 @@
                     // Find matching cue by timestamp and text
                     // Use more lenient text matching (normalize whitespace and newlines)
                     const normalizeText = (text) => text.trim().replace(/[\s\n\r]+/g, ' ');
+                    
+                    // First try exact timestamp match
                     let matchingCue = allThemeCues.find(cue => {
-                        const timestampsMatch = cue.start === absoluteTimestampKey && cue.end === absoluteEndTimeKey;
-                        if (!timestampsMatch) return false;
-                        // Try exact match first, then normalized match
-                        return cue.text === currentCue.text || normalizeText(cue.text) === normalizeText(currentCue.text);
+                        return cue.start === absoluteTimestampKey && cue.end === absoluteEndTimeKey;
                     });
 
-                    // Fallback: match by timestamp only if text matching fails
-                    // (handles cases where text has subtle differences OR was edited)
+                    // Fallback: match by start time only with tolerance (0.1s)
                     if (!matchingCue) {
-                        matchingCue = allThemeCues.find(cue =>
-                            cue.start === absoluteTimestampKey && cue.end === absoluteEndTimeKey
-                        );
-                        if (matchingCue) {
-                            // IMPORTANT: Update the cue text with edited text from VTT track
-                            // The VTT has edits applied from the server JSON, so use that text
-                            if (matchingCue.text !== currentCue.text) {
-                                matchingCue.text = currentCue.text;
-                                // Also update local cache
-                                const cacheKey = `${matchingCue.start}_${matchingCue.end}`;
-                                subtitleEdits[cacheKey] = currentCue.text;
-                            }
+                        const cueStartTime = currentCue.startTime;
+                        matchingCue = allThemeCues.find(cue => {
+                            const diff = Math.abs(parseTime(cue.start) - cueStartTime);
+                            return diff < 0.1;
+                        });
+                    }
+
+                    if (matchingCue) {
+                        // Apply edited text if it's already in our local state
+                        const cacheKey = `${matchingCue.start}_${matchingCue.end}`;
+                        if (subtitleEdits[cacheKey]) {
+                            matchingCue.text = subtitleEdits[cacheKey];
                         }
                     }
 
@@ -3356,8 +3369,8 @@
                     const newCueInfo = {
                         sequence: sequence,
                         timestamp: timestampKey,
-                        start: timestampKey,
-                        end: endTimeKey,
+                        start: absoluteTimestampKey,
+                        end: absoluteEndTimeKey,
                         text: currentCue.text
                     };
 

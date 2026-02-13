@@ -1107,25 +1107,17 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 # === SRT Time Utility Functions ===
 
 def parse_srt_time(srt_time: str) -> float:
-    """Parse SRT time format to decimal seconds.
-
-    Supports formats:
-    - HH:MM:SS.mmm (with milliseconds like 00:00:00.000)
-    - HH:MM:SS (standard like 00:00:00.000)
-    - Decimal seconds (like 90.5)
-
-    Args:
-        srt_time: Time string from SRT file
-
-    Returns:
-        Decimal seconds
-    """
+    """Parse SRT time format to decimal seconds."""
     if not srt_time or '-->' in srt_time:
         return 0.0
 
+    # Handle negative sign
+    is_negative = srt_time.strip().startswith('-')
+    clean_time = srt_time.strip().lstrip('-')
+
     # Check if contains colons (HH:MM:SS format)
-    if srt_time.count(':') >= 2:
-        parts = srt_time.split(':')
+    if clean_time.count(':') >= 2:
+        parts = clean_time.split(':')
         hours = int(parts[0])
         minutes = int(parts[1])
 
@@ -1133,17 +1125,23 @@ def parse_srt_time(srt_time: str) -> float:
         seconds_part = parts[2]
         if '.' in seconds_part or ',' in seconds_part:
             seconds_part = seconds_part.replace(',', '.')
-            seconds, milliseconds = seconds_part.split('.')
-            result = float(hours) * 3600 + float(minutes) * 60 + float(seconds)
-            if milliseconds:
-                result += float('0.' + milliseconds) if len(milliseconds) <= 3 else float(milliseconds) / 1000
-            return result
+            if '.' in seconds_part:
+                seconds, milliseconds = seconds_part.split('.')
+                result = float(hours) * 3600 + float(minutes) * 60 + float(seconds)
+                if milliseconds:
+                    # ms might be "270" -> 0.270
+                    result += float('0.' + milliseconds)
+            else:
+                result = float(hours) * 3600 + float(minutes) * 60 + float(seconds_part)
         else:
-            return float(hours) * 3600 + float(minutes) * 60 + float(seconds)
+            result = float(hours) * 3600 + float(minutes) * 60 + float(seconds_part)
+        
+        return -result if is_negative else result
     else:
         # Try parsing as decimal seconds
         try:
-            return float(srt_time)
+            val = float(srt_time)
+            return val
         except ValueError:
             return 0.0
 

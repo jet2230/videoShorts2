@@ -4,6 +4,11 @@ Video processor with face tracking and effects.
 Uses ffmpeg for processing to preserve audio.
 """
 
+import os
+
+# Disable hardware acceleration for FFmpeg backend to fix AV1 decoding issues
+os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "hwaccel;none"
+
 import cv2
 import numpy as np
 from pathlib import Path
@@ -17,7 +22,15 @@ class VideoProcessor:
 
     def __init__(self, video_path: str):
         self.video_path = Path(video_path)
-        self.cap = cv2.VideoCapture(str(video_path))
+        self.cap = cv2.VideoCapture(str(video_path), cv2.CAP_FFMPEG)
+        if hasattr(cv2, 'CAP_PROP_HW_ACCELERATION'):
+            self.cap.set(cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_NONE)
+            
+        if not self.cap.isOpened():
+            self.cap = cv2.VideoCapture(str(video_path))
+            if hasattr(cv2, 'CAP_PROP_HW_ACCELERATION'):
+                self.cap.set(cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_NONE)
+
         self.fps = int(self.cap.get(cv2.CAP_PROP_FPS))
         self.width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         self.height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -288,7 +301,49 @@ class VideoProcessor:
         face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
         # Open video
-        cap = cv2.VideoCapture(input_path)
+        cap = cv2.VideoCapture(input_path, cv2.CAP_FFMPEG)
+        if hasattr(cv2, 'CAP_PROP_HW_ACCELERATION'):
+            cap.set(cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_NONE)
+            
+        if not cap.isOpened():
+            cap = cv2.VideoCapture(input_path)
+            if hasattr(cv2, 'CAP_PROP_HW_ACCELERATION'):
+                cap.set(cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_NONE)
+
+        # Verify readability
+        ret, test_frame = cap.read()
+        if not ret:
+            log("OpenCV failed to read video directly. Attempting automatic transcode fallback for face tracking...")
+            cap.release()
+            
+            # Create a temporary proxy video (H.264 is very compatible)
+            with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp:
+                proxy_path = tmp.name
+            
+            transcode_cmd = [
+                'ffmpeg', '-y',
+                '-i', input_path,
+                '-c:v', 'libx264',
+                '-preset', 'ultrafast',
+                '-crf', '20',
+                '-c:a', 'copy',
+                proxy_path
+            ]
+            
+            log(f"Running fallback transcode for face tracking...")
+            ts_result = subprocess.run(transcode_cmd, capture_output=True, text=True)
+            
+            if ts_result.returncode == 0:
+                input_path = proxy_path # Use proxy for reading
+                cap = cv2.VideoCapture(input_path)
+                log("Transcode successful. Proceeding with face tracking.")
+            else:
+                log(f"Transcode failed: {ts_result.stderr}")
+                raise Exception(f"Could not read video with OpenCV even after transcode: {ts_result.stderr}")
+
+        # Reset capture to start
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            
         fps = int(cap.get(cv2.CAP_PROP_FPS))
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))

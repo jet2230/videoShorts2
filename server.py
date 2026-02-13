@@ -13,6 +13,10 @@ import os
 import sys
 import logging
 from pathlib import Path
+
+# Disable hardware acceleration for FFmpeg backend to fix AV1 decoding issues
+os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "hwaccel;none"
+
 from typing import Dict, List
 import configparser
 from datetime import datetime
@@ -31,20 +35,26 @@ log_handler.setFormatter(log_formatter)
 
 # Get Flask's logger and add file handler
 flask_logger = logging.getLogger('werkzeug')
-flask_logger.setLevel(logging.WARNING)
+flask_logger.setLevel(logging.INFO)
 flask_logger.addHandler(log_handler)
 
 # Also log our app messages
 app_logger = logging.getLogger(__name__)
-app_logger.setLevel(logging.WARNING)
+app_logger.setLevel(logging.INFO)
 app_logger.addHandler(log_handler)
+
+# Ensure canvas_karaoke_exporter logger also logs to file
+exporter_logger = logging.getLogger('canvas_karaoke_exporter')
+exporter_logger.setLevel(logging.INFO)
+exporter_logger.addHandler(log_handler)
 
 # Keep console output too
 console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.WARNING)
+console_handler.setLevel(logging.INFO)
 console_handler.setFormatter(log_formatter)
 flask_logger.addHandler(console_handler)
 app_logger.addHandler(console_handler)
+exporter_logger.addHandler(console_handler)
 
 app = Flask(__name__, static_folder='static')
 CORS(app)
@@ -515,6 +525,20 @@ def get_themes(folder_number: str):
                     theme['adjusted'] = True
             except Exception as e:
                 print(f"Error reading adjust file {adjust_file}: {e}")
+        
+        # Check for persistent subtitle edits and apply them to theme text
+        edits_file = folder / 'shorts' / f"theme_{theme['number']:03d}_edits.json"
+        if edits_file.exists():
+            try:
+                with open(edits_file, 'r', encoding='utf-8') as f:
+                    edits = json.load(f)
+                
+                # If there are edits, we should ideally rebuild the 'text' field
+                # For now, let the frontend handle the granular cue edits,
+                # but we can mark that edits exist.
+                theme['has_subtitle_edits'] = True
+            except:
+                pass
 
     # If no video file found, try to get from Video Path in info file
     if not video_filename and video_info_file.exists():
@@ -732,6 +756,18 @@ def get_vtt_subtitles(folder_number: str):
     # Convert SRT to VTT
     vtt_content = "WEBVTT\n\n"
 
+    # Load persistent edits if theme is provided
+    theme_number = request.args.get('theme')
+    edits = {}
+    if theme_number:
+        edits_file = folder / 'shorts' / f'theme_{int(theme_number):03d}_edits.json'
+        if edits_file.exists():
+            try:
+                with open(edits_file, 'r', encoding='utf-8') as f:
+                    edits = json.load(f)
+            except:
+                pass
+
     lines = srt_content.split('\n')
     i = 0
     while i < len(lines):
@@ -746,19 +782,20 @@ def get_vtt_subtitles(folder_number: str):
         if '-->' in line:
             # Convert SRT timestamp to VTT format (commas to periods)
             timestamp = line.replace(',', '.')
+            
+            # Keep original times for key matching before applying offset
+            match_orig = re.match(r'(\d+):(\d+):([\d.]+)\s*-->\s*(\d+):(\d+):([\d.]+)', timestamp)
+            cue_orig_start = 0
+            cue_orig_end = 0
+            if match_orig:
+                cue_orig_start = int(match_orig.group(1)) * 3600 + int(match_orig.group(2)) * 60 + float(match_orig.group(3))
+                cue_orig_end = int(match_orig.group(4)) * 3600 + int(match_orig.group(5)) * 60 + float(match_orig.group(6))
 
             # Apply offset if specified
             if offset_seconds != 0:
-                # Parse the timestamp
-                match = re.match(r'(\d+):(\d+):([\d.]+)\s*-->\s*(\d+):(\d+):([\d.]+)', timestamp)
-                if match:
-                    h1, m1, s1, h2, m2, s2 = match.groups()
-                    start_sec = int(h1) * 3600 + int(m1) * 60 + float(s1)
-                    end_sec = int(h2) * 3600 + int(m2) * 60 + float(s2)
-
-                    # Apply offset
-                    start_sec -= offset_seconds
-                    end_sec -= offset_seconds
+                if match_orig:
+                    start_sec = cue_orig_start - offset_seconds
+                    end_sec = cue_orig_end - offset_seconds
 
                     # Only include if still visible after offset
                     if end_sec > 0:
@@ -778,14 +815,26 @@ def get_vtt_subtitles(folder_number: str):
 
             vtt_content += timestamp + '\n'
 
-            # Add subtitle text lines until next empty line or sequence number
+            # Get text lines
             i += 1
+            text_lines = []
             while i < len(lines):
                 text_line = lines[i].strip()
                 if not text_line or text_line.isdigit():
                     break
-                vtt_content += text_line + '\n'
+                text_lines.append(text_line)
                 i += 1
+            
+            # Apply edit if exists
+            from ass_formatter import format_srt_time
+            start_vtt_key = format_srt_time(cue_orig_start).replace(',', '.')
+            end_vtt_key = format_srt_time(cue_orig_end).replace(',', '.')
+            edit_key = f"{start_vtt_key}_{end_vtt_key}"
+            
+            if edit_key in edits:
+                vtt_content += edits[edit_key] + '\n'
+            else:
+                vtt_content += '\n'.join(text_lines) + '\n'
 
             vtt_content += '\n'
         else:
@@ -844,11 +893,63 @@ def get_theme_subtitles(folder_number: str, theme_number: str):
 
     # Always use the original SRT for loading (filter based on current theme time)
     # The adjusted SRT is only for saving custom edits
-    srt_files = list(folder.glob('*.srt'))
+    srt_files = [f for f in folder.glob('*.srt') if 'theme_' not in f.name and 'adjust' not in f.name]
+    if not srt_files:
+        srt_files = list(folder.glob('*.srt'))
+        
     if not srt_files:
         return "SRT file not found", 404
 
     srt_file = srt_files[0]
+
+    # Create theme-specific SRT and JSON files in the shorts directory
+    # This ensures they exist for editing as soon as adjust.html loads the theme
+    try:
+        shorts_dir = folder / 'shorts'
+        shorts_dir.mkdir(exist_ok=True)
+        
+        # 1. Create theme SRT (theme_XXX.srt)
+        theme_srt_name = f"theme_{int(theme_number):03d}.srt"
+        theme_srt_path = shorts_dir / theme_srt_name
+        
+        # Use creator to create the trimmed SRT
+        creator.create_trimmed_srt(srt_file, theme_start_sec, theme_end_sec, theme_srt_path)
+        
+        # 2. Create theme JSON word timestamps (theme_XXX.json)
+        theme_json_name = f"theme_{int(theme_number):03d}.json"
+        theme_json_path = shorts_dir / theme_json_name
+        
+        # Find original word timestamps
+        word_timestamps_file = None
+        for file in folder.glob('*_word_timestamps.json'):
+            word_timestamps_file = file
+            break
+            
+        if word_timestamps_file and word_timestamps_file.exists():
+            with open(word_timestamps_file, 'r', encoding='utf-8') as f:
+                wt_data = json.load(f)
+                all_words = wt_data.get('words', [])
+                
+            # Filter words for this theme and make timestamps relative
+            theme_words = []
+            for w in all_words:
+                if w['start'] >= theme_start_sec - 1.0 and w['end'] <= theme_end_sec + 1.0:
+                    rw = w.copy()
+                    rw['start'] = max(0, w['start'] - theme_start_sec)
+                    rw['end'] = max(0, w['end'] - theme_start_sec)
+                    theme_words.append(rw)
+                    
+            with open(theme_json_path, 'w', encoding='utf-8') as f:
+                json.dump({
+                    'theme': theme_number,
+                    'start_time': theme_start_sec,
+                    'end_time': theme_end_sec,
+                    'words': theme_words
+                }, f, indent=2)
+                
+        app_logger.info(f"Generated theme metadata: {theme_srt_name} and {theme_json_name}")
+    except Exception as e:
+        app_logger.warning(f"Failed to generate theme metadata: {e}")
 
     # Check if adjusted subtitles exist (for info only)
     shorts_dir = folder / 'shorts'
@@ -915,9 +1016,20 @@ def get_theme_subtitles(folder_number: str, theme_number: str):
         else:
             i += 1
 
+    # Load persistent edits if they exist
+    edits = {}
+    edits_file = folder / 'shorts' / f'theme_{int(theme_number):03d}_edits.json'
+    if edits_file.exists():
+        try:
+            with open(edits_file, 'r', encoding='utf-8') as f:
+                edits = json.load(f)
+        except:
+            pass
+
     return jsonify({
         'cues': filtered_cues,
-        'is_adjusted': has_adjusted
+        'is_adjusted': has_adjusted,
+        'edits': edits
     })
 
 
@@ -925,6 +1037,7 @@ def get_theme_subtitles(folder_number: str, theme_number: str):
 def get_all_subtitles(folder_number: str):
     """Get ALL subtitles from the original SRT file with sequence numbers (no theme filtering)."""
     import re
+    theme_number = request.args.get('theme')
 
     base_dir = Path(settings.get('video', 'output_dir'))
     folder = None
@@ -938,12 +1051,81 @@ def get_all_subtitles(folder_number: str):
         return "Folder not found", 404
 
     # Find the SRT file (could have any name, not just folder_number.srt)
-    srt_files = list(folder.glob('*.srt'))
+    srt_files = [f for f in folder.glob('*.srt') if 'theme_' not in f.name and 'adjust' not in f.name]
+    if not srt_files:
+        srt_files = list(folder.glob('*.srt'))
+        
     if not srt_files:
         return jsonify({'error': 'SRT file not found'}), 404
 
     srt_file = srt_files[0]  # Use the first (and likely only) SRT file
     print(f"[DEBUG] Using SRT file: {srt_file.name}")
+
+    # If theme is provided, ensure theme-specific files exist
+    if theme_number:
+        try:
+            # Get theme timing
+            themes_file = folder / 'themes.md'
+            theme_start_sec = None
+            theme_end_sec = None
+            
+            # Check for adjust file first
+            adjust_file = folder / 'shorts' / f'theme_{int(theme_number):03d}_adjust.md'
+            if adjust_file.exists():
+                with open(adjust_file, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    time_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})', content)
+                    if time_match:
+                        theme_start_sec = creator.parse_timestamp_to_seconds(time_match.group(1))
+                        theme_end_sec = creator.parse_timestamp_to_seconds(time_match.group(2))
+            
+            if theme_start_sec is None:
+                themes = creator.parse_themes_file(themes_file)
+                for t in themes:
+                    if t['number'] == int(theme_number):
+                        theme_start_sec = creator.parse_timestamp_to_seconds(t['start'])
+                        theme_end_sec = creator.parse_timestamp_to_seconds(t['end'])
+                        break
+            
+            if theme_start_sec is not None and theme_end_sec is not None:
+                shorts_dir = folder / 'shorts'
+                shorts_dir.mkdir(exist_ok=True)
+                
+                # Create theme SRT
+                theme_srt_path = shorts_dir / f"theme_{int(theme_number):03d}.srt"
+                creator.create_trimmed_srt(srt_file, theme_start_sec, theme_end_sec, theme_srt_path)
+                
+                # Create theme JSON
+                theme_json_path = shorts_dir / f"theme_{int(theme_number):03d}.json"
+                
+                # Find word timestamps
+                word_timestamps_file = None
+                for file in folder.glob('*_word_timestamps.json'):
+                    word_timestamps_file = file
+                    break
+                    
+                if word_timestamps_file:
+                    with open(word_timestamps_file, 'r', encoding='utf-8') as f:
+                        wt_data = json.load(f)
+                        all_words = wt_data.get('words', [])
+                    
+                    theme_words = [w.copy() for w in all_words 
+                                   if w['start'] >= theme_start_sec - 1.0 and w['end'] <= theme_end_sec + 1.0]
+                    for w in theme_words:
+                        w['start'] = max(0, w['start'] - theme_start_sec)
+                        w['end'] = max(0, w['end'] - theme_start_sec)
+                        
+                    with open(theme_json_path, 'w', encoding='utf-8') as f:
+                        json.dump({
+                            'theme': theme_number,
+                            'start_time': theme_start_sec,
+                            'end_time': theme_end_sec,
+                            'words': theme_words
+                        }, f, indent=2)
+                
+                app_logger.info(f"Auto-generated metadata for theme {theme_number} in get_all_subtitles")
+        except Exception as e:
+            app_logger.warning(f"Failed to auto-generate theme metadata in get_all_subtitles: {e}")
 
     with open(srt_file, 'r', encoding='utf-8') as f:
         srt_content = f.read()
@@ -995,9 +1177,21 @@ def get_all_subtitles(folder_number: str):
         else:
             i += 1
 
+    # Load persistent edits if they exist
+    edits = {}
+    if theme_number:
+        edits_file = folder / 'shorts' / f'theme_{int(theme_number):03d}_edits.json'
+        if edits_file.exists():
+            try:
+                with open(edits_file, 'r', encoding='utf-8') as f:
+                    edits = json.load(f)
+            except:
+                pass
+
     return jsonify({
         'cues': all_cues,
-        'total': len(all_cues)
+        'total': len(all_cues),
+        'edits': edits
     })
 
 
@@ -1072,194 +1266,169 @@ def get_subtitle_formatting(folder_number: str, theme_number: str):
 
 @app.route('/api/save-cue-text', methods=['POST'])
 def save_cue_text():
-    """Save individual subtitle edit to SRT file."""
+    """Save individual subtitle edit to SRT file and persistent JSON."""
     app_logger.debug("[DEBUG] save_cue_text endpoint called")
     try:
-        data = request.json
-    except Exception as e:
-        app_logger.error(f"[ERROR] Failed to parse JSON: {e}")
-        return jsonify({'error': 'Invalid JSON'}), 400
-    folder_number = data.get('folder')
-    theme_number = data.get('theme')
-    theme_start = data.get('theme_start')
-    cue_start = data.get('cue_start')
-    cue_end = data.get('cue_end')
-    text = data.get('text')
-
-    app_logger.debug(f"[DEBUG] Received data: folder={repr(folder_number)}, theme={repr(theme_number)}, cue_start={repr(cue_start)}, cue_end={repr(cue_end)}, text={repr(text[:100] if text else None)}")
-
-    # Check for missing or None values (cue_start/cue_end can be 0, so check is None explicitly)
-    # Check for empty strings (JavaScript undefined/null becomes empty string)
-    if not folder_number or not theme_number or cue_start is None or cue_end is None or not text:
-        app_logger.warning(f"[DEBUG] Validation failed: folder_number={folder_number}, theme_number={theme_number}, cue_start={cue_start}, cue_end={cue_end}, text={text}")
-        return jsonify({'error': 'Missing required fields'}), 400
-
-    # Additional check for empty string values in cue_start/cue_end
-    if cue_start == '' or cue_end == '':
-        app_logger.warning(f"[DEBUG] Empty cue times: cue_start={repr(cue_start)}, cue_end={repr(cue_end)}")
-        return jsonify({'error': 'Invalid time values: cue_start and cue_end cannot be empty'}), 400
-
-    print(f"[DEBUG] Saving cue: folder={folder_number}, theme={theme_number}, start={cue_start}, end={cue_end}, text={text[:50]}...")
-
-    # Find the folder
-    base_dir = Path(settings.get('video', 'output_dir'))
-    folder = None
-    for f in base_dir.iterdir():
-        if f.is_dir() and f.name.startswith(f"{folder_number}_"):
-            folder = f
-            break
-
-    if not folder:
-        return jsonify({'error': 'Folder not found'}), 404
-
-    # Find the SRT file (handle full-width characters like ？)
-    import glob
-    srt_files = list(folder.glob('*.srt')) + list(folder.glob('*.SRT'))
-
-    if not srt_files:
-        # Try to find any file with similar name (handling encoding issues)
-        video_files = list(folder.glob('*.mp4')) + list(folder.glob('*.MP4'))
-        if video_files:
-            video_name = video_files[0].stem
-            possible_srts = list(folder.glob(f"{video_name}*.srt")) + list(folder.glob(f"{video_name}*.SRT"))
-            if possible_srts:
-                srt_file = possible_srts[0]
-                print(f"[DEBUG] Using SRT file with similar name: {srt_file}")
-            else:
-                return jsonify({'error': 'No SRT file found in folder'}), 404
-    else:
-        srt_file = srt_files[0]
-
-    # Read current SRT content
-    try:
-        # Try to read with utf-8-sig fallback for encoding issues
         try:
-            with open(srt_file, 'r', encoding='utf-8-sig') as f:
-                srt_content = f.read()
-        except UnicodeDecodeError:
-            with open(srt_file, 'r', encoding='utf-8') as f:
-                srt_content = f.read()
-    except Exception as e:
-        return jsonify({'error': f'Failed to read SRT file: {str(e)}'}), 500
+            data = request.json
+        except Exception as e:
+            app_logger.error(f"[ERROR] Failed to parse JSON: {e}")
+            return jsonify({'error': 'Invalid JSON'}), 400
+        
+        folder_number = data.get('folder')
+        theme_number = data.get('theme')
+        theme_start = data.get('theme_start')
+        cue_start = data.get('cue_start')
+        cue_end = data.get('cue_end')
+        text = data.get('text')
 
-    # Parse SRT and update the matching cue
-    from ass_formatter import parse_srt_time, format_srt_time
-    import re
+        if not folder_number or not theme_number or cue_start is None or cue_end is None or not text:
+            return jsonify({'error': 'Missing required fields'}), 400
 
-    try:
-        # Format target start time with comma (SRT uses comma, not period)
-        # cue_start/cue_end might be strings (from VTT) or floats
-        if isinstance(cue_start, str):
+        base_dir = Path(settings.get('video', 'output_dir'))
+        folder = None
+        for f in base_dir.iterdir():
+            if f.is_dir() and f.name.startswith(f"{folder_number}_"):
+                folder = f
+                break
+
+        if not folder:
+            return jsonify({'error': 'Folder not found'}), 404
+
+        from ass_formatter import parse_srt_time, format_srt_time
+        import re
+
+        try:
+            # Incoming timestamps from UI are ABSOLUTE HH:MM:SS.mmm
             target_start_seconds = parse_srt_time(cue_start.replace(',', '.'))
-        else:
-            target_start_seconds = float(cue_start)
-
-        if isinstance(cue_end, str):
             target_end_seconds = parse_srt_time(cue_end.replace(',', '.'))
-        else:
-            target_end_seconds = float(cue_end)
-    except (ValueError, TypeError) as e:
-        app_logger.error(f"[ERROR] Invalid cue_start/cue_end: cue_start={cue_start}, cue_end={cue_end}, error={e}")
-        return jsonify({'error': f'Invalid time values: {str(e)}'}), 400
+        except (ValueError, TypeError) as e:
+            app_logger.error(f"[ERROR] Invalid cue times: {e}")
+            return jsonify({'error': f'Invalid time values: {str(e)}'}), 400
 
-    # Parse SRT into blocks (each subtitle is a block: number, timestamp, text)
-    blocks = []
-    lines = srt_content.split('\n')
-    i = 0
+        # Get theme start time for normalization
+        theme_start_sec = None
+        if theme_start is not None and str(theme_start).strip() != '':
+            try: theme_start_sec = float(theme_start)
+            except: pass
 
-    try:
-        while i < len(lines):
-            line = lines[i].strip()
+        if theme_start_sec is None:
+            adjust_file = folder / 'shorts' / f'theme_{int(theme_number):03d}_adjust.md'
+            if adjust_file.exists():
+                with open(adjust_file, 'r', encoding='utf-8') as f:
+                    c = f.read()
+                    tm = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})', c)
+                    if tm: theme_start_sec = creator.parse_timestamp_to_seconds(tm.group(1))
+            
+            if theme_start_sec is None:
+                themes_file = folder / 'themes.md'
+                if themes_file.exists():
+                    themes = creator.parse_themes_file(themes_file)
+                    for t in themes:
+                        if t['number'] == int(theme_number):
+                            theme_start_sec = creator.parse_timestamp_to_seconds(t['start'])
+                            break
 
-            # Skip empty lines
-            if not line:
-                i += 1
-                continue
+        # Paths
+        theme_srt = folder / 'shorts' / f'theme_{int(theme_number):03d}.srt'
+        srt_files = [f for f in folder.glob('*.srt') if 'theme_' not in f.name and 'adjust' not in f.name]
+        if not srt_files: srt_files = list(folder.glob('*.srt'))
+        main_srt = srt_files[0] if srt_files else None
 
-            # Start of a new subtitle block
-            block = {'number': None, 'timestamp': None, 'text_lines': [], 'start': None, 'end': None}
+        files_to_update = []
+        if main_srt: files_to_update.append(main_srt)
+        if theme_srt.exists(): files_to_update.append(theme_srt)
 
-            # Line 1: Subtitle number
-            if line.isdigit():
-                block['number'] = line
-                i += 1
-                if i >= len(lines):
-                    break
+        matched_absolute_start = None
+        matched_absolute_end = None
 
-                # Line 2: Timestamp
-                timestamp_line = lines[i].strip()
-                block['timestamp'] = timestamp_line
+        for target_file in files_to_update:
+            is_trimmed = 'theme_' in target_file.name
+            try:
+                with open(target_file, 'r', encoding='utf-8-sig') as f: content = f.read()
+            except:
+                try:
+                    with open(target_file, 'r', encoding='utf-8') as f: content = f.read()
+                except: continue
 
-                # Parse timestamp: "00:00:00,000 --> 00:00:04,400"
-                ts_match = re.match(r'(\d+:\d+:[\d,]+)\s*-->\s*(\d+:\d+:[\d,]+)', timestamp_line)
-                if ts_match:
-                    start_str = ts_match.group(1).replace(',', '.')
-                    end_str = ts_match.group(2).replace(',', '.')
-                    block['start'] = parse_srt_time(start_str)
-                    block['end'] = parse_srt_time(end_str)
+            blocks = []
+            slines = content.split('\n')
+            si = 0
+            while si < len(slines):
+                line = slines[si].strip()
+                if not line: si += 1; continue
+                block = {'number': line, 'timestamp': None, 'text_lines': [], 'start': None, 'end': None}
+                si += 1
+                if si < len(slines):
+                    ts_line = slines[si].strip(); block['timestamp'] = ts_line
+                    ts_m = re.match(r'(\d+:\d+:[\d,]+)\s*-->\s*(\d+:\d+:[\d,]+)', ts_line)
+                    if ts_m:
+                        block['start'] = parse_srt_time(ts_m.group(1).replace(',', '.'))
+                        block['end'] = parse_srt_time(ts_m.group(2).replace(',', '.'))
+                    si += 1
+                    while si < len(slines):
+                        t_line = slines[si].strip()
+                        if not t_line or t_line.isdigit(): break
+                        block['text_lines'].append(t_line); si += 1
+                    blocks.append(block)
 
-                i += 1
+            res_lines = []
+            match_found = False
+            for block in blocks:
+                res_lines.append(block['number'])
+                res_lines.append(block['timestamp'])
+                
+                # Match logic:
+                # If target_file is main_srt, we use target_start_seconds directly (ABSOLUTE)
+                # If target_file is theme_srt, it has RELATIVE times. We compare against (target_start_seconds - theme_start_sec)
+                compare_start = target_start_seconds
+                if is_trimmed and theme_start_sec is not None:
+                    compare_start = target_start_seconds - theme_start_sec
+                
+                is_match = False
+                if block['start'] is not None:
+                    # Tolerance for minor format differences
+                    if abs(block['start'] - compare_start) < 0.15: 
+                        is_match = True
+                    # Special case: clamped start at 0.0 in trimmed file
+                    elif is_trimmed and block['start'] == 0 and (target_start_seconds - (theme_start_sec or 0)) < 0.1:
+                        is_match = True
 
-                # Line 3+: Text lines (until empty line or next number)
-                while i < len(lines):
-                    text_line = lines[i].strip()
-                    if not text_line or text_line.isdigit():
-                        break
-                    block['text_lines'].append(text_line)
-                    i += 1
+                if is_match and not match_found:
+                    res_lines.append(text.strip()); match_found = True
+                    if not is_trimmed:
+                        matched_absolute_start = format_srt_time(block['start']).replace(',', '.')
+                        matched_absolute_end = format_srt_time(block['end']).replace(',', '.')
+                else: res_lines.append('\n'.join(block['text_lines']))
+                res_lines.append('')
 
-                blocks.append(block)
-            else:
-                i += 1
+            if match_found:
+                with open(target_file, 'w', encoding='utf-8') as f: f.write('\n'.join(res_lines))
+
+        # Save to persistent edits JSON using ABSOLUTE keys
+        # This is what ensures edits persist across page reloads and theme boundary shifts
+        try:
+            edits_file = folder / 'shorts' / f'theme_{int(theme_number):03d}_edits.json'
+            edits_data = {}
+            if edits_file.exists():
+                with open(edits_file, 'r', encoding='utf-8') as f: edits_data = json.load(f)
+            
+            # Key MUST be absolute to match all-subtitles
+            # Use matched_absolute_* if available, otherwise use incoming cue_start/end
+            final_start = matched_absolute_start or cue_start
+            final_end = matched_absolute_end or cue_end
+            
+            edit_key = f"{final_start}_{final_end}"
+            edits_data[edit_key] = text.strip()
+            with open(edits_file, 'w', encoding='utf-8') as f: json.dump(edits_data, f, indent=2)
+            print(f"[DEBUG] Saved persistent UI edit to {edits_file} with key {edit_key}")
+        except Exception as ee: print(f"[ERROR] JSON save failed: {ee}")
+
+        return jsonify({'success': True, 'message': 'Saved successfully'})
     except Exception as e:
         import traceback
-        print(f"[ERROR] SRT parsing failed: {traceback.format_exc()}")
-        return jsonify({'error': f'Failed to parse SRT: {str(e)}'}), 500
-
-    # Find and update matching block
-    updated_blocks = []
-    for block in blocks:
-        if block['start'] is not None and abs(block['start'] - target_start_seconds) < 0.1:
-            # Found our match! Update text
-            new_text = text.replace('\n', ' ').strip()
-            updated_blocks.append({
-                'number': block['number'],
-                'timestamp': block['timestamp'],
-                'text': new_text
-            })
-            print(f"[DEBUG] Updated subtitle {block['number']} at {block['start']}")
-        else:
-            # Keep original
-            updated_blocks.append({
-                'number': block['number'],
-                'timestamp': block['timestamp'],
-                'text': '\n'.join(block['text_lines'])
-            })
-
-    # Rebuild SRT content
-    result_lines = []
-    for idx, block in enumerate(updated_blocks):
-        result_lines.append(block['number'])
-        result_lines.append(block['timestamp'])
-        result_lines.append(block['text'])
-        # Add blank line between blocks (but not after last)
-        if idx < len(updated_blocks) - 1:
-            result_lines.append('')
-
-    # Write updated SRT
-    try:
-        with open(srt_file, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(result_lines))
-        print(f"[DEBUG] Successfully updated SRT file: {srt_file}")
-        return jsonify({
-            'success': True,
-            'message': f'Saved subtitle edit for theme {theme_number}'
-        })
-    except Exception as e:
-        import traceback
-        print(f"[ERROR] Failed to save cue: {traceback.format_exc()}")
-        return jsonify({'error': f'Failed to save: {str(e)}'}), 500
-
+        app_logger.error(f"[ERROR] save_cue_text: {traceback.format_exc()}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/save-global-position', methods=['POST'])
 def save_global_position():
@@ -1500,8 +1669,18 @@ def get_theme_vtt_subtitles(folder_number: str, theme_number: str):
     # Convert SRT to VTT
     vtt_content = "WEBVTT\n\n"
     lines = srt_content.strip().split('\n')
+    
+    # Load persistent edits if they exist
+    edits = {}
+    edits_file = folder / 'shorts' / f'theme_{int(theme_number):03d}_edits.json'
+    if edits_file.exists():
+        try:
+            with open(edits_file, 'r', encoding='utf-8') as f:
+                edits = json.load(f)
+        except:
+            pass
+            
     i = 0
-
     while i < len(lines):
         line = lines[i].strip()
 
@@ -1527,12 +1706,25 @@ def get_theme_vtt_subtitles(folder_number: str, theme_number: str):
                 if cue_end_sec > theme_start_sec and cue_start_sec < theme_end_sec:
                     # Keep original timestamps for preview (preview video seeks to theme start)
                     vtt_content += timestamp + '\n'
-
-                    # Add subtitle text lines
+                    
+                    # Original text
                     i += 1
+                    text_lines = []
                     while i < len(lines) and lines[i].strip() and not lines[i].strip().isdigit():
-                        vtt_content += lines[i].strip() + '\n'
+                        text_lines.append(lines[i].strip())
                         i += 1
+                    
+                    # Apply edit if exists
+                    # Match using start_end key (absolute times for preview VTT)
+                    from ass_formatter import format_srt_time
+                    start_vtt_key = format_srt_time(cue_start_sec).replace(',', '.')
+                    end_vtt_key = format_srt_time(cue_end_sec).replace(',', '.')
+                    edit_key = f"{start_vtt_key}_{end_vtt_key}"
+                    
+                    if edit_key in edits:
+                        vtt_content += edits[edit_key] + '\n'
+                    else:
+                        vtt_content += '\n'.join(text_lines) + '\n'
 
                     vtt_content += '\n'
                     continue
@@ -2055,7 +2247,15 @@ def get_retranscribe_settings(folder_number: str):
         if video_files:
             video_file = video_files[0]
             import cv2
-            cap = cv2.VideoCapture(str(video_file))
+            cap = cv2.VideoCapture(str(video_file), cv2.CAP_FFMPEG)
+            if hasattr(cv2, 'CAP_PROP_HW_ACCELERATION'):
+                cap.set(cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_NONE)
+            
+            if not cap.isOpened():
+                cap = cv2.VideoCapture(str(video_file))
+                if hasattr(cv2, 'CAP_PROP_HW_ACCELERATION'):
+                    cap.set(cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_NONE)
+
             duration_sec = 0
             fps = 0
             width = 0
@@ -3006,7 +3206,7 @@ def encode_canvas_karaoke():
         # Background rendering function
         def render_in_background():
             try:
-                app_logger.debug(f"Starting server-side canvas karaoke export for theme {theme_number}")
+                app_logger.info(f"Starting server-side canvas karaoke export for theme {theme_number}")
 
                 # Import the renderer
                 import canvas_karaoke_exporter
@@ -3025,6 +3225,50 @@ def encode_canvas_karaoke():
 
                 if not success:
                     progress_callback(-1, 'error', 'Rendering failed')
+                else:
+                    # Save a copy of the SRT and JSON metadata alongside the video
+                    try:
+                        import shutil
+                        video_name = Path(output_path).stem
+                        
+                        # Save trimmed SRT
+                        dest_srt = Path(output_path).parent / f"{video_name}.srt"
+                        
+                        # Generate a fresh trimmed SRT from the updated main SRT source
+                        # This ensures edits are included and the timing is relative to the clip
+                        creator.create_trimmed_srt(srt_file, start_time, end_time, dest_srt)
+                        
+                        # Save a JSON with theme-specific word timestamps
+                        dest_json = Path(output_path).parent / f"{video_name}.json"
+                        
+                        # Load word timestamps if not already in memory
+                        with open(word_timestamps_file, 'r', encoding='utf-8') as f:
+                            wt_data = json.load(f)
+                            all_words = wt_data.get('words', [])
+                        
+                        # Filter word timestamps for this theme
+                        theme_words = []
+                        for w in all_words:
+                            if w['start'] >= start_time - 1.0 and w['end'] <= end_time + 1.0:
+                                # Create relative timestamps for the JSON
+                                rw = w.copy()
+                                rw['start'] = max(0, w['start'] - start_time)
+                                rw['end'] = max(0, w['end'] - start_time)
+                                theme_words.append(rw)
+                        
+                        with open(dest_json, 'w', encoding='utf-8') as f:
+                            json.dump({
+                                'theme': theme_number,
+                                'start_time': start_time,
+                                'end_time': end_time,
+                                'words': theme_words
+                            }, f, indent=2)
+                            
+                        app_logger.info(f"Saved metadata to {dest_srt} and {dest_json}")
+                    except Exception as me:
+                        app_logger.warning(f"Failed to save metadata: {me}")
+
+                    progress_callback(100, 'complete', 'Video saved successfully')
 
             except Exception as e:
                 import traceback
@@ -3201,6 +3445,7 @@ def export_canvas_karaoke():
         # For 16:9 to 9:16: scale height to 1920, then crop width to 1080, then apply subtitles
         video_filter = f'scale=-1:1920,crop=1080:1920:(in_w-1080)/2:(in_h-1920)/2,ass={ass_file}'
 
+        # Try NVIDIA hardware acceleration first
         ffmpeg_cmd = [
             'ffmpeg',
             '-y',  # Overwrite output file
@@ -3208,18 +3453,16 @@ def export_canvas_karaoke():
             '-i', str(video_file),  # Input video
             '-t', str(end_time - start_time),  # Duration
             '-vf', video_filter,
-            '-c:v', 'libx264',  # Video codec
-            '-preset', 'medium',  # Encoding preset
-            '-crf', '23',  # Quality
+            '-c:v', 'h264_nvenc',  # NVIDIA Hardware Codec
+            '-preset', 'p4',       # NVENC preset
+            '-cq', '23',           # Quality
             '-c:a', 'aac',  # Audio codec
             '-b:a', '128k',  # Audio bitrate
             '-movflags', '+faststart',  # Fast start for web
             str(output_path)  # Output file
         ]
 
-        app_logger.debug(f"Running FFmpeg command for canvas karaoke export: {' '.join(ffmpeg_cmd)}")
-
-        app_logger.debug(f"Running FFmpeg command for canvas karaoke export: {' '.join(ffmpeg_cmd)}")
+        app_logger.info(f"Running FFmpeg command for canvas karaoke export (NVIDIA GPU): {' '.join(ffmpeg_cmd)}")
 
         # Run FFmpeg
         result = subprocess.run(
@@ -3230,7 +3473,23 @@ def export_canvas_karaoke():
         )
 
         if result.returncode != 0:
-            app_logger.error(f"FFmpeg error: {result.stderr}")
+            app_logger.warning(f"NVIDIA encoding failed, falling back to CPU: {result.stderr}")
+            # Fallback to CPU encoding
+            ffmpeg_cmd[ffmpeg_cmd.index('h264_nvenc')] = 'libx264'
+            ffmpeg_cmd[ffmpeg_cmd.index('p4')] = 'medium'
+            # Replace -cq with -crf
+            cq_idx = ffmpeg_cmd.index('-cq')
+            ffmpeg_cmd[cq_idx] = '-crf'
+            
+            result = subprocess.run(
+                ffmpeg_cmd,
+                capture_output=True,
+                text=True,
+                timeout=300
+            )
+
+        if result.returncode != 0:
+            app_logger.error(f"FFmpeg failed even on CPU: {result.stderr}")
             return jsonify({'error': f'FFmpeg failed: {result.stderr}'}), 500
 
         return jsonify({
@@ -3280,11 +3539,11 @@ if __name__ == '__main__':
     print("=" * 60)
 
     # Log server startup
-    app_logger.debug("=" * 60)
-    app_logger.debug("YouTube Shorts Creator - Web Server STARTED")
-    app_logger.debug(f"Server running at: http://localhost:5000")
-    app_logger.debug(f"Video directory: {settings.get('video', 'output_dir')}")
-    app_logger.debug("=" * 60)
+    app_logger.info("=" * 60)
+    app_logger.info("YouTube Shorts Creator - Web Server STARTED")
+    app_logger.info(f"Server running at: http://localhost:5000")
+    app_logger.info(f"Video directory: {settings.get('video', 'output_dir')}")
+    app_logger.info("=" * 60)
 
     # Signal handler for graceful shutdown
     def signal_handler(sig, frame):
@@ -3304,4 +3563,4 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT, signal_handler)  # Ctrl+C
     signal.signal(signal.SIGTERM, signal_handler)
 
-    app.run(host='127.0.0.1', port=5000, debug=False)
+    app.run(host='127.0.0.1', port=5000, debug=True)

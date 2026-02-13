@@ -4,6 +4,11 @@ Server-side canvas karaoke video renderer.
 Renders karaoke subtitles on video frames using OpenCV and PIL.
 """
 
+import os
+
+# Disable hardware acceleration for FFmpeg backend to fix AV1 decoding issues
+os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "hwaccel;none"
+
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -33,7 +38,14 @@ class CanvasKaraokeRenderer:
         self.settings = settings
 
         # Video properties
-        self.cap = cv2.VideoCapture(str(video_path))
+        self.cap = cv2.VideoCapture(str(video_path), cv2.CAP_FFMPEG)
+        if hasattr(cv2, 'CAP_PROP_HW_ACCELERATION'):
+            self.cap.set(cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_NONE)
+        
+        if not self.cap.isOpened():
+            # Fallback to default if CAP_FFMPEG fails
+            self.cap = cv2.VideoCapture(str(video_path))
+
         self.fps = self.cap.get(cv2.CAP_PROP_FPS)
         self.width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         self.height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -474,26 +486,41 @@ def render_canvas_karaoke_video(
         return False
 
     # Detect if SRT file has absolute times (main video SRT) or relative times (theme SRT)
-    # Main video SRT: timestamps match the video timeline (e.g., start at 0s or near start_time)
-    # Theme SRT: timestamps start from 0 (relative to theme start)
-    srt_filename = Path(subtitle_srt_path).name.lower()
+    srt_path_obj = Path(subtitle_srt_path)
+    srt_filename = srt_path_obj.name.lower()
     is_theme_srt = 'theme_' in srt_filename
+    
+    logger.info(f"Loading subtitles from: {subtitle_srt_path}")
 
-    # Additional check: detect based on first subtitle time
+    # Additional check: detect based on subtitle times vs start_time
     subtitles = _parse_srt(subtitle_srt_path)
-    if subtitles and not is_theme_srt:
-        # Not a theme SRT file, so check if times are absolute
-        first_sub_start = subtitles[0]['start']
-        # If first subtitle starts near 0 or within 2 seconds of theme start, it's absolute
-        # (near 0 = main video from beginning, near start_time = we're in the middle of main video)
-        if first_sub_start < 10.0 or abs(first_sub_start - start_time) < 2.0:
-            is_theme_srt = False  # Absolute times (main video SRT)
-            logger.info(f"Detected main video SRT with ABSOLUTE times (first sub at {first_sub_start}s, theme starts at {start_time}s)")
-        else:
-            is_theme_srt = True  # Relative times (theme SRT)
-            logger.info(f"Detected theme SRT with RELATIVE times (first sub at {first_sub_start}s, theme starts at {start_time}s)")
+    if subtitles:
+        # Calculate how many subtitles overlap with the theme's time range if treated as absolute
+        overlapping_count = 0
+        for sub in subtitles:
+            if sub['start'] >= start_time - 5.0 and sub['start'] <= end_time + 5.0:
+                overlapping_count += 1
+        
+        # If many subtitles overlap when treated as absolute, it's definitely absolute
+        if overlapping_count > 0:
+            is_theme_srt = False
+            logger.info(f"Detected ABSOLUTE times: {overlapping_count} subtitles overlap with theme range [{start_time}s - {end_time}s]")
+        elif not is_theme_srt:
+            # If it's not named 'theme_' and no overlap, check the first sub
+            first_sub_start = subtitles[0]['start']
+            if first_sub_start > end_time:
+                # First sub is way after theme end, likely absolute but theme is earlier
+                is_theme_srt = False
+                logger.info(f"Detected ABSOLUTE times: First subtitle at {first_sub_start}s is after theme end {end_time}s")
+            elif first_sub_start < 10.0 and start_time > 60.0:
+                # First sub is near 0 but theme starts much later, likely relative
+                is_theme_srt = True
+                logger.info(f"Detected RELATIVE times: First subtitle at {first_sub_start}s while theme starts at {start_time}s")
+            else:
+                # Default to filename-based or absolute
+                logger.info(f"SRT type unclear, defaulting to {'RELATIVE' if is_theme_srt else 'ABSOLUTE'} based on filename")
     else:
-        logger.info(f"Using theme SRT based on filename: {srt_filename}")
+        logger.warning("No subtitles parsed from SRT file")
 
     # Create renderer
     renderer = CanvasKaraokeRenderer(video_path, word_timestamps, settings)
@@ -522,29 +549,126 @@ def render_canvas_karaoke_video(
         # Seek to start position once, then read frames sequentially
         # This is much faster because video codecs are optimized for sequential playback
         start_frame_number = int(start_time * fps)
-        renderer.cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame_number)
+        
+        # Try seeking by frame first
+        success_seek = False
+        
+        def try_seek_and_read(pos_frame):
+            renderer.cap.set(cv2.CAP_PROP_POS_FRAMES, pos_frame)
+            ret, frame = renderer.cap.read()
+            return ret, frame
 
-        # Read first frame to verify we're at the right position
-        ret, first_frame = renderer.cap.read()
-        if not ret:
-            logger.error(f"Could not seek to frame {start_frame_number}")
+        # Try 1: Standard frame-based seek
+        ret, first_frame = try_seek_and_read(start_frame_number)
+        if ret:
+            success_seek = True
+        else:
+            logger.info(f"Initial frame-based seek failed for frame {start_frame_number}. Trying millisecond-based seek...")
+            # Try 2: Millisecond-based seek
+            renderer.cap.set(cv2.CAP_PROP_POS_MSEC, start_time * 1000.0)
+            ret, first_frame = renderer.cap.read()
+            if ret:
+                success_seek = True
+                logger.info("Millisecond-based seek succeeded.")
+            else:
+                logger.warning("Millisecond-based seek failed. Re-initializing VideoCapture without explicit backend...")
+                # Try 3: Re-initialize without explicit FFmpeg backend and try again
+                renderer.release()
+                renderer.cap = cv2.VideoCapture(str(video_path))
+                if hasattr(cv2, 'CAP_PROP_HW_ACCELERATION'):
+                    renderer.cap.set(cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_NONE)
+                ret, first_frame = try_seek_and_read(start_frame_number)
+                if ret:
+                    success_seek = True
+                    logger.info("Seek after re-initialization succeeded.")
+                else:
+                    # Try 4: Attempt slow sequential read from start
+                    logger.warning("Seek still failing. Attempting slow sequential read from start...")
+                    renderer.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    # Check if we can read even the first frame
+                    ret, first_frame = renderer.cap.read()
+                    if ret:
+                        # If we can read the first frame, try to skip to the target
+                        # But skip the loop if it's too far (it's already been 2 seconds of failure)
+                        for _ in range(start_frame_number - 1):
+                            if not renderer.cap.grab(): # grab() is faster than read()
+                                break
+                        ret, first_frame = renderer.cap.read()
+                        if ret:
+                            success_seek = True
+                            logger.info("Sequential read from start succeeded.")
+
+        # FINAL FALLBACK: Transcode segment if everything else failed
+        if not success_seek:
+            logger.warning("OpenCV cannot read this video format directly. Attempting automatic transcode fallback...")
+            
+            # Create a temporary transcoded segment
+            transcoded_src = temp_dir / "transcoded_segment.mp4"
+            
+            # Use FFmpeg to transcode just the segment we need to H.264
+            # This is fast and extremely reliable
+            transcode_cmd = [
+                'ffmpeg', '-y',
+                '-ss', str(max(0, start_time - 2.0)), # Start 2s early for safety
+                '-i', str(video_path),
+                '-t', str(end_time - start_time + 4.0), # Duration + buffer
+                '-c:v', 'libx264',
+                '-preset', 'ultrafast',
+                '-crf', '18',
+                '-c:a', 'copy',
+                str(transcoded_src)
+            ]
+            
+            logger.info(f"Running fallback transcode: {' '.join(transcode_cmd)}")
+            ts_result = subprocess.run(transcode_cmd, capture_output=True, text=True)
+            
+            if ts_result.returncode == 0 and transcoded_src.exists():
+                logger.info("Transcode successful. Re-initializing renderer with transcoded source.")
+                renderer.release()
+                renderer.cap = cv2.VideoCapture(str(transcoded_src))
+                # The transcoded source starts at start_time - 2.0
+                # We need to find the new start frame relative to the transcode start
+                actual_transcode_start = max(0, start_time - 2.0)
+                offset_time = start_time - actual_transcode_start
+                offset_frames = int(offset_time * fps)
+                
+                renderer.cap.set(cv2.CAP_PROP_POS_FRAMES, offset_frames)
+                ret, first_frame = renderer.cap.read()
+                if ret:
+                    success_seek = True
+                    logger.info(f"Successfully read first frame from transcoded source (offset {offset_frames} frames).")
+                else:
+                    # Try reading from 0 if seek failed in temp file
+                    renderer.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    ret, first_frame = renderer.cap.read()
+                    if ret:
+                        success_seek = True
+                        logger.info("Successfully read first frame from transcoded source (at 0).")
+
+        if not success_seek:
+            logger.error(f"Could not seek to frame {start_frame_number} or time {start_time}s after all retries, including transcode fallback.")
             return False
 
-        # Put back the first frame since we'll read it in the loop
-        # Actually, let's just seek again to be safe
-        renderer.cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame_number)
-
+        # If we successfully read a frame, we need to seek back to start_frame_number
+        # because the loop will read it again. 
+        # Actually, since we already read the first frame, we should just adjust the loop.
+        # But for simplicity, let's seek back. If it fails again, we have a problem.
+        # To be safe, let's just use the first_frame we already have for the first iteration.
+        
         if progress_callback:
             progress_callback(1, "rendering", "Rendering frames...")
 
         for frame_idx in range(total_frames):
             current_time = start_time + (frame_idx / fps)
 
-            # OPTIMIZATION 1: Read next frame sequentially (no random seek)
-            ret, frame = renderer.cap.read()
-            if not ret:
-                logger.warning(f"Could not read frame {frame_idx} at time {current_time}s")
-                break
+            if frame_idx == 0:
+                frame = first_frame
+            else:
+                # OPTIMIZATION 1: Read next frame sequentially (no random seek)
+                ret, frame = renderer.cap.read()
+                if not ret:
+                    logger.warning(f"Could not read frame {frame_idx} at time {current_time}s")
+                    break
 
             # Find subtitle for this time
             # Handle both absolute (main video SRT) and relative (theme SRT) times
@@ -592,7 +716,7 @@ def render_canvas_karaoke_video(
 
         # Encode with FFmpeg
         if progress_callback:
-            progress_callback(70, "encoding", "Encoding video with FFmpeg...")
+            progress_callback(70, "encoding", "Encoding video with FFmpeg (using NVIDIA GPU)...")
 
         # Update frame pattern to use JPEG
         ffmpeg_cmd = [
@@ -606,18 +730,45 @@ def render_canvas_karaoke_video(
             '-t', str(end_time - start_time),
             '-map', '0:v:0',
             '-map', '1:a:0?',
-            '-c:v', 'libx264',
-            '-preset', 'fast',
-            '-crf', '23',
+            '-c:v', 'h264_nvenc', # Use NVIDIA Hardware Encoder
+            '-preset', 'p4',       # NVENC preset (p4 is medium/balanced)
+            '-cq', '23',           # Constant quality for NVENC
             '-c:a', 'aac',
             '-b:a', '128k',
             '-movflags', '+faststart',
             str(output_path)
         ]
 
-        logger.info(f"Encoding video: {' '.join(ffmpeg_cmd)}")
+        logger.info(f"Encoding video with NVIDIA GPU: {' '.join(ffmpeg_cmd)}")
 
         result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            logger.warning(f"NVIDIA encoding failed, falling back to CPU: {result.stderr}")
+            if progress_callback:
+                progress_callback(75, "encoding", "NVIDIA encoding failed, falling back to CPU...")
+            
+            # Fallback to CPU encoding (libx264)
+            ffmpeg_cmd_cpu = [
+                'ffmpeg',
+                '-y',
+                '-framerate', str(fps),
+                '-start_number', '0',
+                '-i', str(temp_dir / 'frame_%06d.jpg'),
+                '-ss', str(start_time),
+                '-i', str(video_path),
+                '-t', str(end_time - start_time),
+                '-map', '0:v:0',
+                '-map', '1:a:0?',
+                '-c:v', 'libx264',
+                '-preset', 'fast',
+                '-crf', '23',
+                '-c:a', 'aac',
+                '-b:a', '128k',
+                '-movflags', '+faststart',
+                str(output_path)
+            ]
+            result = subprocess.run(ffmpeg_cmd_cpu, capture_output=True, text=True)
 
         if result.returncode != 0:
             logger.error(f"FFmpeg error: {result.stderr}")
