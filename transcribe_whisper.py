@@ -68,6 +68,7 @@ class TranscribeWhisper:
         import torch
 
         _log_msg(f"Loading Whisper model ({self.model_size})...")
+        print(f"DEBUG: Starting whisper.load_model('{self.model_size}')")
 
         # Check if CUDA is available and has memory
         use_cuda = False
@@ -85,13 +86,19 @@ class TranscribeWhisper:
                 _log_msg(f"GPU memory check failed: {e}")
 
         self.device = "cuda" if use_cuda else "cpu"
+        
+        # EXPERIMENTAL: Force CPU for medium/large models if CUDA is being unstable
+        if self.model_size in ['medium', 'large', 'large-v3', 'large-v3-turbo']:
+            print(f"DEBUG: Forcing CPU for {self.model_size} model to ensure stability...")
+            self.device = "cpu"
+            
         _log_msg(f"Using device: {self.device}")
 
         try:
             self.model = whisper_module.load_model(self.model_size, device=self.device)
             _log_msg(f"Model loaded on {self.device}")
         except RuntimeError as e:
-            if use_cuda and ("CUDA out of memory" in str(e) or "out of memory" in str(e)):
+            if self.device == "cuda" and ("CUDA out of memory" in str(e) or "out of memory" in str(e)):
                 _log_msg("GPU out of memory. Falling back to CPU...")
                 self.device = "cpu"
                 self.model = whisper_module.load_model(self.model_size, device="cpu")
@@ -104,7 +111,8 @@ class TranscribeWhisper:
         video_path: Path,
         output_folder: Path,
         task: str = 'transcribe',
-        progress_callback: Optional[Callable[[str], None]] = None
+        progress_callback: Optional[Callable[[str], None]] = None,
+        cancel_check: Optional[Callable[[], bool]] = None
     ) -> str:
         """Transcribe video with word-level timestamps.
 
@@ -113,6 +121,7 @@ class TranscribeWhisper:
             output_folder: Path to folder for output files (SRT and JSON)
             task: Whisper task ('transcribe' or 'translate')
             progress_callback: Optional callback for progress updates
+            cancel_check: Optional function that returns True if task should be cancelled
 
         Returns:
             Path to generated SRT file
@@ -141,6 +150,9 @@ class TranscribeWhisper:
             for i in range(0, 101, 10):
                 if stop_progress.is_set():
                     break
+                # Check for cancellation within simulator too
+                if cancel_check and cancel_check():
+                    break
                 _log_msg(f"Progress: {i}%")
                 time.sleep(2)
 
@@ -148,6 +160,10 @@ class TranscribeWhisper:
         progress_thread.start()
 
         try:
+            # Check for cancellation before starting long task
+            if cancel_check and cancel_check():
+                raise Exception("Cancelled by user")
+
             # Transcribe with word-level timestamps
             result = self.model.transcribe(
                 str(video_path),
@@ -157,10 +173,17 @@ class TranscribeWhisper:
                 verbose=False,
                 fp16=(self.device == "cuda")
             )
+            
+            # Check for cancellation after transcription
+            if cancel_check and cancel_check():
+                raise Exception("Cancelled by user")
         finally:
             stop_progress.set()
             progress_thread.join()
-            _log_msg("Progress: 100%")
+            
+            # If we were cancelled, don't report 100%
+            if not (cancel_check and cancel_check()):
+                _log_msg("Progress: 100%")
 
         # Save SRT file
         base_name = Path(video_path).stem

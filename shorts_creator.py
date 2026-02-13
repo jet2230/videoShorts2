@@ -16,10 +16,6 @@ from pathlib import Path
 from typing import Dict, List, Optional
 import yt_dlp
 
-import torch
-if torch.cuda.is_available():
-    torch.cuda.empty_cache()
-
 from ass_formatter import ASSFormatter
 from transcribe_whisper import TranscribeWhisper
 
@@ -110,6 +106,12 @@ class YouTubeShortsCreator:
     def __init__(self, base_dir: str = "videos"):
         self.base_dir = Path(base_dir)
         self.base_dir.mkdir(exist_ok=True)
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except ImportError:
+            pass
 
     def sanitize_title(self, title: str) -> str:
         """Sanitize video title for use as folder and file name."""
@@ -399,7 +401,7 @@ Video Path: {video_info['video_path']}
 
         _log_msg(f"Created video info file: {info_path}")
 
-    def generate_subtitles(self, video_info: Dict[str, str], model_size: str = None, language: str = None, progress_callback=None) -> str:
+    def generate_subtitles(self, video_info: Dict[str, str], model_size: str = None, language: str = None, progress_callback=None, cancel_check=None) -> str:
         """Generate subtitles using Whisper transcription class.
 
         Args:
@@ -407,10 +409,15 @@ Video Path: {video_info['video_path']}
             model_size: Whisper model size ('base', 'small', 'medium', 'large')
             language: Language code or None for auto-detect
             progress_callback: Optional callback for progress updates
+            cancel_check: Optional function that returns True if task should be cancelled
 
         Returns:
             Path to generated SRT file
         """
+        # Check for cancellation
+        if cancel_check and cancel_check():
+            raise Exception("Cancelled by user")
+
         # Use settings if model_size not provided
         if model_size is None:
             model_size = settings.get('whisper', 'model')
@@ -431,6 +438,10 @@ Video Path: {video_info['video_path']}
         # Load Whisper model
         transcriber.load_model(progress_callback)
 
+        # Final check before transcription starts
+        if cancel_check and cancel_check():
+            raise Exception("Cancelled by user")
+
         # Get task from settings
         task = settings.get('whisper', 'task')
 
@@ -441,12 +452,13 @@ Video Path: {video_info['video_path']}
             video_path,
             folder,
             task,
-            progress_callback
+            progress_callback,
+            cancel_check=cancel_check
         )
 
         return srt_path
 
-    def generate_themes(self, video_info: Dict[str, str], ai_generator=None, model_size='base', progress_callback=None) -> None:
+    def generate_themes(self, video_info: Dict[str, str], ai_generator=None, model_size='base', language=None, progress_callback=None, cancel_check=None) -> None:
         """Generate themes for YouTube Shorts from subtitles."""
         def _log_msg(msg):
             if progress_callback:
@@ -454,8 +466,14 @@ Video Path: {video_info['video_path']}
             else:
                 print(msg)
 
-        # Get language from settings
-        language = settings.get('whisper', 'language')
+        # Check for cancellation
+        if cancel_check and cancel_check():
+            raise Exception("Cancelled by user")
+
+        # Use provided language or get from settings
+        if not language:
+            language = settings.get('whisper', 'language')
+            
         # Use None for auto language detection
         if language and language.lower() in ('auto', 'none', ''):
             language = None
@@ -487,13 +505,17 @@ Video Path: {video_info['video_path']}
             ai_used = True
             ai_model = ai_generator.model
 
-            # Use AI to identify theme boundaries
-            ai_themes = ai_generator.identify_theme_boundaries(segments)
+            # Use AI to identify theme boundaries with progress updates and cancellation support
+            ai_themes = ai_generator.identify_theme_boundaries(segments, progress_callback=progress_callback, cancel_check=cancel_check)
 
             if ai_themes:
                 _log_msg(f"    AI identified {len(ai_themes)} themes")
                 # Convert AI themes to standard format
                 for ai_theme in ai_themes:
+                    # Check for cancellation during conversion
+                    if cancel_check and cancel_check():
+                        raise Exception("Cancelled by user")
+
                     # Find segments within this time range
                     theme_segments = [
                         s for s in segments
@@ -513,6 +535,10 @@ Video Path: {video_info['video_path']}
                 # Use AI to generate titles for AI-identified themes
                 total_themes = len(themes)
                 for idx, theme in enumerate(themes):
+                    # Check for cancellation during title generation
+                    if cancel_check and cancel_check():
+                        raise Exception("Cancelled by user")
+
                     progress = int((idx + 1) / total_themes * 100)
                     _log_msg(f"Progress: {progress}%")
                     ai_title = ai_generator.generate_title(theme['text'], theme['duration'])
@@ -534,12 +560,20 @@ Video Path: {video_info['video_path']}
             if ai_used:
                 _log_msg("    AI boundary detection failed, using pattern-based approach")
 
+            # Final check before pattern-based identification
+            if cancel_check and cancel_check():
+                raise Exception("Cancelled by user")
+
             themes = self._identify_themes(segments, transcript)
 
             # Use AI to generate better titles if available
             if ai_generator and ai_generator.is_available():
                 total_themes = len(themes)
                 for idx, theme in enumerate(themes):
+                    # Check for cancellation during title generation
+                    if cancel_check and cancel_check():
+                        raise Exception("Cancelled by user")
+
                     progress = int((idx + 1) / total_themes * 100)
                     _log_msg(f"Progress: {progress}%")
                     ai_title = ai_generator.generate_title(theme['text'], theme['duration'])
@@ -555,9 +589,20 @@ Video Path: {video_info['video_path']}
                         theme['reason'] = self._get_theme_reason(theme['text'])
             else:
                 # Add pattern-based titles and reasons
-                for theme in themes:
+                total_themes = len(themes)
+                for idx, theme in enumerate(themes):
+                    # Check for cancellation
+                    if cancel_check and cancel_check():
+                        raise Exception("Cancelled by user")
+
+                    progress = int((idx + 1) / total_themes * 100)
+                    _log_msg(f"Progress: {progress}%")
                     theme['title'] = self._generate_theme_title(theme['text'])
                     theme['reason'] = self._get_theme_reason(theme['text'])
+
+        # Final check before writing file
+        if cancel_check and cancel_check():
+            raise Exception("Cancelled by user")
 
         # Save themes to markdown file
         themes_path = Path(video_info['folder']) / 'themes.md'
@@ -972,7 +1017,7 @@ Video Path: {video_info['video_path']}
         else:
             return "Self-contained segment with a clear message"
 
-    def process_video(self, url: str, whisper_model: str = 'base') -> Dict[str, str]:
+    def process_video(self, url: str, whisper_model: str = 'base', language: str = None) -> Dict[str, str]:
         """Complete pipeline: download, subtitle, and theme generation."""
         print("=" * 60)
         print("YouTube Shorts Creator - Processing Pipeline")
@@ -985,10 +1030,10 @@ Video Path: {video_info['video_path']}
         self.create_video_info(video_info)
 
         # Step 3: Generate subtitles
-        self.generate_subtitles(video_info, model_size=whisper_model)
+        self.generate_subtitles(video_info, model_size=whisper_model, language=language)
 
         # Step 4: Generate themes
-        self.generate_themes(video_info, model_size=whisper_model)
+        self.generate_themes(video_info, model_size=whisper_model, language=language)
 
         print("=" * 60)
         print(f"Processing complete! Folder: {video_info['folder']}")
@@ -1539,6 +1584,11 @@ def main():
         help=f'Base directory for downloaded videos (default: {settings.get("video", "output_dir")})'
     )
     parser.add_argument(
+        '--language',
+        default=settings.get('whisper', 'language'),
+        help=f'Whisper language code (default: {settings.get("whisper", "language")})'
+    )
+    parser.add_argument(
         '--theme',
         type=str,
         help='Create shorts for specific theme(s). Use comma-separated numbers (e.g., "1,2,5") or "all"'
@@ -1598,7 +1648,7 @@ def main():
                         'is_local': True
                     }
                     print(f"Generating subtitles for: {video_path.name}")
-                    creator.generate_subtitles(video_info, model_size=args.model)
+                    creator.generate_subtitles(video_info, model_size=args.model, language=args.language)
                 else:
                     print("Skipping. Cannot generate themes without subtitles.")
                     return
@@ -1626,7 +1676,7 @@ def main():
             except ImportError:
                 pass
 
-            creator.generate_themes(video_info, ai_generator=ai_generator, model_size=args.model)
+            creator.generate_themes(video_info, ai_generator=ai_generator, model_size=args.model, language=args.language)
             print("=" * 60)
             print(f"Themes regenerated! Folder: {folder}")
             print("=" * 60)
@@ -1676,10 +1726,10 @@ def main():
     creator.create_video_info(video_info)
 
     # Generate subtitles
-    creator.generate_subtitles(video_info, model_size=args.model)
+    creator.generate_subtitles(video_info, model_size=args.model, language=args.language)
 
     # Generate themes (with AI if enabled)
-    creator.generate_themes(video_info, ai_generator=ai_generator, model_size=args.model)
+    creator.generate_themes(video_info, ai_generator=ai_generator, model_size=args.model, language=args.language)
 
     print("=" * 60)
     print(f"Processing complete! Folder: {video_info['folder']}")

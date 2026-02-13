@@ -190,7 +190,7 @@ Return the reason only, nothing else."""
         except Exception:
             return None
 
-    def identify_theme_boundaries(self, transcript_segments: List[Dict]) -> List[Dict]:
+    def identify_theme_boundaries(self, transcript_segments: List[Dict], progress_callback=None, cancel_check=None) -> List[Dict]:
         """
         Use AI to identify natural theme boundaries from transcript segments.
 
@@ -204,12 +204,24 @@ Return the reason only, nothing else."""
 
         Args:
             transcript_segments: List of segments with 'start', 'end', 'text' keys
+            progress_callback: Optional callback for progress updates
+            cancel_check: Optional function that returns True if task should be cancelled
 
         Returns:
             List of theme dicts with 'start_time', 'end_time', and 'description'
         """
         if not transcript_segments:
             return []
+
+        def _log_msg(msg):
+            if progress_callback:
+                progress_callback(msg)
+            else:
+                print(msg)
+
+        # Check for initial cancellation
+        if cancel_check and cancel_check():
+            raise Exception("Cancelled by user")
 
         # Get total duration in seconds
         total_duration = int(transcript_segments[-1]['end'])
@@ -224,12 +236,18 @@ Return the reason only, nothing else."""
                 break
             current_start = current_end - 120  # Backtrack 2 minutes (120 seconds) for overlap
 
-        print(f"  Processing {len(windows)} windows ({total_duration // 60} minutes total)")
+        _log_msg(f"  AI Identifying themes across {len(windows)} windows...")
 
         # Process each window and collect themes
         all_themes = []
         for window_idx, (window_start, window_end) in enumerate(windows):
-            print(f"  Window {window_idx + 1}/{len(windows)}: {window_start // 60}m{window_start % 60:02d}s - {window_end // 60}m{window_end % 60:02d}s", end='', flush=True)
+            # Check for cancellation before each window
+            if cancel_check and cancel_check():
+                raise Exception("Cancelled by user")
+
+            # Calculate and report progress (0-100% within this phase)
+            progress = int((window_idx) / len(windows) * 100)
+            _log_msg(f"  Progress: {progress}% (Window {window_idx + 1}/{len(windows)})")
 
             # Filter segments for this window
             window_segments = [
@@ -238,7 +256,6 @@ Return the reason only, nothing else."""
             ]
 
             if not window_segments:
-                print(" [no segments]")
                 continue
 
             # Create transcript for this window
@@ -263,14 +280,11 @@ Return the reason only, nothing else."""
 
             if window_themes:
                 all_themes.extend(window_themes)
-                print(f" [{len(window_themes)} themes]")
-            else:
-                print(" [no themes]")
 
         # Merge overlapping themes and deduplicate
         merged_themes = self._merge_overlapping_themes(all_themes)
 
-        print(f"  Total themes after merging: {len(merged_themes)}")
+        _log_msg(f"  AI identified {len(merged_themes)} total themes. Finalizing... Progress: 100%")
         return merged_themes
 
     def _process_window(self, transcript: str, window_start: int, window_end: int,

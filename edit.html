@@ -3109,6 +3109,12 @@
             statusCheckInterval = setInterval(async () => {
                 try {
                     const response = await fetch(`/api/process-edit/${id}/status`);
+                    
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || `Server error: ${response.status}`);
+                    }
+                    
                     const status = await response.json();
 
                     // Parse progress from logs if available

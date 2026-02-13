@@ -1765,12 +1765,13 @@
         }
 
         function getEstimateText(durationSeconds, model) {
-            // Estimated transcription times (multipliers relative to video duration on GPU)
+            // Estimated total processing times (multipliers relative to video duration on GPU)
+            // Increased to account for: Transcription (80%) + AI Theme Identification & Title Gen (20%)
             const modelMultipliers = {
-                'base': 0.05,   // ~1/20th of video length
-                'small': 0.10,  // ~1/10th of video length
-                'medium': 0.25, // ~1/4th of video length
-                'large': 0.50   // ~1/2 of video length
+                'base': 0.07,   // ~1/14th of video length
+                'small': 0.13,  // ~1/8th of video length
+                'medium': 0.32, // ~1/3rd of video length
+                'large': 0.60   // ~3/5th of video length
             };
 
             const multiplier = modelMultipliers[model] || modelMultipliers['small'];
@@ -1778,10 +1779,10 @@
 
             // Format time
             if (estimatedSeconds < 60) {
-                return `<span style="color: #4CAF50;">⏱️ Estimated time: ~${estimatedSeconds} seconds</span>`;
+                return `<span style="color: #4CAF50;">⏱️ Estimated time: ~${estimatedSeconds} seconds (includes AI theme generation)</span>`;
             } else {
                 const minutes = Math.ceil(estimatedSeconds / 60);
-                return `<span style="color: #4CAF50;">⏱️ Estimated time: ~${minutes} minute${minutes > 1 ? 's' : ''}</span>`;
+                return `<span style="color: #4CAF50;">⏱️ Estimated time: ~${minutes} minute${minutes > 1 ? 's' : ''} (includes AI theme generation)</span>`;
             }
         }
 
@@ -1822,13 +1823,24 @@
 
                 try {
                     const response = await fetch(`/api/re-transcribe-status/${retranscribeTaskId}`);
+                    
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || `Server error: ${response.status}`);
+                    }
+                    
                     const data = await response.json();
 
                     if (data.status === 'processing' || data.status === 'pending') {
                         // Update progress
                         const progress = data.progress || 0;
-                        document.getElementById('retranscribe-message').textContent = data.log || 'Processing...';
-                        document.getElementById('retranscribe-progress-text').textContent = data.log || 'Processing...';
+                        
+                        // Get only the last non-empty line of the log to avoid overwhelming the UI
+                        const logLines = (data.log || '').trim().split('\n');
+                        const lastLine = logLines.length > 0 ? logLines[logLines.length - 1] : 'Processing...';
+                        
+                        document.getElementById('retranscribe-message').textContent = lastLine;
+                        document.getElementById('retranscribe-progress-text').textContent = lastLine;
                         document.getElementById('retranscribe-progress-percent').textContent = `${progress}%`;
                         document.getElementById('retranscribe-progress-fill').style.width = `${progress}%`;
                     } else if (data.status === 'complete') {
@@ -1846,6 +1858,23 @@
                         setTimeout(() => {
                             window.location.reload();
                         }, 2000);
+                    } else if (data.status === 'cancelled') {
+                        // Cancelled
+                        clearInterval(retranscribePolling);
+                        retranscribePolling = null;
+
+                        document.getElementById('retranscribe-message').textContent = 'Cancelled Successfully';
+                        document.getElementById('retranscribe-message').style.color = '#4CAF50';
+                        document.getElementById('retranscribe-progress-text').textContent = 'Cancelled';
+                        document.getElementById('start-retranscribe-btn').disabled = false;
+                        document.getElementById('cancel-retranscribe-btn').disabled = true;
+                        
+                        showNotification('Transcription task cancelled successfully', 'info');
+                        
+                        // Close modal after a moment
+                        setTimeout(() => {
+                            retranscribeModal.style.display = 'none';
+                        }, 3000);
                     } else if (data.status === 'error') {
                         // Error
                         clearInterval(retranscribePolling);
@@ -1858,8 +1887,14 @@
                     }
                 } catch (error) {
                     console.error('Polling error:', error);
+                    clearInterval(retranscribePolling);
+                    retranscribePolling = null;
+                    document.getElementById('retranscribe-message').textContent = 'Connection Error: Task state lost.';
+                    document.getElementById('start-retranscribe-btn').disabled = false;
+                    document.getElementById('cancel-retranscribe-btn').disabled = false;
+                    showNotification('Error monitoring task: ' + error.message, 'error');
                 }
-            }, 1000);
+            }, 500);
         }
 
         // Re-transcribe modal event listeners
@@ -1879,11 +1914,27 @@
             });
 
             // Cancel button
-            cancelRetranscribeBtn?.addEventListener('click', () => {
-                retranscribeModal.style.display = 'none';
-                if (retranscribePolling) {
-                    clearInterval(retranscribePolling);
-                    retranscribePolling = null;
+            cancelRetranscribeBtn?.addEventListener('click', async () => {
+                if (retranscribeTaskId && retranscribePolling) {
+                    try {
+                        const response = await fetch(`/api/task/${retranscribeTaskId}/cancel`, {
+                            method: 'POST'
+                        });
+                        // Only update message to "Cancelling..." if the poller hasn't already 
+                        // detected completion/cancellation and cleared itself.
+                        if (response.ok && retranscribePolling) {
+                            document.getElementById('retranscribe-message').textContent = 'Cancelling...';
+                            document.getElementById('retranscribe-message').style.color = '#ff6b6b';
+                        }
+                    } catch (error) {
+                        console.error('Cancel error:', error);
+                    }
+                } else {
+                    retranscribeModal.style.display = 'none';
+                    if (retranscribePolling) {
+                        clearInterval(retranscribePolling);
+                        retranscribePolling = null;
+                    }
                 }
             });
 
@@ -1901,7 +1952,7 @@
                 document.getElementById('retranscribe-progress-fill').style.width = '0%';
 
                 startRetranscribeBtn.disabled = true;
-                cancelRetranscribeBtn.disabled = true;
+                cancelRetranscribeBtn.disabled = false; // Keep cancel enabled so user can stop it
 
                 try {
                     const response = await fetch('/api/re-transcribe', {
@@ -3274,6 +3325,12 @@
                 const interval = setInterval(async () => {
                     try {
                         const response = await fetch(`${API_BASE}/task/${taskId}`);
+                        
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.error || `Server error: ${response.status}`);
+                        }
+                        
                         const task = await response.json();
 
                         if (callback) callback(task);
@@ -3364,12 +3421,12 @@
 
     <!-- Re-transcribe Modal -->
     <div id="re-transcribe-modal" class="modal">
-        <div class="modal-content" style="max-width: 500px;">
-            <div class="modal-header">
+        <div class="modal-content" style="max-width: 500px; max-height: 90vh; display: flex; flex-direction: column; margin: 5vh auto;">
+            <div class="modal-header" style="flex-shrink: 0;">
                 <h2>Re-transcribe Video</h2>
                 <span class="close">&times;</span>
             </div>
-            <div class="modal-body">
+            <div class="modal-body" style="overflow-y: auto; flex-grow: 1; padding: 20px;">
                 <!-- Video Info Section -->
                 <div id="retranscribe-video-info" style="background: rgba(100, 149, 237, 0.1); border: 1px solid rgba(100, 149, 237, 0.3); border-left: 4px solid #6495ED; padding: 12px; margin-bottom: 16px; border-radius: 4px;">
                     <div style="color: #6495ED; font-weight: 600; margin-bottom: 8px;">📹 Video Information</div>

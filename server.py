@@ -70,157 +70,110 @@ def set_headers(response):
 # Global state
 creator = YouTubeShortsCreator()
 settings = load_settings()
-
-# Background task management
-tasks: Dict[str, Dict] = {}
 task_counter = 0
-task_lock = threading.Lock()
 
-# Canvas karaoke export progress tracking
-canvas_karaoke_progress: Dict[str, Dict] = {}
-canvas_karaoke_lock = threading.Lock()
+import multiprocessing
 
-
-class OutputCapture:
-    """Context manager to capture stdout and stderr."""
-    def __init__(self):
-        self.buffer = []
-        self.lock = threading.Lock()
-
-    def write(self, text):
-        # Capture all non-empty text
-        if text and text.strip():
-            timestamp = datetime.now().strftime('%H:%M:%S')
-            with self.lock:
-                self.buffer.append(f"{timestamp} - {text.rstrip()}")
-
-    def flush(self):
-        pass
-
-    def get_output(self):
-        with self.lock:
-            return '\n'.join(self.buffer)
-
+# Global process manager for shared state
+# We initialize it here as None and will set up the actual objects 
+# inside the if __name__ == '__main__': block to avoid recursion errors.
+task_manager = None
+tasks = {}
+task_processes = {}
+task_lock = threading.RLock() 
 
 def run_task_with_callback(task_id: str, func, *args, **kwargs):
-    """Run a function in a background thread with callback support."""
-    # Initialize log field
+    """Run a function in a background process with shared state support."""
+    global tasks, task_manager, task_processes
+    if task_manager is None:
+        # Fallback for unexpected environments, though it should be initialized in main
+        task_manager = multiprocessing.Manager()
+        tasks = task_manager.dict()
+
+    # Ensure task entry exists in the shared dictionary
     with task_lock:
-        if task_id in tasks:
-            tasks[task_id]['log'] = ''
+        if task_id not in tasks:
+            tasks[task_id] = task_manager.dict({
+                'type': kwargs.get('task_type', 'unknown'),
+                'status': 'pending',
+                'log': '',
+                'progress': 0,
+                'cancelled': False
+            })
 
-    # Create log callback for this task
-    def progress_callback(msg):
+    # Start independent process
+    p = multiprocessing.Process(
+        target=_process_wrapper,
+        args=(task_id, func, tasks, args, kwargs)
+    )
+    p.start()
+    
+    with task_lock:
+        task_processes[task_id] = p
+
+def _process_wrapper(task_id, func, shared_tasks, args, kwargs):
+    """Internal wrapper that runs inside the child process."""
+    import sys
+    import re
+    import traceback
+    
+    # Define a callback that updates the SHARED dictionary
+    def process_callback(msg):
+        msg_str = str(msg)
+        # Log to the real system stdout so we can see it in terminal
+        sys.__stdout__.write(f"[{task_id}] {msg_str}\n")
+        sys.__stdout__.flush()
+        
         try:
-            msg_str = str(msg) if not isinstance(msg, str) else msg
-            # Don't print here - OutputCaptureWithCallback will capture stdout and cause recursion!
-            with task_lock:
-                if task_id in tasks and 'log' in tasks[task_id]:
-                    current_log = tasks[task_id]['log']
-                    if not isinstance(current_log, str):
-                        current_log = str(current_log) if current_log else ''
-                    tasks[task_id]['log'] = current_log + msg_str + '\n'
+            # We must pull, update, and push back the sub-dictionary
+            # because manager.dict() doesn't track nested changes automatically
+            task_data = dict(shared_tasks[task_id])
+            
+            # Simple percentage parsing
+            match = re.search(r'Progress:\s*(\d+)%', msg_str)
+            if match:
+                task_data['progress'] = int(match.group(1))
+            
+            task_data['log'] = task_data.get('log', '') + msg_str + '\n'
+            task_data['status'] = 'processing'
+            
+            # Write back to shared memory
+            shared_tasks[task_id] = task_data
         except Exception as e:
-            # Write directly to original stdout to avoid recursion
-            sys.__stdout__.write(f"Callback error: {e}\n")
+            sys.__stdout__.write(f"Callback error in process {task_id}: {e}\n")
 
-    # Create cancel flag checker
+    # Add special kwargs for the function to use
+    kwargs['progress_callback'] = process_callback
+    
     def check_cancelled():
-        with task_lock:
-            return tasks.get(task_id, {}).get('cancelled', False)
-
-    # Add callback and cancel checker to kwargs
-    kwargs['progress_callback'] = progress_callback
+        return shared_tasks.get(task_id, {}).get('cancelled', False)
     kwargs['cancel_check'] = check_cancelled
 
-    print(f"[DEBUG] run_task_with_callback: task_id={task_id}, progress_callback set, calling run_task")
-
-    # Run using the original run_task function
-    run_task(task_id, func, *args, **kwargs)
-
-
-def run_task(task_id: str, func, *args, **kwargs):
-    """Run a function in a background thread and update task status."""
-    # Set up output capture to also send to callback
-    class OutputCaptureWithCallback:
-        def __init__(self, callback=None, original_stdout=None):
-            self.callback = callback
-            self.original_stdout = original_stdout
-
-        def write(self, text):
-            try:
-                # Call callback FIRST for real-time updates
-                if text is not None and text.strip():
-                    text_str = str(text) if not isinstance(text, str) else text
-                    if self.callback:
-                        self.callback(text_str.rstrip())
-
-                # Then forward to original stdout (log file)
-                if self.original_stdout:
-                    self.original_stdout.write(text)
-            except:
-                pass  # Ignore write errors
-
-        def flush(self):
-            try:
-                if self.callback:
-                    # Force callback to flush any pending data
-                    pass
-                if self.original_stdout:
-                    self.original_stdout.flush()
-            except:
-                pass
-
-    # Get progress_callback from kwargs if available, but don't pop it
-    progress_callback = kwargs.get('progress_callback', None)
-    print(f"[DEBUG] run_task: task_id={task_id}, progress_callback={progress_callback is not None}")
-
-    # Redirect stdout and stderr FIRST (save originals)
-    original_stdout = sys.stdout
-    original_stderr = sys.stderr
-
-    # Set up output capture with callback and original stdout
-    capture = OutputCaptureWithCallback(progress_callback, original_stdout)
-
-    sys.stdout = capture
-    sys.stderr = capture
-
     try:
-        with task_lock:
-            tasks[task_id]['status'] = 'running'
-            if 'log' not in tasks[task_id]:
-                tasks[task_id]['log'] = ''
-
+        # Actually run the heavy task (Whisper, FFmpeg, etc)
         result = func(*args, **kwargs)
-
-        with task_lock:
-            tasks[task_id]['status'] = 'completed'
-            tasks[task_id]['result'] = result
+        
+        # Mark as complete in shared memory
+        task_data = dict(shared_tasks[task_id])
+        task_data['status'] = 'complete'
+        task_data['progress'] = 100
+        task_data['result'] = str(result)
+        shared_tasks[task_id] = task_data
+        
     except Exception as e:
-        import traceback
-        with task_lock:
-            # Check if this is a cancellation
-            if 'Cancelled by user' in str(e):
-                tasks[task_id]['status'] = 'cancelled'
-                # Add clear cancellation message to log
-                current_log = tasks[task_id].get('log', '')
-                if not isinstance(current_log, str):
-                    current_log = ''
-                tasks[task_id]['log'] = current_log + f'\n✓ Process cancelled by user'
-            else:
-                tasks[task_id]['status'] = 'failed'
-                tasks[task_id]['error'] = str(e)
-                # Add error to log (but filter out whisper/yt-dlp termination errors from cancel)
-                error_msg = str(e)
-                if 'Terminated' not in error_msg and 'killed' not in error_msg.lower():
-                    current_log = tasks[task_id].get('log', '')
-                    if not isinstance(current_log, str):
-                        current_log = ''
-                    tasks[task_id]['log'] = current_log + f'\nERROR: {error_msg}'
-    finally:
-        # Restore original stdout/stderr
-        sys.stdout = original_stdout
-        sys.stderr = original_stderr
+        task_data = dict(shared_tasks[task_id])
+        if "Cancelled by user" in str(e) or task_data.get('cancelled'):
+            task_data['status'] = 'cancelled'
+            task_data['log'] = task_data.get('log', '') + "\n✓ Process stopped by user."
+        else:
+            task_data['status'] = 'failed'
+            task_data['error'] = str(e)
+            task_data['log'] = task_data.get('log', '') + f"\nERROR: {e}\n{traceback.format_exc()}"
+        
+        shared_tasks[task_id] = task_data
+        sys.__stdout__.write(f"Process {task_id} failed or cancelled: {e}\n")
+        sys.__stdout__.flush()
+
 
 
 @app.route('/')
@@ -1852,13 +1805,13 @@ def process_video():
     with task_lock:
         task_counter += 1
         task_id = f"task_{task_counter}"
-        tasks[task_id] = {
+        tasks[task_id] = task_manager.dict({
             'type': 'process',
             'status': 'pending',
             'url': url if url else local_file,
             'log': '',
             'cancelled': False
-        }
+        })
 
     # Start background task - pass task_id directly (daemon=True to allow Ctrl+C)
     thread = threading.Thread(
@@ -1905,7 +1858,7 @@ def _process_video(url: str, local_file: str, model: str, language: str, resolut
     if cancel_check and cancel_check():
         raise Exception('Cancelled by user')
 
-    creator.generate_themes(video_info, ai_generator=ai_generator, model_size=model, progress_callback=progress_callback)
+    creator.generate_themes(video_info, ai_generator=ai_generator, model_size=model, language=language, progress_callback=progress_callback)
 
     return {
         'folder': video_info['folder'],
@@ -1929,12 +1882,12 @@ def regenerate_themes():
     with task_lock:
         task_counter += 1
         task_id = f"task_{task_counter}"
-        tasks[task_id] = {
+        tasks[task_id] = task_manager.dict({
             'type': 'regenerate',
             'status': 'pending',
             'folder_number': folder_number,
             'log': ''
-        }
+        })
 
     thread = threading.Thread(
         target=run_task_with_callback,
@@ -2011,12 +1964,12 @@ def create_shorts():
     with task_lock:
         task_counter += 1
         task_id = f"task_{task_counter}"
-        tasks[task_id] = {
+        tasks[task_id] = task_manager.dict({
             'type': 'create_shorts',
             'status': 'pending',
             'folder_number': folder_number,
             'themes': themes
-        }
+        })
 
     thread = threading.Thread(
         target=run_task_with_callback,
@@ -2056,7 +2009,7 @@ def get_task_status(task_id: str):
     with task_lock:
         if task_id not in tasks:
             return jsonify({'error': 'Task not found'}), 404
-        return jsonify(tasks[task_id])
+        return jsonify(dict(tasks[task_id]))
 
 
 @app.route('/api/task/<task_id>/cancel', methods=['POST'])
@@ -2073,11 +2026,26 @@ def cancel_task(task_id: str):
         if task_id not in tasks:
             return jsonify({'error': 'Task not found'}), 404
 
-        if tasks[task_id]['status'] == 'running':
+        # Allow cancelling tasks in pending, processing or running status
+        if tasks[task_id]['status'] in ['pending', 'processing', 'running']:
+            print(f"[CANCEL] Task {task_id} found with status {tasks[task_id]['status']}. Setting to cancelled.")
             # Set cancelled flag and get URL
-            tasks[task_id]['cancelled'] = True
-            tasks[task_id]['status'] = 'cancelled'
-            url = tasks[task_id].get('url', '')
+            task_data = dict(tasks[task_id])
+            task_data['cancelled'] = True
+            task_data['status'] = 'cancelled'
+            url = task_data.get('url', '')
+            
+            # Write back to shared memory
+            tasks[task_id] = task_data
+            print(f"[CANCEL] Task {task_id} status now: {tasks[task_id]['status']}")
+            
+            # Forcefully terminate the process if it exists
+            if task_id in task_processes:
+                try:
+                    task_processes[task_id].terminate()
+                    print(f"[CANCEL] Terminated process for task: {task_id}")
+                except Exception as e:
+                    print(f"[CANCEL] Error terminating process: {e}")
 
     # Try to kill yt-dlp, whisper, and ffmpeg processes
     try:
@@ -2296,16 +2264,20 @@ def get_retranscribe_settings(folder_number: str):
         import traceback
         return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
-def _run_retranscribe_task(task_id, folder_number, folder, video_file, model, language, base_dir):
-    """Module-level function for re-transcription task (can be pickled for multiprocessing)."""
-    app_logger.debug(f"[DEBUG] _run_retranscribe_task started for {task_id}")
+def _run_retranscribe_task(folder_number, folder, video_file, model, language, base_dir, progress_callback=None, cancel_check=None):
+    """Module-level function for re-transcription task."""
+    sys.__stdout__.write(f"DEBUG: _run_retranscribe_task started for folder {folder_number}\n")
+    sys.__stdout__.flush()
+    
+    # Set initial progress via callback
+    if progress_callback:
+        progress_callback("Progress: 1% Initializing re-transcription process...")
+
     try:
-        # Update task status
-        with task_lock:
-            app_logger.debug(f"[DEBUG] Acquired task_lock, updating status")
-            tasks[task_id]['status'] = 'processing'
-            tasks[task_id]['log'] = 'Starting transcription...'
-            app_logger.debug(f"[DEBUG] Task status updated: {tasks[task_id]}")
+        # Phase 1: Transcription (0-80%)
+        # Phase 2: Theme Identification (80-90%)
+        # Phase 3: Title/Reason Generation (90-100%)
+        current_phase = [1] 
 
         # Create video_info dict
         video_info = {
@@ -2315,68 +2287,103 @@ def _run_retranscribe_task(task_id, folder_number, folder, video_file, model, la
             'title': video_file.stem
         }
 
-        # Progress callback to update task log and progress percentage
-        def progress_callback(msg):
-            print(f"[Re-transcribe Progress] {msg}")  # Log to stdout
-            with task_lock:
-                if task_id in tasks:
-                    tasks[task_id]['log'] = msg
-                    # Parse percentage from messages like "Progress: 50%"
-                    import re
-                    match = re.search(r'Progress:\s*(\d+)%', msg)
-                    if match:
-                        tasks[task_id]['progress'] = int(match.group(1))
+        # Internal callback that scales percentages for the UI
+        def scaled_callback(msg):
+            msg_str = str(msg)
+            # Use raw stdout to bypass any redirection issues
+            sys.__stdout__.write(f"[Re-transcribe Progress] {msg_str}\n")
+            sys.__stdout__.flush()
+            
+            display_percent = None
+            import re
+            match = re.search(r'Progress:\s*(\d+)%', msg_str)
+            if match:
+                raw_percent = int(match.group(1))
+                
+                if current_phase[0] == 1:
+                    display_percent = int(raw_percent * 0.80)
+                elif current_phase[0] == 2:
+                    display_percent = 80 + int(raw_percent * 0.10)
+                else:
+                    display_percent = 90 + int(raw_percent * 0.10)
+                
+                display_percent = max(1, min(100, display_percent))
+                # Rewrite the log message to show the display percentage
+                msg_str = re.sub(r'Progress:\s*\d+%', f'Progress: {display_percent}%', msg_str)
+            
+            # Use the provided progress_callback to update the task state in shared memory
+            if progress_callback:
+                progress_callback(msg_str)
 
         # Get or create YouTubeShortsCreator instance
+        scaled_callback("DEBUG: Initializing YouTubeShortsCreator...")
         from shorts_creator import YouTubeShortsCreator
         creator = YouTubeShortsCreator(base_dir)
 
-        # Generate new subtitles
+        # Step 1: Transcription (Phase 1)
+        scaled_callback("DEBUG: Starting Phase 1: Subtitle Generation")
         srt_path = creator.generate_subtitles(
             video_info,
             model_size=model,
             language=language,
-            progress_callback=progress_callback
+            progress_callback=scaled_callback,
+            cancel_check=cancel_check
         )
 
-        # Update themes.md with new model and language
-        themes_file = folder / 'themes.md'
-        if themes_file.exists():
-            with open(themes_file, 'r', encoding='utf-8') as f:
-                content = f.read()
+        # Transition to Phase 2
+        current_phase[0] = 2
+        
+        # Initialize AI generator
+        ai_generator = None
+        try:
+            from ai_theme_generator import AIThemeGenerator
+            ai_generator = AIThemeGenerator()
+            if not ai_generator.is_available():
+                ai_generator = None
+        except ImportError:
+            pass
 
-            # Update Whisper Model and Language in themes.md
-            import re
-            # Handle markdown formatting with **
-            content = re.sub(r'\*\*Whisper Model:\*\*\s*\w+', f'**Whisper Model:** {model}', content)
-            lang_display = language if language else 'Auto'
-            content = re.sub(r'\*\*Language:\*\*\s*\w+', f'**Language:** {lang_display}', content)
+        # Step 2 & 3: Theme Generation
+        # Detect phase change within generate_themes
+        orig_scaled_callback = scaled_callback
+        def phase_aware_callback(msg):
+            if 'Progress:' in msg and current_phase[0] == 2:
+                if 'total themes' in msg or 'Theme 1:' in msg:
+                    current_phase[0] = 3
+            orig_scaled_callback(msg)
 
-            with open(themes_file, 'w', encoding='utf-8') as f:
-                f.write(content)
+        scaled_callback('Generating new themes...')
+        creator.generate_themes(
+            video_info,
+            ai_generator=ai_generator,
+            model_size=model,
+            language=language,
+            progress_callback=phase_aware_callback,
+            cancel_check=cancel_check
+        )
 
-            progress_callback('Updated themes.md with new settings')
-
-        # Mark as complete
-        with task_lock:
-            if task_id in tasks:
-                tasks[task_id]['status'] = 'complete'
-                tasks[task_id]['log'] = 'Transcription complete!'
+        # Mark as complete via callback
+        if progress_callback:
+            progress_callback("Progress: 100% Transcription and theme generation complete!")
 
     except Exception as e:
+        if "Cancelled by user" in str(e):
+            # The run_task wrapper handles 'cancelled' status if it sees the flag,
+            # but we can make it explicit here just in case.
+            app_logger.info(f"Retranscription for {folder_number} was successfully cancelled.")
+            raise e
+        
         import traceback
         error_msg = str(e)
-        with task_lock:
-            if task_id in tasks:
-                tasks[task_id]['status'] = 'error'
-                tasks[task_id]['error'] = error_msg
-                tasks[task_id]['log'] = f'Error: {error_msg}'
         print(f"[Re-transcribe Error] {error_msg}\n{traceback.format_exc()}")
+        raise e
 
 
 @app.route('/api/re-transcribe', methods=['POST'])
 def re_transcribe():
     """Re-transcribe an existing video in the library with progress tracking."""
+    sys.__stdout__.write("API: /api/re-transcribe called\n")
+    sys.__stdout__.flush()
     try:
         data = request.json
         folder_number = data.get('folder')
@@ -2408,7 +2415,7 @@ def re_transcribe():
 
         # Initialize task tracking
         with task_lock:
-            tasks[task_id] = {
+            tasks[task_id] = task_manager.dict({
                 'type': 'retranscribe',
                 'status': 'pending',
                 'folder': folder_number,
@@ -2416,15 +2423,16 @@ def re_transcribe():
                 'language': language,
                 'log': 'Initializing...',
                 'progress': 0,
-                'error': None
-            }
+                'error': None,
+                'cancelled': False
+            })
             app_logger.debug(f"[DEBUG] Task created: {task_id}, tasks dict keys: {list(tasks.keys())}")
 
-        # Start background thread
-        app_logger.debug(f"[DEBUG] Starting thread for task {task_id}")
+        # Start background task using the unified callback wrapper
+        app_logger.debug(f"[DEBUG] Starting task {task_id} with run_task_with_callback")
         thread = threading.Thread(
-            target=_run_retranscribe_task,
-            args=(task_id, folder_number, folder, video_file, model, language, base_dir),
+            target=run_task_with_callback,
+            args=(task_id, _run_retranscribe_task, folder_number, folder, video_file, model, language, base_dir),
             daemon=True
         )
         thread.start()
@@ -2447,7 +2455,7 @@ def retranscribe_status(task_id: str):
             return jsonify({'error': 'Task not found'}), 404
         app_logger.debug(f"[DEBUG] Task {task_id} found: {tasks[task_id]}")
 
-        task = tasks[task_id].copy()
+        task = dict(tasks[task_id])
         response = jsonify({
             'status': task['status'],
             'log': task.get('log', ''),
@@ -2577,8 +2585,10 @@ def cancel_edit(edit_id: str):
         if edit_id not in edit_processes:
             return jsonify({'error': 'Edit not found'}), 404
 
-        edit_processes[edit_id]['cancelled'] = True
-        edit_processes[edit_id]['status'] = 'cancelled'
+        edit_data = edit_processes[edit_id]
+        edit_data['cancelled'] = True
+        edit_data['status'] = 'cancelled'
+        edit_processes[edit_id] = edit_data
 
     return jsonify({'success': True})
 
@@ -2674,12 +2684,12 @@ def create_word_timestamps():
     with task_lock:
         task_counter += 1
         task_id = f"task_{task_counter}"
-        tasks[task_id] = {
+        tasks[task_id] = task_manager.dict({
             'type': 'create_word_timestamps',
             'status': 'pending',
             'folder_number': folder_number,
             'video_path': str(video_file)
-        }
+        })
 
     # Run in background thread
     thread = threading.Thread(
@@ -3416,7 +3426,6 @@ def export_canvas_karaoke():
 
         with open(word_timestamps_file, 'r', encoding='utf-8') as f:
             word_timestamps_data = json.load(f)
-            words = word_timestamps_data.get('words', [])
 
         # Get theme subtitles for the text
         srt_file = folder / 'shorts' / f'theme_{int(theme_number):03d}.srt'
@@ -3530,6 +3539,10 @@ def download_video(folder, theme, type):
 
 if __name__ == '__main__':
     import signal
+    
+    # Initialize shared state
+    task_manager = multiprocessing.Manager()
+    tasks = task_manager.dict()
 
     print("=" * 60)
     print("YouTube Shorts Creator - Web Server")
@@ -3552,7 +3565,7 @@ if __name__ == '__main__':
         # Cancel all running tasks
         with task_lock:
             for task_id, task in tasks.items():
-                if task.get('status') == 'running':
+                if task.get('status') in ['pending', 'processing', 'running']:
                     task['cancelled'] = True
         print("\033[92mServer shut down cleanly.\033[0m")
         app_logger.debug("Server shut down cleanly")
@@ -3563,4 +3576,4 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT, signal_handler)  # Ctrl+C
     signal.signal(signal.SIGTERM, signal_handler)
 
-    app.run(host='127.0.0.1', port=5000, debug=True)
+    app.run(host='127.0.0.1', port=5000, debug=False)
