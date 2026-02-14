@@ -1720,11 +1720,44 @@ def create_shorts():
             'themes': themes
         })
 
-    thread = threading.Thread(
-        target=run_task_with_callback,
-        args=(task_id, _create_shorts, folder_number, themes),
-        daemon=True
-    )
+    # Switch to simple thread instead of run_task_with_callback (multiprocessing)
+    # to ensure logging works and to avoid child process startup issues
+    def task_wrapper():
+        try:
+            with task_lock:
+                tasks[task_id]['status'] = 'processing'
+            
+            # Simple progress callback for the thread
+            def thread_progress_cb(msg):
+                with task_lock:
+                    current = dict(tasks[task_id])
+                    current['log'] = (current.get('log', '') + '\n' + msg).strip()
+                    # Extract percentage if present
+                    import re
+                    match = re.search(r'Progress:\s*(\d+)%', msg)
+                    if match:
+                        current['progress'] = int(match.group(1))
+                    tasks[task_id] = current
+
+            # Direct call
+            result = _create_shorts(folder_number, themes, progress_callback=thread_progress_cb)
+            
+            with task_lock:
+                current = dict(tasks[task_id])
+                current['status'] = 'complete'
+                current['progress'] = 100
+                current['result'] = result
+                tasks[task_id] = current
+        except Exception as e:
+            import traceback
+            app_logger.error(f"Task error: {traceback.format_exc()}")
+            with task_lock:
+                current = dict(tasks[task_id])
+                current['status'] = 'error'
+                current['error'] = str(e)
+                tasks[task_id] = current
+
+    thread = threading.Thread(target=task_wrapper, daemon=True)
     thread.start()
 
     return jsonify({'task_id': task_id})

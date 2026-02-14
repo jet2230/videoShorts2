@@ -278,6 +278,9 @@ class UniversalSubtitleRenderer:
 
         # Resize frame
         frame_resized = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_LINEAR)
+        
+        if int(current_time * 10) % 50 == 0:
+            logger.info(f"Frame scaled to {new_width}x{new_height}, scale={scale:.2f}")
 
         # Calculate crop offsets (center crop)
         x_offset = (new_width - self.output_width) // 2
@@ -345,7 +348,7 @@ class UniversalSubtitleRenderer:
 
         # Render each line
         if int(current_time * 10) % 50 == 0:
-            logger.info(f"Rendering {len(lines)} lines at {current_time:.2f}s (text: {subtitle_text[:20]}...)")
+            logger.info(f"Rendering {len(lines)} lines at {current_time:.2f}s (y={y}, text: {subtitle_text[:20]}...)")
 
         for line in lines:
             # Calculate line width
