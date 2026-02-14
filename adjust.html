@@ -1567,6 +1567,10 @@
                         <button class="toolbar-btn" data-style="size" onmousedown="event.preventDefault(); applySize(0.8)">a-</button>
                     </div>
                     <div class="subtitle-text-area" id="subtitle-text" contenteditable="true" data-placeholder="Edit subtitle text here..."></div>
+                    <div id="subtitle-duration-info" style="margin-top: 8px; font-size: 12px; color: #00ff9d; font-weight: 500; display: flex; justify-content: flex-end; align-items: center; gap: 6px;">
+                        <span style="color: #aaa; font-weight: normal;">Display Duration:</span>
+                        <span id="subtitle-duration-value">0.00s</span>
+                    </div>
                 </div>
 
                 <div class="subtitle-section" id="global-settings-section">
@@ -3263,6 +3267,7 @@
 
                 const currentTime = previewVideo.currentTime;
                 const subtitleText = document.getElementById('subtitle-text');
+                const durationValueEl = document.getElementById('subtitle-duration-value');
 
                 // Find matching cue in our stable list
                 const matchingCue = allThemeCues.find(cue => {
@@ -3274,6 +3279,16 @@
                 if (matchingCue) {
                     const currentCueText = subtitleEdits[`${matchingCue.start}_${matchingCue.end}`] || matchingCue.text;
                     
+                    // Update duration display
+                    if (durationValueEl) {
+                        const cueStart = parseTime(matchingCue.start);
+                        const cueEnd = parseTime(matchingCue.end);
+                        const duration = cueEnd - cueStart;
+                        durationValueEl.textContent = `${duration.toFixed(2)}s`;
+                        // Highlight short durations (less than 0.8s) in orange/red
+                        durationValueEl.style.color = duration < 0.8 ? '#ff9800' : '#00ff9d';
+                    }
+
                     const newCueInfo = {
                         sequence: matchingCue.sequence,
                         start: matchingCue.start,
@@ -3316,6 +3331,10 @@
                     if (currentCueInfo !== null) {
                         currentCueInfo = null;
                         subtitleText.innerHTML = '';
+                        if (durationValueEl) {
+                            durationValueEl.textContent = '0.00s';
+                            durationValueEl.style.color = '#00ff9d';
+                        }
                         updateSubtitlePreview();
                     }
                 }
