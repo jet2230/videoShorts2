@@ -1996,6 +1996,7 @@
 
         // Select folder and load themes
         async function selectFolder(folderNumber) {
+            console.log('📁 selectFolder called', {folderNumber});
             selectedFolder = folderNumber;
 
             try {
@@ -2667,12 +2668,17 @@
 
         // Update create shorts button
         function updateCreateButton() {
+            const total = document.querySelectorAll('.theme-checkbox').length;
             const checked = document.querySelectorAll('.theme-checkbox:checked').length;
             const hasSelection = checked > 0;
+            const hasThemes = total > 0;
+            
+            console.log('🔘 updateCreateButton', {total, checked, hasSelection, hasThemes});
+
             document.getElementById('create-shorts-btn').disabled = !hasSelection;
-            document.getElementById('select-all-btn').disabled = !hasSelection;
+            document.getElementById('select-all-btn').disabled = !hasThemes;
             document.getElementById('deselect-all-btn').disabled = !hasSelection;
-            document.getElementById('regenerate-btn').disabled = !hasSelection;
+            document.getElementById('regenerate-btn').disabled = !hasThemes;
         }
 
         // Select/Deselect all
@@ -3196,12 +3202,20 @@
 
         // Create shorts
         document.getElementById('create-shorts-btn').addEventListener('click', async () => {
-            if (!selectedFolder) return;
+            if (!selectedFolder) {
+                console.error('❌ No folder selected');
+                return;
+            }
 
             const checkedThemes = Array.from(document.querySelectorAll('.theme-checkbox:checked'))
                 .map(cb => parseInt(cb.dataset.theme));
+            
+            console.log('🎬 Create Shorts triggered', {selectedFolder, checkedThemes});
 
-            if (checkedThemes.length === 0) return;
+            if (checkedThemes.length === 0) {
+                console.warn('⚠️ No themes selected');
+                return;
+            }
 
             const taskProgress = document.getElementById('task-progress');
             const taskProgressText = document.getElementById('task-progress-text');

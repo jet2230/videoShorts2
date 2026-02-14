@@ -1735,6 +1735,8 @@
         const urlParams = new URLSearchParams(window.location.search);
         const folderNumber = urlParams.get('folder');
         const themeNumber = parseInt(urlParams.get('theme'));
+        
+        console.log('🏁 adjust.html script loaded', {folderNumber, themeNumber});
 
         // Format time
         function formatTime(seconds) {
@@ -4357,7 +4359,7 @@
                 };
 
                 // Request export
-                console.log('📡 Sending export request to /api/export-canvas-karaoke', {folderNumber, themeNumber, settings});
+                console.log('📡 Sending export request to /api/export-canvas-karaoke', {folder: folderNumber, theme: themeNumber, settings: settings});
                 const response = await fetch('/api/export-canvas-karaoke', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -4366,6 +4368,9 @@
                         theme: themeNumber,
                         settings: settings
                     })
+                }).catch(err => {
+                    console.error('❌ Fetch error:', err);
+                    throw err;
                 });
 
                 if (!response.ok) {

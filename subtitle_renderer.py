@@ -240,6 +240,11 @@ class UniversalSubtitleRenderer:
                 if self.mode == 'cumulative':
                     word_color = self.past_color
 
+            colored_words.append({
+                'text': word,
+                'color': word_color
+            })
+
         return colored_words, highlighted_index
 
     def render_frame(self, frame: np.ndarray, current_time: float, subtitle_text: str, subtitle_start: float = None, subtitle_end: float = None) -> np.ndarray:
@@ -285,15 +290,22 @@ class UniversalSubtitleRenderer:
         pil_image = Image.fromarray(cv2.cvtColor(frame_cropped, cv2.COLOR_BGR2RGB))
         draw = ImageDraw.Draw(pil_image)
         
-        # ALWAYS draw a large test marker to confirm rendering is happening
-        try:
-            # Use a large size for visibility
-            debug_font = self._get_font(80)
-            draw.text((50, 50), f"DEBUG: {current_time:.2f}s", fill=(255, 0, 0), font=debug_font)
-            if not subtitle_text:
-                draw.text((50, 150), "NO SUBTITLE TEXT FOUND", fill=(255, 0, 0), font=debug_font)
-        except:
-            draw.text((10, 10), f"D: {current_time:.2f}s", fill=(255, 0, 0))
+        # Debug watermark if enabled
+        if self.settings.get('debug', False):
+            try:
+                debug_font = self._get_font(80)
+                draw.text((50, 50), f"DEBUG: {current_time:.2f}s", fill=(255, 0, 0), font=debug_font)
+                
+                if not subtitle_text:
+                    if int(current_time * 10) % 50 == 0:
+                        with open('server.log', 'a') as f:
+                            f.write(f"[{datetime.now()}] RENDER DEBUG: NO TEXT at {current_time:.2f}s\n")
+                            f.flush()
+                    draw.text((50, 150), "NO SUBTITLE TEXT FOUND", fill=(255, 0, 0), font=debug_font)
+            except Exception as e:
+                with open('server.log', 'a') as f:
+                    f.write(f"[{datetime.now()}] RENDER DEBUG ERROR: {str(e)}\n")
+                    f.flush()
 
         # Skip if no subtitle text
         if not subtitle_text or not subtitle_text.strip():
@@ -537,6 +549,14 @@ def render_canvas_karaoke_video(
     logger.info(f"Loading subtitles from: {subtitle_srt_path}")
 
     subtitles = _parse_srt(subtitle_srt_path)
+    
+    with open('server.log', 'a') as f:
+        msg = f"[DEBUG_SRT] Path: {subtitle_srt_path}, Count: {len(subtitles)}\n"
+        if subtitles:
+            msg += f"[DEBUG_SRT] First sub: {subtitles[0]['start']}s - {subtitles[0]['end']}s: {subtitles[0]['text'][:20]}\n"
+        f.write(msg)
+        f.flush()
+
     if subtitles:
         logger.info(f"Parsed {len(subtitles)} subtitles. First sub: {subtitles[0]['start']}s - {subtitles[0]['end']}s: {subtitles[0]['text'][:30]}")
         # Calculate how many subtitles overlap with the theme's time range if treated as absolute
@@ -548,21 +568,26 @@ def render_canvas_karaoke_video(
         # If many subtitles overlap when treated as absolute, it's definitely absolute
         if overlapping_count > 0:
             is_theme_srt = False
-            logger.info(f"Detected ABSOLUTE times: {overlapping_count} subtitles overlap with theme range [{start_time}s - {end_time}s]")
+            timing_msg = f"Detected ABSOLUTE times: {overlapping_count} subs overlap theme [{start_time}-{end_time}]\n"
         elif not is_theme_srt:
             # If it's not named 'theme_' and no overlap, check the first sub
             first_sub_start = subtitles[0]['start']
             if first_sub_start > end_time:
-                # First sub is way after theme end, likely absolute but theme is earlier
                 is_theme_srt = False
-                logger.info(f"Detected ABSOLUTE times: First subtitle at {first_sub_start}s is after theme end {end_time}s")
-            elif first_sub_start < 10.0 and start_time > 60.0:
-                # First sub is near 0 but theme starts much later, likely relative
+                timing_msg = f"Detected ABSOLUTE times: First sub {first_sub_start}s > theme end {end_time}s\n"
+            elif first_sub_start < 10.0 and start_time > 2.0:
                 is_theme_srt = True
-                logger.info(f"Detected RELATIVE times: First subtitle at {first_sub_start}s while theme starts at {start_time}s")
+                timing_msg = f"Detected RELATIVE times: First sub {first_sub_start}s while theme start {start_time}s\n"
             else:
-                # Default to filename-based or absolute
-                logger.info(f"SRT type unclear, defaulting to {'RELATIVE' if is_theme_srt else 'ABSOLUTE'} based on filename")
+                # If it starts near 0 and theme starts near 0, could be either, but usually relative for edited files
+                is_theme_srt = True 
+                timing_msg = f"SRT type unclear, defaulting to RELATIVE (most likely for edited/theme files)\n"
+        else:
+            timing_msg = f"Defaulting to RELATIVE based on filename\n"
+            
+        with open('server.log', 'a') as f:
+            f.write(f"[DEBUG_TIMING] {timing_msg}")
+            f.flush()
     else:
         logger.warning("No subtitles parsed from SRT file")
 

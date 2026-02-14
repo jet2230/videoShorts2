@@ -29,8 +29,8 @@ import urllib.error
 from shorts_creator import YouTubeShortsCreator, load_settings
 
 # Setup logging to file with rotation
-# Max size set to roughly 1000 lines (avg 100 bytes per line = 100KB)
-log_handler = RotatingFileHandler('server.log', maxBytes=100*1024, backupCount=1)
+# Max size set to 10MB to ensure we capture enough history
+log_handler = RotatingFileHandler('server.log', maxBytes=10*1024*1024, backupCount=5)
 log_handler.setLevel(logging.INFO)
 log_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 log_handler.setFormatter(log_formatter)
@@ -61,10 +61,17 @@ exporter_logger.addHandler(console_handler)
 app = Flask(__name__, static_folder='static')
 CORS(app)
 
+@app.before_request
+def log_request_info():
+    app_logger.info(f"INCOMING REQUEST: {request.method} {request.path}")
+
 # Required for SharedArrayBuffer (ffmpeg.wasm support)
 @app.after_request
 def set_headers(response):
     """Set security headers required for SharedArrayBuffer (ffmpeg.wasm)."""
+    # Log every request for debugging
+    app_logger.info(f"[REQ] {request.method} {request.path} -> {response.status_code}")
+    
     response.headers['Cross-Origin-Embedder-Policy'] = 'require-corp'
     response.headers['Cross-Origin-Opener-Policy'] = 'same-origin'
     return response
@@ -1696,9 +1703,18 @@ def _regenerate_themes(folder_number: str, model: str, progress_callback=None):
     }
 
 
+@app.route('/api/test-log')
+def test_log():
+    app_logger.info("TEST LOG ENDPOINT CALLED")
+    with open('server.log', 'a') as f:
+        f.write(f"{datetime.now()} - [DIRECT_TEST] Manual write to log\n")
+    return jsonify({'status': 'ok'})
+
+
 @app.route('/api/create-shorts', methods=['POST'])
 def create_shorts():
     """Create shorts for selected themes."""
+    app_logger.info("CREATE_SHORTS ENDPOINT HIT")
     global task_counter
 
     data = request.json
@@ -2776,6 +2792,7 @@ def get_theme_adjust_settings(folder_path, theme_number):
 @app.route('/api/encode-canvas-karaoke', methods=['POST'])
 def encode_canvas_karaoke():
     """Generate and encode canvas karaoke video server-side (fast)."""
+    app_logger.info("ENCODE_CANVAS_KARAOKE ENDPOINT HIT")
     try:
         data = request.get_json()
         folder_number = data.get('folder')
@@ -2908,10 +2925,10 @@ def encode_canvas_karaoke():
                 app_logger.info(f"Starting server-side canvas karaoke export for theme {theme_number}")
 
                 # Import the renderer
-                import canvas_karaoke_exporter
+                from subtitle_renderer import render_canvas_karaoke_video
 
                 # Render video with progress callback
-                success = canvas_karaoke_exporter.render_canvas_karaoke_video(
+                success = render_canvas_karaoke_video(
                     str(video_file),
                     str(word_timestamps_file),
                     str(srt_file),
@@ -3047,6 +3064,7 @@ from subtitle_renderer import render_canvas_karaoke_video
 @app.route('/api/export-canvas-karaoke', methods=['POST'])
 def export_canvas_karaoke():
     """Export canvas karaoke video using FFmpeg on server (fast processing)."""
+    app_logger.info("EXPORT_CANVAS_KARAOKE ENDPOINT HIT")
     try:
         data = request.get_json()
         folder_number = data.get('folder')
@@ -3073,6 +3091,7 @@ def export_canvas_karaoke():
             }
 
         def run_export_thread(jid, f_num, t_num, settings_dict):
+            app_logger.info(f"THREAD START: run_export_thread jid={jid} folder={f_num} theme={t_num}")
             try:
                 # Get folder path
                 base_dir = Path(settings.get('video', 'output_dir'))
