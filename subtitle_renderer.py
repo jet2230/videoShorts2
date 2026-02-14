@@ -63,12 +63,15 @@ class UniversalSubtitleRenderer:
         # Rendering settings (always 1080x1920 vertical)
         self.output_width = 1080
         self.output_height = 1920
-        self.font_size = int(settings.get('fontSize', 48))
+        self.font_size = int(settings.get('fontSize', 80))
         self.font_name = settings.get('fontName', 'Arial')
-        self.text_color = settings.get('textColor', '#ffff00') # Highlight color
-        self.primary_color = settings.get('primaryColor', '#ffffff') # Standard color
-        self.past_color = settings.get('pastColor', '#808080')
-        self.outline_color = settings.get('outlineColor', '#000000')
+        
+        # Convert hex colors to RGB tuples for PIL
+        self.text_color = self._hex_to_rgb(settings.get('textColor', '#ffff00'))
+        self.primary_color = self._hex_to_rgb(settings.get('primaryColor', '#ffffff'))
+        self.past_color = self._hex_to_rgb(settings.get('pastColor', '#808080'))
+        self.outline_color = self._hex_to_rgb(settings.get('outlineColor', '#000000'))
+        
         self.mode = settings.get('mode', 'standard')  # 'standard', 'normal', 'cumulative'
         self.font_weight = settings.get('font_weight', 'bold')
 
@@ -824,38 +827,71 @@ def render_canvas_karaoke_video(
 
 
 def _parse_srt(srt_path: str) -> List[Dict]:
-    """Parse SRT subtitle file with robust regex."""
+    """Parse SRT subtitle file with robust regex and fallback."""
     import re
     from datetime import datetime
 
-    with open(srt_path, 'r', encoding='utf-8') as f:
-        content = f.read()
+    try:
+        with open(srt_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+    except UnicodeDecodeError:
+        with open(srt_path, 'r', encoding='utf-8-sig') as f:
+            content = f.read()
         
-    # More robust SRT pattern that handles different line endings and spacing
-    pattern = r'(\d+)\s*\n(\d{2}:\d{2}:\d{2}[.,]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[.,]\d{3})\s*\n(.*?)(?=\n\s*\n|\n\s*\d+\s*\n|\Z)'
+    # Standardize line endings
+    content = content.replace('\r\n', '\n')
     
+    # Try robust regex first
+    pattern = r'(\d+)\s*\n(\d{2}:\d{2}:\d{2}[.,]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[.,]\d{3})\s*\n(.*?)(?=\n\s*\n|\n\s*\d+\s*\n|\Z)'
+    matches = list(re.finditer(pattern, content, re.DOTALL))
+    
+    # Fallback to simpler split if regex fails
+    if not matches:
+        # Split by double newline or single newline followed by a number
+        blocks = re.split(r'\n\s*\n', content.strip())
+        subtitles = []
+        for block in blocks:
+            lines = [l.strip() for l in block.split('\n') if l.strip()]
+            if len(lines) >= 3 and '-->' in lines[1]:
+                try:
+                    ts_line = lines[1]
+                    times = ts_line.split('-->')
+                    start_str = times[0].strip().replace(',', '.')
+                    end_str = times[1].strip().split()[0].replace(',', '.')
+                    text = ' '.join(lines[2:])
+                    
+                    def parse_time(time_str):
+                        h, m, s = map(float, time_str.split(':'))
+                        return h * 3600 + m * 60 + s
+                    
+                    subtitles.append({
+                        'sequence': int(lines[0]),
+                        'start': parse_time(start_str),
+                        'end': parse_time(end_str),
+                        'text': text
+                    })
+                except: continue
+        return subtitles
+
     subtitles = []
-    # Use re.DOTALL to match multi-line text
-    for match in re.finditer(pattern, content, re.DOTALL):
-        sequence = int(match.group(1))
-        start_str = match.group(2).replace(',', '.')
-        end_str = match.group(3).replace(',', '.')
-        text = match.group(4).strip()
+    for match in matches:
+        try:
+            sequence = int(match.group(1))
+            start_str = match.group(2).replace(',', '.')
+            end_str = match.group(3).replace(',', '.')
+            text = match.group(4).strip()
 
-        # Convert time to seconds
-        def parse_time(time_str):
-            h, m, s = map(float, time_str.replace(',', '.').split(':'))
-            return h * 3600 + m * 60 + s
+            def parse_time(time_str):
+                h, m, s = map(float, time_str.split(':'))
+                return h * 3600 + m * 60 + s
 
-        start = parse_time(start_str)
-        end = parse_time(end_str)
-
-        subtitles.append({
-            'sequence': sequence,
-            'start': start,
-            'end': end,
-            'text': text
-        })
+            subtitles.append({
+                'sequence': sequence,
+                'start': parse_time(start_str),
+                'end': parse_time(end_str),
+                'text': text
+            })
+        except: continue
 
     return subtitles
 
