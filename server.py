@@ -2967,7 +2967,15 @@ def download_canvas_karaoke(folder_number, theme):
         if not folder_path:
             return jsonify({'error': 'Folder not found'}), 404
 
-        video_path = folder_path / 'shorts' / f'theme_{theme}_canvas_karaoke.mp4'
+        # Use glob to find the file since it now includes the title
+        pattern = f'theme_{int(theme):03d}_*_canvas_karaoke.mp4'
+        matches = list((folder_path / 'shorts').glob(pattern))
+        
+        if not matches:
+            # Fallback to old format
+            video_path = folder_path / 'shorts' / f'theme_{theme}_canvas_karaoke.mp4'
+        else:
+            video_path = matches[0]
 
         if not video_path.exists():
             return jsonify({'error': 'Video not found'}), 404
@@ -3048,25 +3056,31 @@ def export_canvas_karaoke():
                         canvas_karaoke_progress[jid] = {'status': 'error', 'error': 'Subtitle file not found', 'complete': False}
                     return
 
-                # Get theme timing from themes.md
+                # Get theme timing and title from themes.md
                 themes_file = folder / 'themes.md'
                 start_time = 0
                 end_time = 0
+                theme_title = ""
                 if themes_file.exists():
                     with open(themes_file, 'r', encoding='utf-8') as f:
                         content = f.read()
                     import re
-                    pattern = rf'### Theme {t_num}:.*?\*\*Time Range:\*\*\s*(\d{{2}}:\d{{2}}:\d{{2}})\s*-\s*(\d{{2}}:\d{{2}}:\d{{2}})'
+                    # Pattern to extract title and time range
+                    # Format in themes.md: ### Theme N: Title
+                    pattern = rf'### Theme {t_num}:\s*(.*?)\n.*?\*\*Time Range:\*\*\s*(\d{{2}}:\d{{2}}:\d{{2}})\s*-\s*(\d{{2}}:\d{{2}}:\d{{2}})'
                     match = re.search(pattern, content, re.DOTALL)
                     if match:
+                        theme_title = match.group(1).strip()
                         def parse_t(s):
                             h, m, sec = map(int, s.split(':'))
                             return h * 3600 + m * 60 + sec
-                        start_time = parse_t(match.group(1))
-                        end_time = parse_t(match.group(2))
+                        start_time = parse_t(match.group(2))
+                        end_time = parse_t(match.group(3))
 
                 # Output path
-                output_path = folder / 'shorts' / f'theme_{t_num}_canvas_karaoke.mp4'
+                sanitized_title = creator.sanitize_title(theme_title) if theme_title else "untitled"
+                output_filename = f'theme_{int(t_num):03d}_{sanitized_title}_canvas_karaoke.mp4'
+                output_path = folder / 'shorts' / output_filename
                 output_path.parent.mkdir(exist_ok=True)
 
                 def progress_cb(percent, stage, msg):
@@ -3138,7 +3152,14 @@ def download_video(folder, theme, type):
             return jsonify({'error': 'Folder not found'}), 404
 
         if type == 'canvas_karaoke':
-            video_path = folder / 'shorts' / f'theme_{theme}_canvas_karaoke.mp4'
+            # Use glob to find the file since it now includes the title
+            pattern = f'theme_{int(theme):03d}_*_canvas_karaoke.mp4'
+            matches = list((folder / 'shorts').glob(pattern))
+            if not matches:
+                # Fallback to old format just in case
+                video_path = folder / 'shorts' / f'theme_{theme}_canvas_karaoke.mp4'
+            else:
+                video_path = matches[0]
         else:
             return jsonify({'error': 'Invalid type'}), 400
 
