@@ -2301,12 +2301,15 @@
             const oldStart = startSeconds;
             const oldEnd = endSeconds;
             const midPoint = (originalStartSeconds + originalEndSeconds) / 2;
+            
+            const bufferStart = Math.max(0, originalStartSeconds - bufferLeftSeconds);
+            const bufferEnd = Math.min(fullVideoDuration, originalEndSeconds + bufferRightSeconds);
 
             if (handle === 'left') {
                 // Adjust start time
                 let newStart = startSeconds + delta;
-                // Restriction: minimum 5s short, cannot cross midpoint within 1s
-                newStart = Math.max(0, Math.min(newStart, midPoint - 1.0));
+                // Restriction: between buffer start and midpoint-1s
+                newStart = Math.max(bufferStart, Math.min(newStart, midPoint - 1.0));
                 
                 const timeOffset = newStart - startSeconds;
                 
@@ -2334,8 +2337,8 @@
             } else if (handle === 'right') {
                 // Adjust end time
                 let newEnd = endSeconds + delta;
-                // Restriction: cannot cross midpoint within 1s
-                newEnd = Math.max(midPoint + 1.0, Math.min(newEnd, fullVideoDuration));
+                // Restriction: between midpoint+1s and current buffer end
+                newEnd = Math.max(midPoint + 1.0, Math.min(newEnd, bufferEnd));
                 endSeconds = newEnd;
             }
 
@@ -3495,8 +3498,9 @@
             if (!fullVideoDuration) return;
 
             const clipDuration = endSeconds - startSeconds;
-            const bufferStart = Math.max(0, startSeconds - bufferLeftSeconds);
-            const bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferRightSeconds);
+            // Buffer range is relative to ORIGINAL theme boundaries
+            const bufferStart = Math.max(0, originalStartSeconds - bufferLeftSeconds);
+            const bufferEnd = Math.min(fullVideoDuration, originalEndSeconds + bufferRightSeconds);
             bufferedDuration = bufferEnd - bufferStart;
 
             // Position buffer range on full video timeline
@@ -3609,16 +3613,20 @@
                 // Use full video duration for drag calculations
                 const deltaTime = (deltaX / timelineTrack.offsetWidth) * fullVideoDuration;
                 const midPoint = (originalStartSeconds + originalEndSeconds) / 2;
+                
+                // Current buffer boundaries
+                const bufferStart = Math.max(0, originalStartSeconds - bufferLeftSeconds);
+                const bufferEnd = Math.min(fullVideoDuration, originalEndSeconds + bufferRightSeconds);
 
                 if (isDragging === 'left') {
                     let newStart = dragStartValue + deltaTime;
-                    // Proximity limit: cannot cross midpoint within 1s
-                    newStart = Math.max(0, Math.min(newStart, midPoint - 1.0));
+                    // Restriction: between current buffer start and midpoint-1s
+                    newStart = Math.max(bufferStart, Math.min(newStart, midPoint - 1.0));
                     startSeconds = newStart;
                 } else if (isDragging === 'right') {
                     let newEnd = dragStartValue + deltaTime;
-                    // Proximity limit: cannot cross midpoint within 1s
-                    newEnd = Math.max(midPoint + 1.0, Math.min(newEnd, fullVideoDuration));
+                    // Restriction: between midpoint+1s and current buffer end
+                    newEnd = Math.max(midPoint + 1.0, Math.min(newEnd, bufferEnd));
                     endSeconds = newEnd;
                 }
 
@@ -3765,10 +3773,11 @@
                     if (extLeftEnd) {
                         const extensionSeconds = timeInputToSeconds(extLeftEnd.value);
                         const midPoint = (originalStartSeconds + originalEndSeconds) / 2;
+                        const bufferStart = Math.max(0, originalStartSeconds - bufferLeftSeconds);
 
                         // Move theme start earlier by the extension amount
-                        // Proximity limit: cannot cross midpoint within 1s
-                        const newStartSeconds = Math.max(0, Math.min(originalStartSeconds - extensionSeconds, midPoint - 1.0));
+                        // Restriction: between buffer start and midpoint-1s
+                        const newStartSeconds = Math.max(bufferStart, Math.min(originalStartSeconds - extensionSeconds, midPoint - 1.0));
 
                         // Handle formatting timestamp shift when theme start changes
                         const timeOffset = newStartSeconds - startSeconds;
@@ -3817,10 +3826,11 @@
                     if (extRightEnd) {
                         const extensionSeconds = timeInputToSeconds(extRightEnd.value);
                         const midPoint = (originalStartSeconds + originalEndSeconds) / 2;
+                        const bufferEnd = Math.min(fullVideoDuration, originalEndSeconds + bufferRightSeconds);
 
                         // Move theme end later by the extension amount
-                        // Proximity limit: cannot cross midpoint within 1s
-                        const newEndSeconds = Math.min(fullVideoDuration, Math.max(originalEndSeconds + extensionSeconds, midPoint + 1.0));
+                        // Restriction: between midpoint+1s and current buffer end
+                        const newEndSeconds = Math.min(bufferEnd, Math.max(originalEndSeconds + extensionSeconds, midPoint + 1.0));
 
                         endSeconds = newEndSeconds;
 
