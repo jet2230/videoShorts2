@@ -1523,7 +1523,9 @@
                 <div class="preview-seekbar-container">
                     <div class="preview-controls-row">
                         <button id="preview-play-btn" class="preview-control-btn">▶</button>
+                        <button id="preview-prev-frame" class="preview-control-btn" title="Previous Frame" style="font-size: 14px;">-1f</button>
                         <input type="range" id="preview-seekbar" class="seekbar preview-seekbar" min="0" max="100" value="0" step="0.1">
+                        <button id="preview-next-frame" class="preview-control-btn" title="Next Frame" style="font-size: 14px;">+1f</button>
                     </div>
                     <div class="preview-time-row">
                         <span id="preview-time-display" class="preview-time-display">00:00 / 00:00</span>
@@ -1819,6 +1821,7 @@
         let dragStartValueEnd = 0;
         let videoControlsLocked = false; // Video controls lock state
         let timelineZoomed = false; // Timeline zoom state (zoom to buffer)
+        let videoFps = 30; // Default FPS, will be updated from metadata if possible
 
         // DOM Elements
         const originalVideo = document.getElementById('original-video');
@@ -3035,6 +3038,11 @@
 
                 const data = await response.json();
                 themeData = data.themes.find(t => t.number === themeNumber);
+                
+                if (data.fps) {
+                    videoFps = parseFloat(data.fps);
+                    console.log(`🎬 Video FPS: ${videoFps}`);
+                }
 
                 if (!themeData) throw new Error('Theme not found');
 
@@ -3449,6 +3457,77 @@
 
             previewVideo.pauseHandler = updatePlayButton;
             previewVideo.addEventListener('pause', updatePlayButton);
+
+            // Frame navigation with robust long-press support
+            const prevFrameBtn = document.getElementById('preview-prev-frame');
+            const nextFrameBtn = document.getElementById('preview-next-frame');
+            let scanInterval = null;
+            let scanDelayTimeout = null;
+
+            const doStep = (direction) => {
+                const frameDuration = 1 / videoFps;
+                const themeStart = parseFloat(previewVideo.dataset.themeStart) || 0;
+                const themeEnd = parseFloat(previewVideo.dataset.themeEnd) || previewVideo.duration;
+
+                if (direction === 'prev') {
+                    previewVideo.currentTime = Math.max(themeStart, previewVideo.currentTime - frameDuration);
+                } else {
+                    previewVideo.currentTime = Math.min(themeEnd, previewVideo.currentTime + frameDuration);
+                }
+            };
+
+            const startScanning = (e, direction) => {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // Clear any existing state
+                stopScanning();
+                
+                previewVideo.pause();
+                
+                // Immediate first step
+                doStep(direction);
+
+                // Wait 400ms before starting continuous scan (auto-repeat)
+                scanDelayTimeout = setTimeout(() => {
+                    // Repeat every 60ms (~16fps) for a smooth feel
+                    scanInterval = setInterval(() => {
+                        // Optional: skip if video is still busy seeking
+                        if (!previewVideo.seeking) {
+                            doStep(direction);
+                        }
+                    }, 60);
+                }, 400);
+            };
+
+            const stopScanning = () => {
+                if (scanDelayTimeout) {
+                    clearTimeout(scanDelayTimeout);
+                    scanDelayTimeout = null;
+                }
+                if (scanInterval) {
+                    clearInterval(scanInterval);
+                    scanInterval = null;
+                }
+            };
+
+            if (prevFrameBtn) {
+                prevFrameBtn.addEventListener('mousedown', (e) => startScanning(e, 'prev'));
+                prevFrameBtn.addEventListener('touchstart', (e) => startScanning(e, 'prev'), {passive: false});
+                prevFrameBtn.addEventListener('mouseup', stopScanning);
+                prevFrameBtn.addEventListener('mouseleave', stopScanning);
+                prevFrameBtn.addEventListener('touchend', stopScanning);
+                prevFrameBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
+            }
+
+            if (nextFrameBtn) {
+                nextFrameBtn.addEventListener('mousedown', (e) => startScanning(e, 'next'));
+                nextFrameBtn.addEventListener('touchstart', (e) => startScanning(e, 'next'), {passive: false});
+                nextFrameBtn.addEventListener('mouseup', stopScanning);
+                nextFrameBtn.addEventListener('mouseleave', stopScanning);
+                nextFrameBtn.addEventListener('touchend', stopScanning);
+                nextFrameBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
+            }
 
             // When video loads metadata, seek to theme start
             previewVideo.addEventListener('loadedmetadata', () => {
