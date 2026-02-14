@@ -66,6 +66,10 @@ class UniversalSubtitleRenderer:
         self.glow_color = self._hex_to_rgb(settings.get('glowColor', '#ffff00'))
         self.glow_blur = int(settings.get('glowBlur', 0))
         
+        # Background settings
+        self.bg_color = self._hex_to_rgb(settings.get('bgColor', '#000000'))
+        self.bg_opacity = float(settings.get('bgOpacity', 0.63))
+        
         self.mode = settings.get('mode', 'standard')  # 'standard', 'normal', 'cumulative'
         self.font_weight = settings.get('font_weight', 'bold')
 
@@ -392,9 +396,10 @@ class UniversalSubtitleRenderer:
             # Draw background box for the line
             box_padding = 10
             draw = ImageDraw.Draw(pil_image)
+            bg_alpha = int(self.bg_opacity * 255)
             draw.rectangle(
                 [x - box_padding, y_copy, x + line_width + box_padding, y_copy + line_height],
-                fill=(0, 0, 0, 160) # Semi-transparent black
+                fill=self.bg_color + (bg_alpha,)
             )
             y_copy += line_height
 

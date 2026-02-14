@@ -1520,7 +1520,7 @@
                         </div>
                         <div class="form-group">
                             <label>Background Opacity</label>
-                            <input type="range" id="subtitle-bg-opacity" min="0" max="100" value="70">
+                            <input type="range" id="subtitle-bg-opacity" min="0" max="100" value="70" step="1">
                         </div>
                     </div>
                     <div class="form-row">
@@ -2025,7 +2025,8 @@
 
                     // Draw background box for the line
                     const boxPadding = 10 * scale;
-                    ctx.fillStyle = 'rgba(0, 0, 0, 0.63)'; // Approx 160/255 transparency
+                    const bgRgb = hexToRgb(this.settings.bgColor || '#000000');
+                    ctx.fillStyle = `rgba(${bgRgb}, ${this.settings.bgOpacity})`;
                     ctx.fillRect(xCenter - (lineTextWidth / 2) - boxPadding, lineY, lineTextWidth + (boxPadding * 2), lineHeight);
 
                     // Render words in line
@@ -3818,6 +3819,8 @@
                 font_weight: document.getElementById('highlight-font-weight')?.value || 'bold',
                 glowColor: document.getElementById('highlight-glow-color')?.value || '#ffff00',
                 glowBlur: parseInt(document.getElementById('highlight-glow-blur')?.value || '10'),
+                bgColor: document.getElementById('subtitle-bg')?.value || '#000000',
+                bgOpacity: parseInt(document.getElementById('subtitle-bg-opacity')?.value || '70') / 100,
                 outlineColor: '#000000',
                 subtitle_position: globalPosition,
                 subtitle_h_align: horizontalAlign,
@@ -4118,6 +4121,8 @@
         document.getElementById('subtitle-color').addEventListener('input', updateSubtitlePreview);
         document.getElementById('subtitle-bg').addEventListener('input', updateSubtitlePreview);
         document.getElementById('subtitle-bg-opacity').addEventListener('input', updateSubtitlePreview);
+        document.getElementById('subtitle-bg').addEventListener('input', updateSubtitlePreview);
+        document.getElementById('subtitle-color').addEventListener('input', updateSubtitlePreview);
         document.getElementById('subtitle-position').addEventListener('change', async () => {
             const newPosition = document.getElementById('subtitle-position').value;
             await handlePositionChange(newPosition);
@@ -4392,6 +4397,10 @@
                     primaryColor: document.getElementById('subtitle-color')?.value || '#ffffff',
                     textColor: document.getElementById('highlight-text-color')?.value || '#ffff00',
                     pastColor: document.getElementById('past-color')?.value || '#808080',
+                    glowColor: document.getElementById('highlight-glow-color')?.value || '#ffff00',
+                    glowBlur: parseInt(document.getElementById('highlight-glow-blur')?.value || '10'),
+                    bgColor: document.getElementById('subtitle-bg')?.value || '#000000',
+                    bgOpacity: parseInt(document.getElementById('subtitle-bg-opacity')?.value || '70') / 100,
                     fontName: document.getElementById('subtitle-font')?.value || 'Arial',
                     font_weight: document.getElementById('highlight-font-weight')?.value || 'bold',
                     outlineColor: '#000000',
@@ -4880,6 +4889,8 @@
                 font_weight: document.getElementById('highlight-font-weight')?.value || 'bold',
                 glowColor: document.getElementById('highlight-glow-color')?.value || '#ffff00',
                 glowBlur: parseInt(document.getElementById('highlight-glow-blur')?.value || '10'),
+                bgColor: document.getElementById('subtitle-bg')?.value || '#000000',
+                bgOpacity: parseInt(document.getElementById('subtitle-bg-opacity')?.value || '70') / 100,
                 outlineColor: '#000000',
                 subtitle_position: globalPosition,
                 subtitle_h_align: horizontalAlign,
