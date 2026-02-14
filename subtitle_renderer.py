@@ -279,6 +279,9 @@ class UniversalSubtitleRenderer:
         # Skip if no subtitle text
         if not subtitle_text or not subtitle_text.strip():
             return cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+            
+        if int(current_time * 10) % 50 == 0: # Log roughly every 5 seconds
+            logger.info(f"Rendering subtitle at {current_time:.2f}s: {subtitle_text[:30]}...")
 
         # Get colored words - use subtitle time range if available
         if subtitle_start is not None and subtitle_end is not None:
@@ -340,8 +343,21 @@ class UniversalSubtitleRenderer:
                 # Always center for preset positions
                 x = (self.output_width - line_width) / 2
 
+            # Draw background box for the line
+            box_padding = 10
+            draw.rectangle(
+                [x - box_padding, y - box_padding, x + line_width + box_padding, y + line_height],
+                fill=(0, 0, 0, 160) # Semi-transparent black
+            )
+
             # Render each word in the line
             for word_info in line:
+                # Draw outline/shadow
+                offsets = [(-2,-2), (2,-2), (-2,2), (2,2)]
+                for dx, dy in offsets:
+                    draw.text((x+dx, y+dy), word_info['text'], fill=self.outline_color, font=font)
+                
+                # Draw main text
                 draw.text((x, y), word_info['text'], fill=word_info['color'], font=font)
                 x += self._get_word_width(word_info['text'], font) + self._get_space_width(font)
 
@@ -365,7 +381,10 @@ class UniversalSubtitleRenderer:
         for path in font_paths:
             try:
                 if os.path.exists(path):
-                    return ImageFont.truetype(path, size)
+                    font = ImageFont.truetype(path, size)
+                    if int(size) > 0: # Avoid logging too often
+                        logger.info(f"Loaded font: {path} (size {size})")
+                    return font
             except:
                 pass
 

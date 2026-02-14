@@ -1281,8 +1281,12 @@ Video Path: {video_info['video_path']}
         }
 
         from subtitle_renderer import render_canvas_karaoke_video
+        import logging
+        logger = logging.getLogger('server.py') # Try to get the existing server logger
+        
         success = False
         if word_timestamps_file:
+            logger.info(f"    DEBUG: Calling render_canvas_karaoke_video...")
             success = render_canvas_karaoke_video(
                 str(video_path),
                 str(word_timestamps_file),
@@ -1293,11 +1297,15 @@ Video Path: {video_info['video_path']}
                 render_settings,
                 progress_callback=lambda p, s, m: progress_callback(f"Progress: {int(p)}% {m}") if progress_callback else None
             )
+            logger.info(f"    DEBUG: render_canvas_karaoke_video success={success}")
+        else:
+            logger.info(f"    DEBUG: word_timestamps_file NOT FOUND in {folder_path}")
         
         if success:
+            logger.info(f"    DEBUG: Returning output_file={output_file}")
             return str(output_file)
         else:
-            print("    ✗ UniversalSubtitleRenderer failed or word timestamps missing, falling back to FFmpeg burn-in.")
+            logger.warning("    ✗ UniversalSubtitleRenderer failed or word timestamps missing, falling back to FFmpeg burn-in.")
 
         # Prepare output path for clean cut (if renderer failed)
         video_name = f"theme_{theme['number']:03d}_{self.sanitize_title(theme['title'])}.mp4"
