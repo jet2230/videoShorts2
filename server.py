@@ -1300,6 +1300,95 @@ def save_cue_text():
         app_logger.error(f"[ERROR] save_cue_text: {traceback.format_exc()}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/save-cue-timing', methods=['POST'])
+def save_cue_timing():
+    """Update start/end timing for an individual cue."""
+    try:
+        data = request.json
+        folder_number = data.get('folder')
+        theme_number = data.get('theme')
+        theme_start = data.get('theme_start')
+        
+        sequence = data.get('sequence') # To identify which block to change
+        old_start = data.get('old_start')
+        old_end = data.get('old_end')
+        new_start = data.get('new_start')
+        new_end = data.get('new_end')
+
+        if not all([folder_number, theme_number, sequence, old_start, old_end, new_start, new_end]):
+            return jsonify({'error': 'Missing required fields'}), 400
+
+        base_dir = Path(settings.get('video', 'output_dir'))
+        folder = next((f for f in base_dir.iterdir() if f.is_dir() and f.name.startswith(f"{folder_number}_")), None)
+        if not folder: return jsonify({'error': 'Folder not found'}), 404
+
+        # 1. Update SRT files
+        theme_srt = folder / 'shorts' / f'theme_{int(theme_number):03d}.srt'
+        srt_files = [f for f in folder.glob('*.srt') if 'theme_' not in f.name and 'adjust' not in f.name]
+        if not srt_files: srt_files = list(folder.glob('*.srt'))
+        main_srt = srt_files[0] if srt_files else None
+
+        theme_start_sec = 0
+        try: theme_start_sec = float(theme_start or 0)
+        except: pass
+
+        for target_file in [main_srt, theme_srt]:
+            if not target_file or not target_file.exists(): continue
+            is_trimmed = 'theme_' in target_file.name
+            
+            with open(target_file, 'r', encoding='utf-8') as f: content = f.read()
+            blocks = content.split('\n\n')
+            new_blocks = []
+            
+            target_old_start = parse_srt_time(old_start.replace(',', '.'))
+            if is_trimmed: target_old_start -= theme_start_sec
+
+            for block in blocks:
+                if not block.strip(): continue
+                lines = block.strip().split('\n')
+                if len(lines) < 2: 
+                    new_blocks.append(block); continue
+                
+                # Check sequence number or timestamp to match
+                ts_match = re.match(r'(\d+:\d+:[\d,]+)\s*-->\s*(\d+:\d+:[\d,]+)', lines[1])
+                if not ts_match:
+                    new_blocks.append(block); continue
+                
+                block_start = parse_srt_time(ts_match.group(1).replace(',', '.'))
+                # Match by sequence OR timestamp (more robust)
+                if str(lines[0]) == str(sequence) or abs(block_start - target_old_start) < 0.1:
+                    # Update this block
+                    ns_sec = parse_srt_time(new_start.replace(',', '.'))
+                    ne_sec = parse_srt_time(new_end.replace(',', '.'))
+                    if is_trimmed:
+                        ns_sec -= theme_start_sec
+                        ne_sec -= theme_start_sec
+                    
+                    ns_str = format_srt_time(ns_sec)
+                    ne_str = format_srt_time(ne_sec)
+                    lines[1] = f"{ns_str} --> {ne_str}"
+                    new_blocks.append('\n'.join(lines))
+                else:
+                    new_blocks.append(block)
+            
+            with open(target_file, 'w', encoding='utf-8') as f:
+                f.write('\n\n'.join(new_blocks) + '\n\n')
+
+        # 2. Update persistent edits JSON (migrate key)
+        edits_file = folder / 'shorts' / f'theme_{int(theme_number):03d}_edits.json'
+        if edits_file.exists():
+            with open(edits_file, 'r', encoding='utf-8') as f: edits_data = json.load(f)
+            old_key = f"{old_start}_{old_end}"
+            new_key = f"{new_start}_{new_end}"
+            if old_key in edits_data:
+                edits_data[new_key] = edits_data.pop(old_key)
+                with open(edits_file, 'w', encoding='utf-8') as f: json.dump(edits_data, f, indent=2)
+
+        return jsonify({'success': True})
+    except Exception as e:
+        app_logger.error(f"save_cue_timing error: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/save-global-position', methods=['POST'])
 def save_global_position():
     """Save global subtitle position for a theme to the adjust.md file."""

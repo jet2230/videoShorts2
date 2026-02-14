@@ -867,15 +867,18 @@
 
         .subtitle-text-area {
             width: 100%;
-            min-height: 150px;
-            padding: 12px;
+            height: 64px;
+            min-height: 64px;
+            padding: 10px 12px;
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 8px;
             /* Don't set color here - let inline styles work */
             font-size: 14px;
+            line-height: 1.5;
             font-family: inherit;
-            resize: vertical;
+            overflow-y: auto;
+            resize: none;
         }
 
         .subtitle-text-area:focus {
@@ -1567,9 +1570,23 @@
                         <button class="toolbar-btn" data-style="size" onmousedown="event.preventDefault(); applySize(0.8)">a-</button>
                     </div>
                     <div class="subtitle-text-area" id="subtitle-text" contenteditable="true" data-placeholder="Edit subtitle text here..."></div>
-                    <div id="subtitle-duration-info" style="margin-top: 8px; font-size: 12px; color: #00ff9d; font-weight: 500; display: flex; justify-content: flex-end; align-items: center; gap: 6px;">
-                        <span style="color: #aaa; font-weight: normal;">Display Duration:</span>
-                        <span id="subtitle-duration-value">0.00s</span>
+                    <div id="subtitle-duration-info" style="margin-top: 8px; font-size: 12px; color: #00ff9d; font-weight: 500; display: flex; justify-content: flex-start; align-items: center; gap: 12px;">
+                        <div class="nudge-group" style="gap: 4px;">
+                            <span style="color: #aaa; margin-right: 4px;">Start:</span>
+                            <button class="nudge-btn" style="width: 22px; height: 22px; font-size: 10px;" onclick="nudgeCueTiming('start', -0.1)" title="Earlier by 0.1s">-</button>
+                            <button class="nudge-btn" style="width: 22px; height: 22px; font-size: 10px;" onclick="nudgeCueTiming('start', 0.1)" title="Later by 0.1s">+</button>
+                        </div>
+                        
+                        <div style="display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.05); padding: 2px 8px; border-radius: 4px;">
+                            <span style="color: #aaa; font-weight: normal; font-size: 11px;">Duration:</span>
+                            <span id="subtitle-duration-value" style="min-width: 40px; text-align: center;">0.00s</span>
+                        </div>
+
+                        <div class="nudge-group" style="gap: 4px;">
+                            <button class="nudge-btn" style="width: 22px; height: 22px; font-size: 10px;" onclick="nudgeCueTiming('end', -0.1)" title="Earlier by 0.1s">-</button>
+                            <button class="nudge-btn" style="width: 22px; height: 22px; font-size: 10px;" onclick="nudgeCueTiming('end', 0.1)" title="Later by 0.1s">+</button>
+                            <span style="color: #aaa; margin-left: 4px;">:End</span>
+                        </div>
                     </div>
                 </div>
 
@@ -2372,6 +2389,84 @@
                 reloadSubtitleTrack();
                 autoSaveTheme();
                 updateTimeExtensionInputs();
+            }
+        }
+
+        // Fine control nudge function for individual subtitle cues
+        async function nudgeCueTiming(field, delta) {
+            if (!currentCueInfo || !allThemeCues) return;
+
+            // Find the cue in our local array
+            const cueIndex = allThemeCues.findIndex(c => c.sequence === currentCueInfo.sequence);
+            if (cueIndex === -1) return;
+
+            const cue = allThemeCues[cueIndex];
+            const oldStart = cue.start;
+            const oldEnd = cue.end;
+
+            // Calculate new times
+            let newStartSec = parseTime(cue.start);
+            let newEndSec = parseTime(cue.end);
+
+            if (field === 'start') {
+                newStartSec = Math.max(0, newStartSec + delta);
+                // Ensure start doesn't cross end
+                if (newStartSec >= newEndSec - 0.1) newStartSec = newEndSec - 0.1;
+            } else {
+                newEndSec = newEndSec + delta;
+                // Ensure end doesn't cross start
+                if (newEndSec <= newStartSec + 0.1) newEndSec = newStartSec + 0.1;
+            }
+
+            const newStart = formatVttTime(newStartSec).replace('.', ',');
+            const newEnd = formatVttTime(newEndSec).replace('.', ',');
+
+            // Update local objects
+            cue.start = newStart;
+            cue.end = newEnd;
+            
+            // If there's an edit cached for the old key, migrate it
+            const oldKey = `${oldStart}_${oldEnd}`;
+            const newKey = `${newStart}_${newEnd}`;
+            if (subtitleEdits[oldKey]) {
+                subtitleEdits[newKey] = subtitleEdits[oldKey];
+                delete subtitleEdits[oldKey];
+            }
+
+            // Sync UI
+            currentCueInfo.start = newStart;
+            currentCueInfo.end = newEnd;
+            
+            // Force duration display update
+            const durationValueEl = document.getElementById('subtitle-duration-value');
+            if (durationValueEl) {
+                const duration = newEndSec - newStartSec;
+                durationValueEl.textContent = `${duration.toFixed(2)}s`;
+                durationValueEl.style.color = duration < 0.8 ? '#ff9800' : '#00ff9d';
+            }
+
+            // Save to server
+            try {
+                const themeStart = parseFloat(previewVideo.dataset.themeStart) || 0;
+                await fetch('/api/save-cue-timing', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        folder: folderNumber,
+                        theme: themeNumber,
+                        theme_start: themeStart,
+                        sequence: cue.sequence,
+                        old_start: oldStart,
+                        old_end: oldEnd,
+                        new_start: newStart,
+                        new_end: newEnd
+                    })
+                });
+                
+                // Re-sync renderer
+                updateSubtitlePreview();
+            } catch (error) {
+                console.error("Failed to save cue timing:", error);
             }
         }
 
