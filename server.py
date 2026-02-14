@@ -1732,6 +1732,11 @@ def create_shorts():
 
 def _create_shorts(folder_number: str, themes: List, progress_callback=None, cancel_check=None):
     """Create shorts in background."""
+    # Direct file writing as a fail-safe for background process logging
+    with open('server.log', 'a') as f_log:
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S,%f')[:-3]
+        f_log.write(f"{timestamp} - INFO - [BG_TASK] _create_shorts started for folder {folder_number}\n")
+    
     # Re-initialize logging for the child process
     import logging
     from logging.handlers import RotatingFileHandler
@@ -3082,18 +3087,33 @@ def export_canvas_karaoke():
                 if themes_file.exists():
                     with open(themes_file, 'r', encoding='utf-8') as f:
                         content = f.read()
-                    import re
-                    # Pattern to extract title and time range
-                    # Format in themes.md: ### Theme N: Title
-                    pattern = rf'### Theme {t_num}:\s*(.*?)\n.*?\*\*Time Range:\*\*\s*(\d{{2}}:\d{{2}}:\d{{2}})\s*-\s*(\d{{2}}:\d{{2}}:\d{{2}})'
-                    match = re.search(pattern, content, re.DOTALL)
-                    if match:
-                        theme_title = match.group(1).strip()
-                        def parse_t(s):
-                            h, m, sec = map(int, s.split(':'))
-                            return h * 3600 + m * 60 + sec
-                        start_time = parse_t(match.group(2))
-                        end_time = parse_t(match.group(3))
+                    
+                    # Robust extraction
+                    try:
+                        import re
+                        # 1. Try to find the section for this theme
+                        theme_section_pattern = rf'### Theme {t_num}:(.*?)(?=### Theme|\Z)'
+                        section_match = re.search(theme_section_pattern, content, re.DOTALL)
+                        if section_match:
+                            section = section_match.group(0)
+                            # Extract Title
+                            title_match = re.search(rf'### Theme {t_num}:\s*(.*?)\n', section)
+                            if title_match: theme_title = title_match.group(1).strip()
+                            
+                            # Extract Time Range
+                            time_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})', section)
+                            if time_match:
+                                def parse_t(s):
+                                    h, m, sec = map(int, s.split(':'))
+                                    return h * 3600 + m * 60 + sec
+                                start_time = parse_t(time_match.group(1))
+                                end_time = parse_t(time_match.group(2))
+                    except Exception as e:
+                        app_logger.error(f"Error parsing themes.md: {e}")
+
+                # Direct log for debugging
+                with open('server.log', 'a') as f_log:
+                    f_log.write(f"{datetime.now()} - [DEBUG_EXPORT] Theme {t_num}: title='{theme_title}', start={start_time}, end={end_time}\n")
 
                 # Output path
                 sanitized_title = creator.sanitize_title(theme_title) if theme_title else "untitled"

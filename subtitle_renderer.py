@@ -824,20 +824,22 @@ def render_canvas_karaoke_video(
 
 
 def _parse_srt(srt_path: str) -> List[Dict]:
-    """Parse SRT subtitle file."""
+    """Parse SRT subtitle file with robust regex."""
     import re
+    from datetime import datetime
 
     with open(srt_path, 'r', encoding='utf-8') as f:
         content = f.read()
-
-    # SRT pattern
-    pattern = r'(\d+)\n(\d{2}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{3})\n([\s\S]+?)(?=\n\n|\Z)'
-
+        
+    # More robust SRT pattern that handles different line endings and spacing
+    pattern = r'(\d+)\s*\n(\d{2}:\d{2}:\d{2}[.,]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[.,]\d{3})\s*\n(.*?)(?=\n\s*\n|\n\s*\d+\s*\n|\Z)'
+    
     subtitles = []
-    for match in re.finditer(pattern, content, re.MULTILINE):
+    # Use re.DOTALL to match multi-line text
+    for match in re.finditer(pattern, content, re.DOTALL):
         sequence = int(match.group(1))
-        start_str = match.group(2)
-        end_str = match.group(3)
+        start_str = match.group(2).replace(',', '.')
+        end_str = match.group(3).replace(',', '.')
         text = match.group(4).strip()
 
         # Convert time to seconds
