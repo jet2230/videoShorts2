@@ -1971,10 +1971,10 @@
 
                 if (this.settings.subtitle_position === 'top') {
                     startY = (100 * scale);
-                    ctx.textBaseline = 'top';
+                    ctx.textBaseline = 'middle';
                 } else if (this.settings.subtitle_position === 'middle') {
                     startY = (canvas.height - totalHeight) / 2;
-                    ctx.textBaseline = 'top';
+                    ctx.textBaseline = 'middle';
                 } else if (this.settings.subtitle_position === 'custom' && this.settings.subtitle_top) {
                     // Handle custom position with alignment
                     const vAlign = this.settings.subtitle_v_align || 'middle';
@@ -1985,10 +1985,10 @@
                     } else { // bottom
                         startY = this.settings.subtitle_top - totalHeight;
                     }
-                    ctx.textBaseline = 'top';
+                    ctx.textBaseline = 'middle';
                 } else {
                     startY = canvas.height - (100 * scale) - totalHeight;
-                    ctx.textBaseline = 'top';
+                    ctx.textBaseline = 'middle';
                 }
 
                 ctx.textAlign = 'center';
@@ -2071,7 +2071,7 @@
                         ctx.strokeStyle = outlineColor;
                         ctx.lineWidth = Math.max(2 * scale, (baseFontSize * (wordObj.sizeMultiplier || 1.0)) / 12);
                         ctx.lineJoin = 'round';
-                        ctx.strokeText(word, xPos + wordWidth / 2, lineY + (lineHeight * 0.75));
+                        ctx.strokeText(word, xPos + wordWidth / 2, lineY + (lineHeight / 2));
 
                         // Draw Text
                         ctx.fillStyle = color;
@@ -2084,7 +2084,15 @@
                             ctx.shadowBlur = 0;
                         }
                         
-                        ctx.fillText(word, xPos + wordWidth / 2, lineY + (lineHeight * 0.75));
+                        ctx.fillText(word, xPos + wordWidth / 2, lineY + (lineHeight / 2));
+                        
+                        // Reset shadow for next word
+                        ctx.shadowBlur = 0;
+                        
+                        xPos += wordWidth + spaceWidth;
+                        globalWordCounter++;
+                    }
+                }
                         
                         // Reset shadow for next word
                         ctx.shadowBlur = 0;

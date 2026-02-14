@@ -417,7 +417,7 @@ class UniversalSubtitleRenderer:
                 x = (self.output_width - line_width) / 2
 
             x_start = x
-            text_y = y + (line_height * 0.05) # Slightly offset for better centering in box
+            text_y = y + (line_height / 2)
             
             for word_info in line:
                 word_text = word_info['text']
@@ -427,15 +427,15 @@ class UniversalSubtitleRenderer:
                 highlight_color_rgb = self._hex_to_rgb(self.settings.get('textColor', '#ffff00'))
                 
                 if word_color == highlight_color_rgb and self.glow_blur > 0:
-                    glow_draw.text((x, text_y), word_text, fill=self.glow_color + (255,), font=font)
+                    glow_draw.text((x, text_y), word_text, fill=self.glow_color + (255,), font=font, anchor="lm")
                 
                 # Draw outline/shadow on main image
                 offsets = [(-2,-2), (2,-2), (-2,2), (2,2)]
                 for dx, dy in offsets:
-                    draw.text((x+dx, text_y+dy), word_text, fill=self.outline_color + (255,), font=font)
+                    draw.text((x+dx, text_y+dy), word_text, fill=self.outline_color + (255,), font=font, anchor="lm")
                 
                 # Draw main text on main image
-                draw.text((x, text_y), word_text, fill=word_color + (255,), font=font)
+                draw.text((x, text_y), word_text, fill=word_color + (255,), font=font, anchor="lm")
                 
                 x += self._get_word_width(word_text, font) + self._get_space_width(font)
 
