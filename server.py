@@ -12,6 +12,7 @@ import queue
 import os
 import sys
 import logging
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 # Disable hardware acceleration for FFmpeg backend to fix AV1 decoding issues
@@ -27,8 +28,9 @@ import urllib.error
 
 from shorts_creator import YouTubeShortsCreator, load_settings
 
-# Setup logging to file
-log_handler = logging.FileHandler('server.log')
+# Setup logging to file with rotation
+# Max size set to roughly 1000 lines (avg 100 bytes per line = 100KB)
+log_handler = RotatingFileHandler('server.log', maxBytes=100*1024, backupCount=1)
 log_handler.setLevel(logging.INFO)
 log_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 log_handler.setFormatter(log_formatter)
