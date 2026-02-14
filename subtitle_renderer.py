@@ -352,25 +352,33 @@ class UniversalSubtitleRenderer:
 
     def _get_font(self, size: int) -> ImageFont.FreeTypeFont:
         """Get font with fallbacks."""
-        # Try to load the specified font
-        try:
-            return ImageFont.truetype(f"/usr/share/fonts/truetype/{self.font_name}.ttf", size)
-        except:
-            pass
-
-        try:
-            return ImageFont.truetype(f"/usr/share/fonts/truetype/{self.font_name}.ttc", size)
-        except:
-            pass
-
-        # Try common sans-serif fonts
-        for font_name in ['DejaVuSans-Bold', 'Arial-Bold', 'LiberationSans-Bold']:
+        # Try to load the specified font with various extensions and paths
+        font_paths = [
+            f"/usr/share/fonts/truetype/{self.font_name}.ttf",
+            f"/usr/share/fonts/truetype/{self.font_name}.ttc",
+            f"/usr/share/fonts/liberation-sans-fonts/LiberationSans-Bold.ttf",
+            f"/usr/share/fonts/liberation/LiberationSans-Bold.ttf",
+            f"/usr/share/fonts/google-noto-vf/NotoSansArabic[wght].ttf",
+            f"/usr/share/fonts/open-sans/OpenSans-Bold.ttf",
+        ]
+        
+        for path in font_paths:
             try:
-                return ImageFont.truetype(f"/usr/share/fonts/truetype/{font_name}.ttf", size)
+                if os.path.exists(path):
+                    return ImageFont.truetype(path, size)
             except:
                 pass
 
-        # Use default
+        # Try using fc-match to find the best match
+        try:
+            import subprocess
+            result = subprocess.run(['fc-match', '-f', '%{file}', self.font_name], capture_output=True, text=True)
+            if result.returncode == 0 and result.stdout.strip():
+                return ImageFont.truetype(result.stdout.strip(), size)
+        except:
+            pass
+
+        # Use default as absolute last resort (will be small)
         return ImageFont.load_default()
 
     def _wrap_words(self, colored_words: List[Dict], font, max_width: int) -> List[List[Dict]]:

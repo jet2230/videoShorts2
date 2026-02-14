@@ -1244,44 +1244,48 @@ Video Path: {video_info['video_path']}
         folder_path = output_dir.parent
         adjust_settings = self.get_theme_adjust_settings(folder_path, int(theme['number']))
         
-        # If we have adjustments, use the UniversalSubtitleRenderer (server-side)
-        if adjust_settings['has_adjustments']:
-            print(f"    Found adjusted settings, using UniversalSubtitleRenderer...")
-            
-            # Get word timestamps
-            word_timestamps_file = None
-            for file in folder_path.glob('*_word_timestamps.json'):
-                word_timestamps_file = file
-                break
-            
-            # Load highlight style if karaoke is enabled
-            karaoke_style = {}
-            if adjust_settings['karaoke_enabled']:
-                style_file = folder_path / 'highlight_style.json'
-                if style_file.exists():
-                    try:
-                        with open(style_file, 'r', encoding='utf-8') as f:
-                            karaoke_style = json.load(f)
-                    except: pass
+        # Use the UniversalSubtitleRenderer (server-side) for better quality and consistency
+        # Fallback to FFmpeg filter only if renderer fails
+        print(f"    Using UniversalSubtitleRenderer for high-quality subtitles...")
+        
+        # Get word timestamps
+        word_timestamps_file = None
+        for file in folder_path.glob('*_word_timestamps.json'):
+            word_timestamps_file = file
+            break
+        
+        # Load highlight style if karaoke is enabled
+        karaoke_style = {}
+        if adjust_settings.get('karaoke_enabled', True):
+            style_file = folder_path / 'highlight_style.json'
+            if style_file.exists():
+                try:
+                    with open(style_file, 'r', encoding='utf-8') as f:
+                        karaoke_style = json.load(f)
+                except: pass
 
-            # Setup renderer settings
-            render_settings = {
-                'mode': karaoke_style.get('karaoke_mode', 'normal') if adjust_settings['karaoke_enabled'] else 'standard',
-                'fontSize': 48 * 2, # Double for 1080x1920
-                'fontName': 'Arial',
-                'textColor': karaoke_style.get('textColor', '#ffff00'),
-                'primaryColor': '#ffffff',
-                'pastColor': karaoke_style.get('past_color', '#808080'),
-                'outlineColor': '#000000',
-                'subtitle_position': adjust_settings['subtitle_position'],
-                'subtitle_left': adjust_settings['subtitle_left'],
-                'subtitle_top': adjust_settings['subtitle_top']
-            }
+        # Setup renderer settings
+        render_settings = {
+            'mode': karaoke_style.get('karaoke_mode', 'normal') if adjust_settings.get('karaoke_enabled', True) else 'standard',
+            'fontSize': 48 * 2, # Double for 1080x1920
+            'fontName': 'Arial',
+            'textColor': karaoke_style.get('textColor', '#ffff00'),
+            'primaryColor': '#ffffff',
+            'pastColor': karaoke_style.get('past_color', '#808080'),
+            'outlineColor': '#000000',
+            'subtitle_position': adjust_settings.get('subtitle_position', 'bottom'),
+            'subtitle_left': adjust_settings.get('subtitle_left'),
+            'subtitle_top': adjust_settings.get('subtitle_top'),
+            'subtitle_h_align': adjust_settings.get('subtitle_h_align', 'center'),
+            'subtitle_v_align': adjust_settings.get('subtitle_v_align', 'bottom')
+        }
 
-            from subtitle_renderer import render_canvas_karaoke_video
+        from subtitle_renderer import render_canvas_karaoke_video
+        success = False
+        if word_timestamps_file:
             success = render_canvas_karaoke_video(
                 str(video_path),
-                str(word_timestamps_file) if word_timestamps_file else "",
+                str(word_timestamps_file),
                 str(trimmed_srt_path),
                 str(output_file),
                 start_seconds,
@@ -1289,13 +1293,13 @@ Video Path: {video_info['video_path']}
                 render_settings,
                 progress_callback=lambda p, s, m: progress_callback(f"Progress: {int(p)}% {m}") if progress_callback else None
             )
-            
-            if success:
-                return str(output_file)
-            else:
-                print("    ✗ UniversalSubtitleRenderer failed, falling back to clean cut.")
+        
+        if success:
+            return str(output_file)
+        else:
+            print("    ✗ UniversalSubtitleRenderer failed or word timestamps missing, falling back to FFmpeg burn-in.")
 
-        # Prepare output path for clean cut (if no adjustments or renderer failed)
+        # Prepare output path for clean cut (if renderer failed)
         video_name = f"theme_{theme['number']:03d}_{self.sanitize_title(theme['title'])}.mp4"
         
         # We'll first create a "clean" cut of the video (trimmed segment)
@@ -1322,8 +1326,13 @@ Video Path: {video_info['video_path']}
             # Temporary output path
             safe_output_path = production_tmp_dir / "output.mp4"
             
-            # Simple trim filter with scale/crop to vertical
-            vf_filter = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}:(iw-ow)/2:(ih-oh)/2"
+            # Simple trim filter with scale/crop to vertical + subtitles burn-in
+            # We use the trimmed SRT we created earlier
+            safe_srt_link = production_tmp_dir / "subtitles.srt"
+            os.symlink(trimmed_srt_path.absolute(), safe_srt_link)
+            
+            # Subtitles filter needs careful path escaping
+            vf_filter = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}:(iw-ow)/2:(ih-oh)/2,subtitles={safe_srt_link}"
 
             # Try NVIDIA hardware acceleration first
             gpu_cmd = [
