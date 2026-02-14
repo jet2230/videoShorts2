@@ -1296,8 +1296,7 @@ Video Path: {video_info['video_path']}
                 print("    ✗ UniversalSubtitleRenderer failed, falling back to clean cut.")
 
         # Prepare output path for clean cut (if no adjustments or renderer failed)
-        video_name = f"theme_{theme['number']:03d}_{sanitize_title(theme['title'])}.mp4"
-        final_output_path = output_dir / video_name
+        video_name = f"theme_{theme['number']:03d}_{self.sanitize_title(theme['title'])}.mp4"
         
         # We'll first create a "clean" cut of the video (trimmed segment)
         # The actual burning of subtitles will be handled by the Canvas renderer (WASM or Server-side)
