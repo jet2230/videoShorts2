@@ -79,6 +79,8 @@ class UniversalSubtitleRenderer:
         self.subtitle_position = settings.get('subtitle_position', 'bottom')
         self.subtitle_left = settings.get('subtitle_left') # Custom X
         self.subtitle_top = settings.get('subtitle_top')   # Custom Y
+        self.subtitle_h_align = settings.get('subtitle_h_align', 'center')
+        self.subtitle_v_align = settings.get('subtitle_v_align', 'bottom')
 
         # Pre-calculate word timings
         self.words_by_time = sorted(self.word_timestamps, key=lambda w: w['start'])
@@ -292,6 +294,9 @@ class UniversalSubtitleRenderer:
         # Convert to PIL for text rendering
         pil_image = Image.fromarray(cv2.cvtColor(frame_cropped, cv2.COLOR_BGR2RGB))
         draw = ImageDraw.Draw(pil_image)
+        
+        # ALWAYS draw a test marker to confirm rendering is happening
+        draw.text((10, 10), f"TEST RENDER: {current_time:.2f}s", fill=(255, 0, 0), font=None)
 
         # Skip if no subtitle text
         if not subtitle_text or not subtitle_text.strip():

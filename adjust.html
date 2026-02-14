@@ -4300,7 +4300,9 @@
 
         // Export video using server-side Flask mode
         async function exportCanvasKaraokeVideo() {
+            console.log('🎬 exportCanvasKaraokeVideo triggered');
             if (!folderNumber || !themeNumber) {
+                console.error('❌ Missing folder or theme info', {folderNumber, themeNumber});
                 showToast('Missing folder or theme info', 'error');
                 return;
             }
@@ -4355,6 +4357,7 @@
                 };
 
                 // Request export
+                console.log('📡 Sending export request to /api/export-canvas-karaoke', {folderNumber, themeNumber, settings});
                 const response = await fetch('/api/export-canvas-karaoke', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
