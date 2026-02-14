@@ -610,6 +610,23 @@
             right: -8px; /* Position outside right edge */
         }
 
+        .midpoint-marker {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: repeating-linear-gradient(
+                to bottom,
+                #00ff9d,
+                #00ff9d 4px,
+                transparent 4px,
+                transparent 8px
+            );
+            opacity: 0.6;
+            z-index: 4;
+            pointer-events: none;
+        }
+
         .theme-box-content {
             position: absolute;
             top: 50%;
@@ -1415,6 +1432,7 @@
                 </div>
                 <div class="timeline-track" id="timeline-track">
                     <div class="buffer-range" id="buffer-range">
+                        <div id="midpoint-marker" class="midpoint-marker" title="Original Midpoint"></div>
                         <div class="theme-box" id="theme-box">
                             <div class="theme-box-handle left" id="handle-left"></div>
                             <div class="theme-box-content" id="theme-box-content">00:30 - 01:30</div>
@@ -2282,12 +2300,13 @@
         function nudgeTheme(handle, delta) {
             const oldStart = startSeconds;
             const oldEnd = endSeconds;
+            const midPoint = (originalStartSeconds + originalEndSeconds) / 2;
 
             if (handle === 'left') {
                 // Adjust start time
                 let newStart = startSeconds + delta;
-                // Minimum short duration: 5 seconds, max is original video start
-                newStart = Math.max(0, Math.min(newStart, endSeconds - 5));
+                // Restriction: minimum 5s short, cannot cross midpoint within 1s
+                newStart = Math.max(0, Math.min(newStart, midPoint - 1.0));
                 
                 const timeOffset = newStart - startSeconds;
                 
@@ -2315,7 +2334,8 @@
             } else if (handle === 'right') {
                 // Adjust end time
                 let newEnd = endSeconds + delta;
-                newEnd = Math.max(startSeconds + 5, Math.min(newEnd, fullVideoDuration));
+                // Restriction: cannot cross midpoint within 1s
+                newEnd = Math.max(midPoint + 1.0, Math.min(newEnd, fullVideoDuration));
                 endSeconds = newEnd;
             }
 
@@ -3492,6 +3512,17 @@
             themeBox.style.width = `${themeWidthPercent}%`;
             themeBoxContent.textContent = `${formatTime(startSeconds)} - ${formatTime(endSeconds)}`;
 
+            // Position midpoint marker
+            const midPoint = (originalStartSeconds + originalEndSeconds) / 2;
+            const midPointMarker = document.getElementById('midpoint-marker');
+            if (midPointMarker) {
+                // Since midpoint-marker is now inside buffer-range, calculate position relative to buffer
+                const midPointPercent = ((midPoint - bufferStart) / bufferedDuration) * 100;
+                midPointMarker.style.left = `${midPointPercent}%`;
+                // Show only if within buffer range
+                midPointMarker.style.display = (midPoint >= bufferStart && midPoint <= bufferEnd) ? 'block' : 'none';
+            }
+
             // Update timeline markers to show full video range
             document.getElementById('time-start-marker').textContent = '00:00:00';
             document.getElementById('time-end-marker').textContent = formatTime(fullVideoDuration);
@@ -3577,14 +3608,17 @@
                 const deltaX = e.clientX - dragStartX;
                 // Use full video duration for drag calculations
                 const deltaTime = (deltaX / timelineTrack.offsetWidth) * fullVideoDuration;
+                const midPoint = (originalStartSeconds + originalEndSeconds) / 2;
 
                 if (isDragging === 'left') {
                     let newStart = dragStartValue + deltaTime;
-                    newStart = Math.max(0, Math.min(newStart, endSeconds - 20));
+                    // Proximity limit: cannot cross midpoint within 1s
+                    newStart = Math.max(0, Math.min(newStart, midPoint - 1.0));
                     startSeconds = newStart;
                 } else if (isDragging === 'right') {
                     let newEnd = dragStartValue + deltaTime;
-                    newEnd = Math.max(startSeconds + 20, Math.min(newEnd, fullVideoDuration));
+                    // Proximity limit: cannot cross midpoint within 1s
+                    newEnd = Math.max(midPoint + 1.0, Math.min(newEnd, fullVideoDuration));
                     endSeconds = newEnd;
                 }
 
@@ -3730,9 +3764,11 @@
 
                     if (extLeftEnd) {
                         const extensionSeconds = timeInputToSeconds(extLeftEnd.value);
+                        const midPoint = (originalStartSeconds + originalEndSeconds) / 2;
 
                         // Move theme start earlier by the extension amount
-                        const newStartSeconds = Math.max(0, originalStartSeconds - extensionSeconds);
+                        // Proximity limit: cannot cross midpoint within 1s
+                        const newStartSeconds = Math.max(0, Math.min(originalStartSeconds - extensionSeconds, midPoint - 1.0));
 
                         // Handle formatting timestamp shift when theme start changes
                         const timeOffset = newStartSeconds - startSeconds;
@@ -3780,9 +3816,11 @@
 
                     if (extRightEnd) {
                         const extensionSeconds = timeInputToSeconds(extRightEnd.value);
+                        const midPoint = (originalStartSeconds + originalEndSeconds) / 2;
 
                         // Move theme end later by the extension amount
-                        const newEndSeconds = Math.min(fullVideoDuration, originalEndSeconds + extensionSeconds);
+                        // Proximity limit: cannot cross midpoint within 1s
+                        const newEndSeconds = Math.min(fullVideoDuration, Math.max(originalEndSeconds + extensionSeconds, midPoint + 1.0));
 
                         endSeconds = newEndSeconds;
 
