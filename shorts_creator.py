@@ -292,7 +292,7 @@ class YouTubeShortsCreator:
         # Check if parent is the base_dir and folder matches the pattern XXX_name
         if parent_folder.parent.resolve() == self.base_dir.resolve():
             # Folder name should start with 3 digits and underscore
-            import re
+
             if re.match(r'^\d{3}_', folder_name):
                 # Already in correct structure, use existing folder
                 _log_msg(f"Video already in correct folder structure: {parent_folder}")
@@ -718,7 +718,7 @@ Video Path: {video_info['video_path']}
             r'the reason is',
         ]
 
-        import re
+
 
         # First pass: identify all potential theme boundaries
         theme_boundaries = []
@@ -899,7 +899,7 @@ Video Path: {video_info['video_path']}
             return best_topic
 
         # Look for question patterns to create engaging titles
-        import re
+
         if '?' in text:
             question_parts = text.split('?')
             for q in question_parts[:2]:
@@ -1189,6 +1189,7 @@ Video Path: {video_info['video_path']}
             'subtitle_top': None,
             'subtitle_h_align': 'center',
             'subtitle_v_align': 'bottom',
+            'subtitle_bold': False,
             'karaoke_enabled': True,
             'has_adjustments': False
         }
@@ -1199,7 +1200,7 @@ Video Path: {video_info['video_path']}
                 content = f.read()
                 
             # Extract subtitle position
-            import re
+
             pos_match = re.search(r'\*\*subtitle_position:\*\*\s*(\w+)', content)
             if pos_match: res['subtitle_position'] = pos_match.group(1)
                 
@@ -1215,6 +1216,28 @@ Video Path: {video_info['video_path']}
                 
             v_align_match = re.search(r'\*\*subtitle_v_align:\*\*\s*(\w+)', content)
             if v_align_match: res['subtitle_v_align'] = v_align_match.group(1)
+
+            # Additional styling fields
+            font_size_match = re.search(r'\*\*subtitle_font_size:\*\*\s*(\d+)', content)
+            if font_size_match: res['fontSize'] = int(font_size_match.group(1))
+            
+            primary_color_match = re.search(r'\*\*subtitle_primary_color:\*\*\s*(#[0-9a-fA-F]+)', content)
+            if primary_color_match: res['primaryColor'] = primary_color_match.group(1)
+            
+            bg_color_match = re.search(r'\*\*subtitle_bg_color:\*\*\s*(#[0-9a-fA-F]+)', content)
+            if bg_color_match: res['bgColor'] = bg_color_match.group(1)
+            
+            bg_opacity_match = re.search(r'\*\*subtitle_bg_opacity:\*\*\s*([0-9.]+)', content)
+            if bg_opacity_match:
+                # Handle both 0-100 and 0-1 formats
+                val = float(bg_opacity_match.group(1))
+                res['bgOpacity'] = val / 100.0 if val > 1.0 else val
+            
+            font_name_match = re.search(r'\*\*subtitle_font_name:\*\*\s*(.+)', content)
+            if font_name_match: res['fontName'] = font_name_match.group(1).strip()
+
+            subtitle_bold_match = re.search(r'\*\*subtitle_bold:\*\*\s*(true|false)', content)
+            if subtitle_bold_match: res['subtitle_bold'] = subtitle_bold_match.group(1) == 'true'
 
             karaoke_match = re.search(r'\*\*karaoke_highlighting:\*\*\s*(true|false)', content)
             if karaoke_match: res['karaoke_enabled'] = karaoke_match.group(1) == 'true'
@@ -1267,12 +1290,17 @@ Video Path: {video_info['video_path']}
         # Setup renderer settings
         render_settings = {
             'mode': karaoke_style.get('karaoke_mode', 'normal') if adjust_settings.get('karaoke_enabled', True) else 'standard',
-            'fontSize': 48 * 2, # Double for 1080x1920
-            'fontName': 'Arial',
+            'fontSize': adjust_settings.get('fontSize', 48 * 2), # Use saved size or default
+            'fontName': adjust_settings.get('fontName', 'Arial'),
             'textColor': karaoke_style.get('textColor', '#ffff00'),
-            'primaryColor': '#ffffff',
+            'primaryColor': adjust_settings.get('primaryColor', '#ffffff'),
             'pastColor': karaoke_style.get('past_color', '#808080'),
             'outlineColor': '#000000',
+            'bgColor': adjust_settings.get('bgColor', '#000000'),
+            'bgOpacity': adjust_settings.get('bgOpacity', 0.63),
+            'glowColor': karaoke_style.get('glowColor', '#ffff00'),
+            'glowBlur': int(karaoke_style.get('glowBlur', 0)),
+            'font_weight': 'bold' if adjust_settings.get('subtitle_bold', False) else 'normal',
             'subtitle_position': adjust_settings.get('subtitle_position', 'bottom'),
             'subtitle_left': adjust_settings.get('subtitle_left'),
             'subtitle_top': adjust_settings.get('subtitle_top'),
@@ -1499,7 +1527,7 @@ Video Path: {video_info['video_path']}
                     with open(adjust_file, 'r', encoding='utf-8') as f:
                         content = f.read()
                     # Parse adjusted values
-                    import re
+
                     title_match = re.search(r'\*\*Title:\*\*\s*(.+?)(?:\n\n|\n\*)', content)
                     time_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})', content)
                     if title_match:
@@ -1581,7 +1609,7 @@ Video Path: {video_info['video_path']}
                 def callback(msg):
                     if progress_callback:
                         # Check if message contains progress percentage
-                        import re
+
                         match = re.search(r'Progress:\s*(\d+)%', msg)
                         if match:
                             short_progress = int(match.group(1))

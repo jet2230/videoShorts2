@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 class UniversalSubtitleRenderer:
     """Universal renderer for all subtitle styles (standard and karaoke)."""
 
-    def __init__(self, video_path: str, word_timestamps: List[Dict], settings: Dict):
+    def __init__(self, video_path: str, word_timestamps: List[Dict], settings: Dict, formatting: Dict = None):
         """
         Initialize the renderer.
 
@@ -33,10 +33,12 @@ class UniversalSubtitleRenderer:
             video_path: Path to video file
             word_timestamps: List of word timestamps with 'word', 'start', 'end'
             settings: Rendering settings
+            formatting: Optional formatting for specific subtitles
         """
         self.video_path = Path(video_path)
         self.word_timestamps = word_timestamps or []
         self.settings = settings
+        self.formatting = formatting or {}
 
         # Video properties
         self.cap = cv2.VideoCapture(str(video_path), cv2.CAP_FFMPEG)
@@ -71,7 +73,7 @@ class UniversalSubtitleRenderer:
         self.bg_opacity = float(settings.get('bgOpacity', 0.63))
         
         self.mode = settings.get('mode', 'standard')  # 'standard', 'normal', 'cumulative'
-        self.font_weight = settings.get('font_weight', 'bold')
+        self.font_weight = settings.get('font_weight', 'normal')
 
         # Subtitle positioning
         self.subtitle_position = settings.get('subtitle_position', 'bottom')
@@ -85,10 +87,74 @@ class UniversalSubtitleRenderer:
 
     def _hex_to_rgb(self, hex_color: str) -> Tuple[int, int, int]:
         """Convert #RRGGBB to (R, G, B)."""
+        if not hex_color: return (255, 255, 255)
         hex_color = hex_color.lstrip('#')
         if len(hex_color) == 3:
-            hex_color = ''.join([c*2 for f in hex_color])
+            hex_color = ''.join([c*2 for c in hex_color])
+        if len(hex_color) != 6: return (255, 255, 255)
         return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+
+    def parse_subtitle_html(self, html: str) -> List[Dict]:
+        """Parse HTML-style subtitle text into styled word objects."""
+        if not html: return []
+        
+        import re
+        from html.parser import HTMLParser
+
+        class SubtitleHTMLParser(HTMLParser):
+            def __init__(self, base_style):
+                super().__init__()
+                self.result = []
+                self.style_stack = [base_style]
+
+            def handle_starttag(self, tag, attrs):
+                current = self.style_stack[-1].copy()
+                if tag in ('b', 'strong'): current['bold'] = True
+                elif tag in ('i', 'em'): current['italic'] = True
+                elif tag == 'font':
+                    for name, value in attrs:
+                        if name == 'color': current['color'] = value
+                        elif name == 'size':
+                            size_map = {'1': 0.5, '2': 0.7, '3': 0.9, '4': 1.0, '5': 1.2, '6': 1.4, '7': 1.6}
+                            current['sizeMultiplier'] = size_map.get(value, 1.0)
+                elif tag == 'span':
+                    for name, value in attrs:
+                        if name == 'style':
+                            if 'color' in value:
+                                match = re.search(r'color:\s*([^;]+)', value)
+                                if match: current['color'] = match.group(1).strip()
+                            if 'font-weight' in value:
+                                if 'bold' in value or re.search(r'font-weight:\s*([789]00)', value):
+                                    current['bold'] = True
+                            if 'font-style' in value and 'italic' in value:
+                                current['italic'] = True
+                            if 'font-size' in value:
+                                em_match = re.search(r'font-size:\s*([\d.]+)em', value)
+                                if em_match: current['sizeMultiplier'] = float(em_match.group(1))
+                                else:
+                                    px_match = re.search(r'font-size:\s*([\d.]+)px', value)
+                                    if px_match: current['sizeMultiplier'] = float(px_match.group(1)) / 16.0
+                self.style_stack.append(current)
+
+            def handle_endtag(self, tag):
+                if len(self.style_stack) > 1:
+                    self.style_stack.pop()
+
+            def handle_data(self, data):
+                words = data.split()
+                style = self.style_stack[-1]
+                for word in words:
+                    self.result.append({
+                        'text': word,
+                        'bold': style.get('bold', False),
+                        'italic': style.get('italic', False),
+                        'color': style.get('color'),
+                        'sizeMultiplier': style.get('sizeMultiplier', 1.0)
+                    })
+
+        parser = SubtitleHTMLParser({'bold': False, 'italic': False, 'sizeMultiplier': 1.0})
+        parser.feed(html)
+        return parser.result
 
     def get_words_at_time(self, current_time: float, subtitle_text: str) -> Tuple[List[Dict], int]:
         """
@@ -196,66 +262,74 @@ class UniversalSubtitleRenderer:
 
         return subtitle_words[:len(words)]  # Limit to word count
 
-    def get_words_at_time_for_subtitle(self, current_time: float, subtitle_text: str, subtitle_start: float, subtitle_end: float) -> Tuple[List[Dict], int]:
+    def get_words_at_time_for_subtitle(self, current_time: float, subtitle_data: str, subtitle_start: float, subtitle_end: float) -> Tuple[List[Dict], int]:
         """
         Get word list and highlighted word index for current time within a subtitle.
 
-        This method properly matches words to timestamps by finding which timestamps
-        fall within the subtitle's time range.
-
         Args:
             current_time: Current time in seconds
-            subtitle_text: Subtitle text
+            subtitle_data: Subtitle text or HTML content
             subtitle_start: Subtitle start time
             subtitle_end: Subtitle end time
 
         Returns:
             Tuple of (words_with_colors, highlighted_index)
         """
-        words = subtitle_text.split()
+        # Parse data into styled words
+        if '<' in subtitle_data or '&' in subtitle_data:
+            words_info = self.parse_subtitle_html(subtitle_data)
+        else:
+            words_info = [{'text': w, 'bold': False, 'italic': False, 'color': None, 'sizeMultiplier': 1.0} 
+                         for w in subtitle_data.split()]
 
-        # Get word timestamps for this subtitle
-        subtitle_word_timestamps = self.get_words_for_subtitle(subtitle_start, subtitle_end, subtitle_text)
+        # Get word timestamps for this subtitle (based on plain text count)
+        plain_text = ' '.join([w['text'] for w in words_info])
+        subtitle_word_timestamps = self.get_words_for_subtitle(subtitle_start, subtitle_end, plain_text)
 
-        # Find highlighted word index using POSITIONAL matching
-        # (Find which word in the audio sequence we are currently at)
+        # Find highlighted word index
         highlighted_index = -1
         for i, word_ts in enumerate(subtitle_word_timestamps):
             if word_ts['start'] <= current_time < word_ts['end']:
-                # Positional match: highlight the i-th word in the subtitle
                 highlighted_index = i
                 break
 
-        # Color words based on timing
+        # Color words based on timing and individual word styles
         colored_words = []
-        for j, word in enumerate(words):
-            word_color = self.primary_color  # Default primary color
+        highlight_color_rgb = self.text_color # settings.textColor
 
-            # Get the timestamp for this word (by position)
-            if j < len(subtitle_word_timestamps):
-                word_ts = subtitle_word_timestamps[j]
-                if current_time >= word_ts['end']:
-                    # Word already spoken
+        for j, word_obj in enumerate(words_info):
+            # Base color: use word's custom color if set, else primary global color
+            base_color = self._hex_to_rgb(word_obj['color']) if word_obj.get('color') else self.primary_color
+            word_color = base_color
+
+            if self.mode != 'standard':
+                # Get the timestamp for this word (by position)
+                if j < len(subtitle_word_timestamps):
+                    word_ts = subtitle_word_timestamps[j]
+                    if current_time >= word_ts['end']:
+                        # Word already spoken
+                        if self.mode == 'cumulative':
+                            word_color = self.past_color
+                        else:
+                            word_color = base_color
+                    elif current_time >= word_ts['start']:
+                        # Currently being spoken
+                        word_color = highlight_color_rgb
+                elif highlighted_index == -1 and j < len(words_info) and current_time >= subtitle_end:
                     if self.mode == 'cumulative':
                         word_color = self.past_color
-                    else:
-                        word_color = self.primary_color  # Normal mode - back to primary color
-                elif current_time >= word_ts['start']:
-                    # Currently being spoken
-                    word_color = self.text_color
-            elif highlighted_index == -1 and j < len(words) and current_time >= subtitle_end:
-                # Fallback for end of subtitle
-                if self.mode == 'cumulative':
-                    word_color = self.past_color
 
             colored_words.append({
-                'text': word,
-                'color': word_color
+                'text': word_obj['text'],
+                'color': word_color,
+                'bold': word_obj.get('bold', False),
+                'italic': word_obj.get('italic', False),
+                'sizeMultiplier': word_obj.get('sizeMultiplier', 1.0)
             })
 
         return colored_words, highlighted_index
 
-    def render_frame(self, frame: np.ndarray, current_time: float, subtitle_text: str, subtitle_start: float = None, subtitle_end: float = None) -> np.ndarray:
+    def render_frame(self, frame: np.ndarray, current_time: float, subtitle_text: str, subtitle_start: float = None, subtitle_end: float = None, subtitle_seq: int = None) -> np.ndarray:
         """
         Render karaoke subtitles on a video frame.
 
@@ -265,10 +339,18 @@ class UniversalSubtitleRenderer:
             subtitle_text: Subtitle text to display
             subtitle_start: Subtitle start time (optional)
             subtitle_end: Subtitle end time (optional)
+            subtitle_seq: Subtitle sequence number for formatting lookup (optional)
 
         Returns:
             Frame with rendered subtitles
         """
+        # Look up formatting for this subtitle
+        subtitle_data = subtitle_text
+        if subtitle_seq is not None and str(subtitle_seq) in self.formatting:
+            formatting = self.formatting[str(subtitle_seq)]
+            if formatting.get('html'):
+                subtitle_data = formatting['html']
+
         # Use cover/crop to fill entire output (no black bars)
         input_height, input_width = frame.shape[:2]
 
@@ -296,11 +378,11 @@ class UniversalSubtitleRenderer:
 
         # Convert to PIL for text rendering
         pil_image = Image.fromarray(cv2.cvtColor(frame_cropped, cv2.COLOR_BGR2RGB))
-        draw = ImageDraw.Draw(pil_image)
         
         # Debug watermark if enabled
         if self.settings.get('debug', False):
             try:
+                draw = ImageDraw.Draw(pil_image)
                 debug_font = self._get_font(80)
                 draw.text((50, 50), f"DEBUG: {current_time:.2f}s", fill=(255, 0, 0), font=debug_font)
                 
@@ -326,23 +408,34 @@ class UniversalSubtitleRenderer:
 
         # Get colored words - use subtitle time range if available
         if subtitle_start is not None and subtitle_end is not None:
-            colored_words, _ = self.get_words_at_time_for_subtitle(current_time, subtitle_text, subtitle_start, subtitle_end)
+            colored_words, _ = self.get_words_at_time_for_subtitle(current_time, subtitle_data, subtitle_start, subtitle_end)
         else:
             colored_words, _ = self.get_words_at_time(current_time, subtitle_text)
 
-        # Render each word with its color
-        # We need to do word wrapping and proper positioning
-        try:
-            # Try to load font
-            font = self._get_font(self.font_size)
-        except Exception as e:
-            logger.warning(f"Could not load font {self.font_name}: {e}")
-            # Use default font
-            font = ImageFont.load_default()
-
-        # Word wrapping
+        # Word wrapping logic needs to use individual word fonts
+        lines = []
+        current_line = []
+        current_line_width = 0
         max_width = self.output_width - 80  # 40px padding
-        lines = self._wrap_words(colored_words, font, max_width)
+        
+        for word_info in colored_words:
+            word_font = self._get_word_font(word_info)
+            word_width = self._get_word_width(word_info['text'], word_font)
+            space_width = self._get_space_width(word_font)
+            
+            if not current_line:
+                current_line = [word_info]
+                current_line_width = word_width
+            elif current_line_width + space_width + word_width <= max_width:
+                current_line.append(word_info)
+                current_line_width += space_width + word_width
+            else:
+                lines.append(current_line)
+                current_line = [word_info]
+                current_line_width = word_width
+        
+        if current_line:
+            lines.append(current_line)
 
         # Calculate total height of all lines
         line_height = int(self.font_size * 1.2)
@@ -350,62 +443,73 @@ class UniversalSubtitleRenderer:
 
         # Calculate starting Y position based on settings
         if self.subtitle_position == 'custom' and self.subtitle_left is not None and self.subtitle_top is not None:
-            # Vertical alignment relative to top coordinate
-            if self.subtitle_v_align == 'top':
-                y = self.subtitle_top
-            elif self.subtitle_v_align == 'middle':
-                y = self.subtitle_top - (total_height / 2)
-            else: # bottom
-                y = self.subtitle_top - total_height
+            # For custom positions (dragged), subtitle_top is ALWAYS the center point
+            # because that's how dragging is initialized and updated in the UI
+            startY = self.subtitle_top - (total_height / 2)
         else:
             # Preset positions
             if self.subtitle_position == 'top':
                 margin_top = 100
-                y = margin_top
+                startY = margin_top
             elif self.subtitle_position == 'middle':
-                y = (self.output_height - total_height) / 2
+                startY = (self.output_height - total_height) / 2
             else: # bottom
                 margin_bottom = 100
-                y = self.output_height - margin_bottom - total_height
+                startY = self.output_height - margin_bottom - total_height
 
         # Render each line
         if int(current_time * 10) % 50 == 0:
-            logger.info(f"Rendering {len(lines)} lines at {current_time:.2f}s (y={y}, text: {subtitle_text[:20]}...)")
+            logger.info(f"Rendering {len(lines)} lines at {current_time:.2f}s (y={startY}, text: {subtitle_text[:20]}...)")
 
         # Convert to RGBA for glow/transparency support
         pil_image = pil_image.convert("RGBA")
+        
+        # Create a separate layer for background and text
+        # This allows proper alpha blending of background boxes
+        overlay_layer = Image.new("RGBA", pil_image.size, (0, 0, 0, 0))
+        overlay_draw = ImageDraw.Draw(overlay_layer)
         
         # Create a separate layer for glow
         glow_layer = Image.new("RGBA", pil_image.size, (0, 0, 0, 0))
         glow_draw = ImageDraw.Draw(glow_layer)
 
-        # First pass: Draw background boxes and collect glowing words
-        y_copy = y
+        # First pass: Draw background boxes on overlay layer
+        y_copy = startY
+        bg_alpha = int(self.bg_opacity * 255)
+        bg_fill = self.bg_color + (bg_alpha,)
+        
         for line in lines:
-            line_width = self._get_text_width(line, font)
-            if self.subtitle_position == 'custom' and self.subtitle_left is not None:
-                if self.subtitle_h_align == 'left':
-                    x = self.subtitle_left
-                elif self.subtitle_h_align == 'right':
-                    x = self.subtitle_left - line_width
-                else: # center
-                    x = self.subtitle_left - (line_width / 2)
-            else:
-                x = (self.output_width - line_width) / 2
+            line_width = 0
+            for i, word_info in enumerate(line):
+                wf = self._get_word_font(word_info)
+                line_width += self._get_word_width(word_info['text'], wf)
+                if i < len(line) - 1:
+                    line_width += self._get_space_width(wf)
 
-            # Draw background box for the line
+            if (self.subtitle_position == 'custom' and self.subtitle_left is not None):
+                # For custom positions (dragged), subtitle_left is ALWAYS the center point
+                xCenter = self.subtitle_left
+            else:
+                xCenter = self.output_width / 2
+
+            # Draw background box for the line on overlay layer
             box_padding = 10
-            draw = ImageDraw.Draw(pil_image)
-            bg_alpha = int(self.bg_opacity * 255)
-            draw.rectangle(
-                [x - box_padding, y_copy, x + line_width + box_padding, y_copy + line_height],
-                fill=self.bg_color + (bg_alpha,)
+            overlay_draw.rectangle(
+                [xCenter - (line_width / 2) - box_padding, y_copy, xCenter + (line_width / 2) + box_padding, y_copy + line_height],
+                fill=bg_fill
             )
             y_copy += line_height
 
-        # Second pass: Draw text (glow, then outline, then main text)
+        # Second pass: Draw text (glow, then outline, then main text) on overlay layer
+        y_text = startY
         for line in lines:
-            line_width = self._get_text_width(line, font)
+            line_width = 0
+            for i, word_info in enumerate(line):
+                wf = self._get_word_font(word_info)
+                line_width += self._get_word_width(word_info['text'], wf)
+                if i < len(line) - 1:
+                    line_width += self._get_space_width(wf)
+
             if self.subtitle_position == 'custom' and self.subtitle_left is not None:
                 if self.subtitle_h_align == 'left':
                     x = self.subtitle_left
@@ -416,45 +520,65 @@ class UniversalSubtitleRenderer:
             else:
                 x = (self.output_width - line_width) / 2
 
-            x_start = x
-            text_y = y + (line_height / 2)
+            text_y = y_text + (line_height / 2)
             
             for word_info in line:
                 word_text = word_info['text']
                 word_color = word_info['color']
+                word_font = self._get_word_font(word_info)
                 
                 # Check if this word should glow (if it's the highlight color)
-                highlight_color_rgb = self._hex_to_rgb(self.settings.get('textColor', '#ffff00'))
+                highlight_color_rgb = self.text_color
                 
                 if word_color == highlight_color_rgb and self.glow_blur > 0:
-                    glow_draw.text((x, text_y), word_text, fill=self.glow_color + (255,), font=font, anchor="lm")
+                    glow_draw.text((x, text_y), word_text, fill=self.glow_color + (255,), font=word_font, anchor="lm")
                 
-                # Draw outline/shadow on main image
+                # Draw outline/shadow on overlay layer
                 offsets = [(-2,-2), (2,-2), (-2,2), (2,2)]
                 for dx, dy in offsets:
-                    draw.text((x+dx, text_y+dy), word_text, fill=self.outline_color + (255,), font=font, anchor="lm")
+                    overlay_draw.text((x+dx, text_y+dy), word_text, fill=self.outline_color + (255,), font=word_font, anchor="lm")
                 
-                # Draw main text on main image
-                draw.text((x, text_y), word_text, fill=word_color + (255,), font=font, anchor="lm")
+                # Draw main text on overlay layer
+                overlay_draw.text((x, text_y), word_text, fill=word_color + (255,), font=word_font, anchor="lm")
                 
-                x += self._get_word_width(word_text, font) + self._get_space_width(font)
+                x += self._get_word_width(word_text, word_font) + self._get_space_width(word_font)
 
-            y += line_height
+            y_text += line_height
 
-        # Apply blur to glow layer and composite
+        # Apply blur to glow layer
         if self.glow_blur > 0:
             glow_layer = glow_layer.filter(ImageFilter.GaussianBlur(radius=self.glow_blur))
-            pil_image = Image.alpha_composite(pil_image, glow_layer)
+            # Composite glow onto overlay first
+            overlay_layer = Image.alpha_composite(overlay_layer, glow_layer)
+
+        # Finally composite everything onto the main image
+        pil_image = Image.alpha_composite(pil_image, overlay_layer)
 
         # Convert back to OpenCV format
         return cv2.cvtColor(np.array(pil_image.convert("RGB")), cv2.COLOR_RGB2BGR)
 
-    def _get_font(self, size: int) -> ImageFont.FreeTypeFont:
+    def _get_word_font(self, word_info: Dict) -> ImageFont.FreeTypeFont:
+        """Get the font for a specific word based on its style."""
+        size = int(self.font_size * word_info.get('sizeMultiplier', 1.0))
+        
+        # Determine weight and style
+        weight = "Bold" if word_info.get('bold', False) or self.font_weight == 'bold' else "Regular"
+        style = "Italic" if word_info.get('italic', False) else ""
+        
+        # Combine into something fc-match might understand
+        requested_font = f"{self.font_name}:{weight}{style}"
+        
+        return self._get_font(size, requested_font)
+
+    def _get_font(self, size: int, font_name: str = None) -> ImageFont.FreeTypeFont:
         """Get font with fallbacks."""
+        if font_name is None:
+            font_name = self.font_name
+            
         # Try to load the specified font with various extensions and paths
         font_paths = [
-            f"/usr/share/fonts/truetype/{self.font_name}.ttf",
-            f"/usr/share/fonts/truetype/{self.font_name}.ttc",
+            f"/usr/share/fonts/truetype/{font_name}.ttf",
+            f"/usr/share/fonts/truetype/{font_name}.ttc",
             f"/usr/share/fonts/liberation-sans-fonts/LiberationSans-Bold.ttf",
             f"/usr/share/fonts/liberation/LiberationSans-Bold.ttf",
             f"/usr/share/fonts/google-noto-vf/NotoSansArabic[wght].ttf",
@@ -465,8 +589,6 @@ class UniversalSubtitleRenderer:
             try:
                 if os.path.exists(path):
                     font = ImageFont.truetype(path, size)
-                    if int(size) > 0: # Avoid logging too often
-                        logger.info(f"Loaded font: {path} (size {size})")
                     return font
             except:
                 pass
@@ -474,7 +596,7 @@ class UniversalSubtitleRenderer:
         # Try using fc-match to find the best match
         try:
             import subprocess
-            result = subprocess.run(['fc-match', '-f', '%{file}', self.font_name], capture_output=True, text=True)
+            result = subprocess.run(['fc-match', '-f', '%{file}', font_name], capture_output=True, text=True)
             if result.returncode == 0 and result.stdout.strip():
                 return ImageFont.truetype(result.stdout.strip(), size)
         except:
@@ -597,6 +719,19 @@ def render_canvas_karaoke_video(
 
     subtitles = _parse_srt(subtitle_srt_path)
     
+    # Load formatting if available
+    formatting = {}
+    srt_path = Path(subtitle_srt_path)
+    # Check for formatting JSON: theme_001_formatting.json
+    formatting_file = srt_path.parent / srt_path.name.replace('.srt', '_formatting.json')
+    if formatting_file.exists():
+        try:
+            with open(formatting_file, 'r', encoding='utf-8') as f:
+                formatting = json.load(f)
+            logger.info(f"Loaded formatting for {len(formatting)} subtitles from {formatting_file}")
+        except Exception as e:
+            logger.warning(f"Failed to load formatting file {formatting_file}: {e}")
+
     with open('server.log', 'a') as f:
         msg = f"[DEBUG_SRT] Path: {subtitle_srt_path}, Count: {len(subtitles)}\n"
         if subtitles:
@@ -639,7 +774,7 @@ def render_canvas_karaoke_video(
         logger.warning("No subtitles parsed from SRT file")
 
     # Create renderer
-    renderer = UniversalSubtitleRenderer(video_path, word_timestamps, settings)
+    renderer = UniversalSubtitleRenderer(video_path, word_timestamps, settings, formatting)
     
     with open('server.log', 'a') as f:
         f.write(f"[{datetime.now()}] RENDERER START: {video_path} from {start_time} to {end_time}, subs={len(subtitles)}\n")
@@ -800,6 +935,7 @@ def render_canvas_karaoke_video(
             subtitle_text = ""
             subtitle_start = None
             subtitle_end = None
+            subtitle_seq = None
 
             if is_theme_srt:
                 # Theme SRT: times are relative to theme start (0 = theme start)
@@ -807,6 +943,7 @@ def render_canvas_karaoke_video(
                 for sub in subtitles:
                     if sub['start'] <= relative_time <= sub['end']:
                         subtitle_text = sub['text']
+                        subtitle_seq = sub.get('sequence')
                         # Convert to absolute time for word timestamp lookup
                         subtitle_start = sub['start'] + start_time
                         subtitle_end = sub['end'] + start_time
@@ -816,13 +953,14 @@ def render_canvas_karaoke_video(
                 for sub in subtitles:
                     if sub['start'] <= current_time <= sub['end']:
                         subtitle_text = sub['text']
+                        subtitle_seq = sub.get('sequence')
                         # Already absolute, use directly
                         subtitle_start = sub['start']
                         subtitle_end = sub['end']
                         break
 
             # Render karaoke subtitles
-            rendered_frame = renderer.render_frame(frame, current_time, subtitle_text, subtitle_start, subtitle_end)
+            rendered_frame = renderer.render_frame(frame, current_time, subtitle_text, subtitle_start, subtitle_end, subtitle_seq)
 
             # Save frame
             # OPTIMIZATION 2: Use JPEG instead of PNG for faster compression and smaller files

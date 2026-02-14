@@ -83,7 +83,7 @@
             border-radius: 4px;
             font-size: 13px;
             font-family: monospace;
-            z-index: 10;
+            z-index: 200;
             pointer-events: none;
         }
 
@@ -97,7 +97,7 @@
             border-radius: 4px;
             font-size: 13px;
             font-weight: 500;
-            z-index: 10;
+            z-index: 200;
             opacity: 0;
             transition: opacity 0.3s ease;
             pointer-events: none;
@@ -127,13 +127,17 @@
             padding: 10px;
             opacity: 0;
             transition: opacity 0.3s;
-            z-index: 20;
+            z-index: 200;
             pointer-events: none;
         }
 
-        .video-wrapper:hover .video-controls-overlay {
+        .video-wrapper:hover:not(.controls-locked) .video-controls-overlay {
             opacity: 1;
             pointer-events: auto;
+        }
+
+        .video-wrapper.controls-locked .video-controls-overlay {
+            display: none !important;
         }
 
         .controls-progress {
@@ -334,7 +338,7 @@
             right: 0;
             background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
             padding: 10px;
-            z-index: 20;
+            z-index: 200;
             display: flex;
             flex-direction: column;
             gap: 8px;
@@ -343,9 +347,13 @@
             pointer-events: none;
         }
 
-        .preview-wrapper:hover .preview-seekbar-container {
+        .preview-wrapper:hover:not(.controls-locked) .preview-seekbar-container {
             opacity: 1;
             pointer-events: auto;
+        }
+
+        .preview-wrapper.controls-locked .preview-seekbar-container {
+            display: none !important;
         }
 
         .preview-controls-row {
@@ -490,7 +498,7 @@
             display: flex;
             flex-direction: column;
             gap: 8px;
-            z-index: 30;
+            z-index: 200;
         }
 
         .video-buffer-controls-left {
@@ -1467,25 +1475,25 @@
                             </button>
                         </div>
                         <div class="actions-group">
-                            <button class="toolbar-btn" onclick="removeFormatting()" title="Clear all formatting">🗑 Clear</button>
+                            <button class="toolbar-btn" onmousedown="event.preventDefault(); removeFormatting()" title="Clear all formatting">🗑 Clear</button>
                         </div>
                     </div>
 
                     <!-- Rich text formatting toolbar -->
                     <div class="rich-text-toolbar">
-                        <button class="toolbar-btn" data-style="bold" onclick="toggleStyle('bold')"><b>Bold</b></button>
-                        <button class="toolbar-btn" data-style="italic" onclick="toggleStyle('italic')"><i>Italic</i></button>
-                        <button class="toolbar-btn" data-style="color" onclick="applyColor('#ff0000')">🔴</button>
-                        <button class="toolbar-btn" data-style="color" onclick="applyColor('#00ff00')">🟢</button>
-                        <button class="toolbar-btn" data-style="color" onclick="applyColor('#00ffff')">🔵</button>
-                        <button class="toolbar-btn" data-style="color" onclick="applyColor('#ffff00')">🟡</button>
-                        <button class="toolbar-btn" data-style="color" onclick="applyColor('#ffffff')">⚪</button>
+                        <button class="toolbar-btn" data-style="bold" onmousedown="event.preventDefault(); toggleStyle('bold')"><b>Bold</b></button>
+                        <button class="toolbar-btn" data-style="italic" onmousedown="event.preventDefault(); toggleStyle('italic')"><i>Italic</i></button>
+                        <button class="toolbar-btn" data-style="color" onmousedown="event.preventDefault(); applyColor('#ff0000')">🔴</button>
+                        <button class="toolbar-btn" data-style="color" onmousedown="event.preventDefault(); applyColor('#00ff00')">🟢</button>
+                        <button class="toolbar-btn" data-style="color" onmousedown="event.preventDefault(); applyColor('#00ffff')">🔵</button>
+                        <button class="toolbar-btn" data-style="color" onmousedown="event.preventDefault(); applyColor('#ffff00')">🟡</button>
+                        <button class="toolbar-btn" data-style="color" onmousedown="event.preventDefault(); applyColor('#ffffff')">⚪</button>
                         <div class="color-picker-wrapper">
                             <input type="color" id="custom-color-picker" value="#ff00ff" title="Custom color">
                         </div>
                         <div class="toolbar-divider"></div>
-                        <button class="toolbar-btn" data-style="size" onclick="applySize(1.2)">A+</button>
-                        <button class="toolbar-btn" data-style="size" onclick="applySize(0.8)">a-</button>
+                        <button class="toolbar-btn" data-style="size" onmousedown="event.preventDefault(); applySize(1.2)">A+</button>
+                        <button class="toolbar-btn" data-style="size" onmousedown="event.preventDefault(); applySize(0.8)">a-</button>
                     </div>
                     <div class="subtitle-text-area" id="subtitle-text" contenteditable="true" data-placeholder="Edit subtitle text here..."></div>
                 </div>
@@ -1506,7 +1514,13 @@
                         </div>
                         <div class="form-group">
                             <label>Font Size (px)</label>
-                            <input type="number" id="subtitle-size" value="80" min="20" max="200">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <input type="number" id="subtitle-size" value="80" min="20" max="200" style="flex: 1;">
+                                <label style="display: flex; align-items: center; gap: 5px; margin-bottom: 0; cursor: pointer; white-space: nowrap;">
+                                    <input type="checkbox" id="subtitle-bold" style="width: 16px; height: 16px;">
+                                    <span style="font-size: 12px;">Bold</span>
+                                </label>
+                            </div>
                         </div>
                     </div>
                     <div class="form-row">
@@ -1537,6 +1551,7 @@
                                 <option value="bottom">Bottom</option>
                                 <option value="middle">Middle</option>
                                 <option value="top">Top</option>
+                                <option value="custom">Custom (Draggable)</option>
                             </select>
                         </div>
                     </div>
@@ -1805,6 +1820,10 @@
                 this.wordTimestamps = wordTimestamps || [];
                 this.settings = settings || {};
                 this.fadeDuration = 0.5; // seconds to fade from highlight to original color
+                
+                // The logical resolution for our coordinates (matching backend export)
+                this.refWidth = 1080;
+                this.refHeight = 1920;
             }
 
             // Linear interpolation between two hex colors
@@ -1877,7 +1896,14 @@
                         if (node.style.fontStyle === 'italic') newStyle.italic = true;
                         if (node.style.fontSize) {
                             const emMatch = node.style.fontSize.match(/([\d.]+)em/);
-                            if (emMatch) newStyle.sizeMultiplier = parseFloat(emMatch[1]);
+                            if (emMatch) {
+                                newStyle.sizeMultiplier = parseFloat(emMatch[1]);
+                            } else {
+                                const pxMatch = node.style.fontSize.match(/([\d.]+)px/);
+                                if (pxMatch) {
+                                    newStyle.sizeMultiplier = parseFloat(pxMatch[1]) / 16;
+                                }
+                            }
                         }
                         
                         node.childNodes.forEach(child => walk(child, newStyle));
@@ -1903,14 +1929,15 @@
                     return;
                 }
 
-                // Get settings and calculate scaling factor (preview canvas vs 1080p)
-                const scale = canvas.width / 1080;
+                // Get settings and calculate scaling factor (preview canvas vs 1080x1920 export)
+                // We use height as the reference because it's more stable for vertical video apps
+                const scale = canvas.height / 1920;
                 const baseFontSize = (this.settings.fontSize || 80) * scale;
                 const fontFamily = this.settings.font_name || 'Arial';
                 const highlightColor = this.settings.textColor || '#ffff00';
                 const pastColor = this.settings.pastColor || '#808080';
                 const mode = this.settings.mode || 'standard';
-                const baseFontWeight = this.settings.font_weight || 'bold';
+                const baseFontWeight = this.settings.font_weight || 'normal';
                 const outlineColor = this.settings.outlineColor || '#000000';
                 const primaryColor = this.settings.primaryColor || '#ffffff';
 
@@ -1975,16 +2002,14 @@
                 } else if (this.settings.subtitle_position === 'middle') {
                     startY = (canvas.height - totalHeight) / 2;
                     ctx.textBaseline = 'middle';
-                } else if (this.settings.subtitle_position === 'custom' && this.settings.subtitle_top) {
-                    // Handle custom position with alignment
-                    const vAlign = this.settings.subtitle_v_align || 'middle';
-                    if (vAlign === 'top') {
-                        startY = this.settings.subtitle_top;
-                    } else if (vAlign === 'middle') {
-                        startY = this.settings.subtitle_top - (totalHeight / 2);
-                    } else { // bottom
-                        startY = this.settings.subtitle_top - totalHeight;
-                    }
+                } else if (this.settings.subtitle_position === 'custom' && this.settings.subtitle_top !== null) {
+                    // Coordinates in settings are in logical 1080x1920 resolution
+                    // Scale them to current canvas height
+                    const logicalY = this.settings.subtitle_top;
+                    const scaledY = (logicalY / this.refHeight) * canvas.height;
+                    
+                    // For custom positions, scaledY is ALWAYS the center point
+                    startY = scaledY - (totalHeight / 2);
                     ctx.textBaseline = 'middle';
                 } else {
                     startY = canvas.height - (100 * scale) - totalHeight;
@@ -2007,27 +2032,34 @@
                     }
 
                     let xCenter;
-                    if (this.settings.subtitle_position === 'custom' && this.settings.subtitle_left) {
-                        const hAlign = this.settings.subtitle_h_align || 'center';
-                        if (hAlign === 'left') {
-                            xCenter = this.settings.subtitle_left + (lineTextWidth / 2);
-                        } else if (hAlign === 'right') {
-                            xCenter = this.settings.subtitle_left - (lineTextWidth / 2);
-                        } else { // center
-                            xCenter = this.settings.subtitle_left;
-                        }
+                    if (this.settings.subtitle_position === 'custom' && this.settings.subtitle_left !== null) {
+                        // Coordinates in settings are in logical 1080x1920 resolution
+                        // Scale them to current canvas width
+                        const logicalX = this.settings.subtitle_left;
+                        xCenter = (logicalX / this.refWidth) * canvas.width;
                     } else {
                         // Always center for preset positions
                         xCenter = canvas.width / 2;
                     }
                     
-                    let xPos = xCenter - (lineTextWidth / 2);
+                    let xPos;
+                    if (this.settings.subtitle_position === 'custom') {
+                        if (this.settings.subtitle_h_align === 'left') {
+                            xPos = xCenter;
+                        } else if (this.settings.subtitle_h_align === 'right') {
+                            xPos = xCenter - lineTextWidth;
+                        } else { // center
+                            xPos = xCenter - (lineTextWidth / 2);
+                        }
+                    } else {
+                        xPos = xCenter - (lineTextWidth / 2);
+                    }
 
                     // Draw background box for the line
                     const boxPadding = 10 * scale;
                     const bgRgb = hexToRgb(this.settings.bgColor || '#000000');
                     ctx.fillStyle = `rgba(${bgRgb}, ${this.settings.bgOpacity})`;
-                    ctx.fillRect(xCenter - (lineTextWidth / 2) - boxPadding, lineY, lineTextWidth + (boxPadding * 2), lineHeight);
+                    ctx.fillRect(xPos - boxPadding, lineY, lineTextWidth + (boxPadding * 2), lineHeight);
 
                     // Render words in line
                     for (let i = 0; i < line.length; i++) {
@@ -2252,24 +2284,14 @@
             const scaleY = targetHeight / previewHeight;
 
 
-            // Calculate correct X position based on alignment
-            // Canvas renderer with center alignment uses center point, not left edge
+            // Calculate correct X position
+            // We now always save the center point for custom positions to match our standardized rendering
             let leftToSave = null;
             let topToSave = null;
             if (customPosition) {
-                // Scale coordinates from preview to output resolution
-                if (horizontalAlign === 'center') {
-                    // For center alignment, save the center point (scaled)
-                    leftToSave = Math.round(customPosition.centerX * scaleX);
-                } else if (horizontalAlign === 'right') {
-                    // For right alignment, save the right edge (scaled)
-                    leftToSave = Math.round((customPosition.left + customPosition.width) * scaleX);
-                } else {
-                    // For left alignment, save the left edge (scaled)
-                    leftToSave = Math.round(customPosition.left * scaleX);
-                }
-                // Scale Y coordinate
-                topToSave = Math.round(customPosition.top * scaleY);
+                // customPosition.centerX and top are already in logical 1080x1920 coords
+                leftToSave = Math.round(customPosition.centerX);
+                topToSave = Math.round(customPosition.top);
             }
 
             try {
@@ -2284,7 +2306,14 @@
                         left: leftToSave,
                         top: topToSave,
                         h_align: horizontalAlign,
-                        v_align: verticalAlign
+                        v_align: verticalAlign,
+                        // Include styling fields
+                        fontSize: document.getElementById('subtitle-size').value,
+                        subtitleBold: document.getElementById('subtitle-bold').checked,
+                        primaryColor: document.getElementById('subtitle-color').value,
+                        bgColor: document.getElementById('subtitle-bg').value,
+                        bgOpacity: document.getElementById('subtitle-bg-opacity').value,
+                        fontName: document.getElementById('subtitle-font').value
                     })
                 });
 
@@ -2354,9 +2383,9 @@
                     }
 
                     customPosition = {
-                        left: leftEdge,
-                        top: scaledTop,
-                        centerX: hAlign === 'center' ? scaledLeft : null,
+                        left: data.left,
+                        top: data.top,
+                        centerX: data.left,
                         width: null
                     };
                     horizontalAlign = hAlign;
@@ -2373,8 +2402,19 @@
                 // Update dropdown to match global position
                 const positionSelect = document.getElementById('subtitle-position');
                 if (positionSelect && positionMode === 'global') {
-                    positionSelect.value = globalPosition === 'custom' ? 'bottom' : globalPosition;
+                    positionSelect.value = globalPosition;
                 }
+                
+                // Load and apply additional styling fields if present
+                if (data.font_size !== undefined && data.font_size !== null) document.getElementById('subtitle-size').value = data.font_size;
+                if (data.subtitle_bold !== undefined && data.subtitle_bold !== null) document.getElementById('subtitle-bold').checked = data.subtitle_bold;
+                if (data.primary_color) document.getElementById('subtitle-color').value = data.primary_color;
+                if (data.bg_color) document.getElementById('subtitle-bg').value = data.bg_color;
+                if (data.bg_opacity !== undefined && data.bg_opacity !== null) {
+                    const opacity = parseFloat(data.bg_opacity);
+                    document.getElementById('subtitle-bg-opacity').value = opacity > 1 ? opacity : opacity * 100;
+                }
+                if (data.font_name) document.getElementById('subtitle-font').value = data.font_name;
 
                 return globalPosition;
             } catch (error) {
@@ -2387,13 +2427,34 @@
         // Handle position dropdown change based on current mode
         async function handlePositionChange(newPosition) {
 
-            // Clear custom position when preset is selected
-            customPosition = null;
-            hasManualPosition = false;
+            // Clear custom position only when a preset is selected
+            if (newPosition !== 'custom') {
+                customPosition = null;
+                hasManualPosition = false;
+            } else {
+                // If switching TO custom but we don't have a position yet,
+                // initialize it from current rendering center
+                if (!customPosition) {
+                    const scale = canvas.height / 1920;
+                    let initialTop = canvas.height - (100 * scale);
+                    if (globalPosition === 'top') initialTop = (100 * scale);
+                    else if (globalPosition === 'middle') initialTop = canvas.height / 2;
+                    
+                    customPosition = {
+                        left: canvas.width / 2,
+                        top: initialTop,
+                        centerX: canvas.width / 2,
+                        width: 0
+                    };
+                }
+                hasManualPosition = true;
+            }
 
             if (positionMode === 'global') {
+                globalPosition = newPosition;
                 // Save to global (adjust.md)
                 await saveGlobalPosition(newPosition);
+                updateSubtitlePreview();
             } else {
                 // Save to current cue (JSON)
                 updateSubtitlePreview();
@@ -3806,6 +3867,11 @@
             
             if (!canvasRenderer) return;
 
+            // Sync editor font-weight with global bold setting
+            if (editor) {
+                editor.style.fontWeight = document.getElementById('subtitle-bold')?.checked ? 'bold' : 'normal';
+            }
+
             // Get current styling settings
             const settings = {
                 mode: document.getElementById('karaoke-toggle')?.checked ? 
@@ -3816,7 +3882,7 @@
                 pastColor: document.getElementById('past-color')?.value || '#808080',
                 font_name: document.getElementById('subtitle-font')?.value || 'Arial',
                 fontName: document.getElementById('subtitle-font')?.value || 'Arial',
-                font_weight: document.getElementById('highlight-font-weight')?.value || 'bold',
+                font_weight: document.getElementById('subtitle-bold')?.checked ? 'bold' : 'normal',
                 glowColor: document.getElementById('highlight-glow-color')?.value || '#ffff00',
                 glowBlur: parseInt(document.getElementById('highlight-glow-blur')?.value || '10'),
                 bgColor: document.getElementById('subtitle-bg')?.value || '#000000',
@@ -3826,7 +3892,7 @@
                 subtitle_h_align: horizontalAlign,
                 subtitle_v_align: verticalAlign,
                 subtitle_top: customPosition ? customPosition.top : null,
-                subtitle_left: customPosition ? (horizontalAlign === 'center' ? customPosition.centerX : customPosition.left) : null
+                subtitle_left: customPosition ? customPosition.centerX : null
             };
 
             // Update both renderer settings
@@ -3880,6 +3946,9 @@
 
             // Save the formatting for the current cue
             saveCurrentCueFormatting();
+            
+            // Ensure focus is restored
+            editor.focus();
         }
 
         function applySize(multiplier) {
@@ -3888,45 +3957,90 @@
 
             const selection = window.getSelection();
             if (selection.rangeCount === 0) return;
-            if (selection.toString().trim().length === 0) return;
+            const range = selection.getRangeAt(0);
+            const selectionText = range.toString();
+            if (selectionText.trim().length === 0) return;
 
-            // Find current font size value (1-7 scale)
-            let currentSize = 3; // Default normal size
-            let node = selection.anchorNode;
-            while (node && node !== editor) {
-                if (node.nodeType === Node.ELEMENT_NODE) {
-                    // Check for <font size="X"> tags
-                    if (node.nodeName === 'FONT' && node.getAttribute('size')) {
-                        currentSize = parseInt(node.getAttribute('size'));
+            // Find current font size
+            let currentSizeEm = 1.0;
+            
+            // Start searching from the common ancestor of the selection
+            let tempNode = range.commonAncestorContainer;
+            if (tempNode.nodeType === Node.TEXT_NODE) tempNode = tempNode.parentElement;
+            
+            let existingSpan = null;
+            let checkNode = tempNode;
+            
+            // Go up until we find a font-size or hit the editor
+            while (checkNode && checkNode !== editor.parentNode) {
+                if (checkNode.style && checkNode.style.fontSize) {
+                    const emMatch = checkNode.style.fontSize.match(/([\d.]+)em/);
+                    if (emMatch) {
+                        currentSizeEm = parseFloat(emMatch[1]);
+                        // If this span matches the selection text, we can update it directly
+                        if (checkNode.innerText.trim() === selectionText.trim()) {
+                            existingSpan = checkNode;
+                        }
                         break;
                     }
-                    // Check for span with font-size
-                    if (node.nodeName === 'SPAN' && node.style?.fontSize) {
-                        // Approximate conversion from em to 1-7 scale
-                        const match = node.style.fontSize.match(/([\d.]+)/);
-                        if (match) {
-                            const em = parseFloat(match[1]);
-                            if (em < 0.8) currentSize = 1;
-                            else if (em < 1.0) currentSize = 2;
-                            else if (em < 1.3) currentSize = 3;
-                            else if (em < 1.6) currentSize = 4;
-                            else if (em < 1.9) currentSize = 5;
-                            else if (em < 2.2) currentSize = 6;
-                            else currentSize = 7;
-                            break;
+                    const pxMatch = checkNode.style.fontSize.match(/([\d.]+)px/);
+                    if (pxMatch) {
+                        currentSizeEm = parseFloat(pxMatch[1]) / 16;
+                        if (checkNode.innerText.trim() === selectionText.trim()) {
+                            existingSpan = checkNode;
                         }
+                        break;
                     }
                 }
-                node = node.parentNode;
+                if (checkNode.nodeName === 'FONT' && checkNode.getAttribute('size')) {
+                    const sizeMap = { '1': 0.5, '2': 0.7, '3': 0.9, '4': 1.0, '5': 1.2, '6': 1.4, '7': 1.6 };
+                    currentSizeEm = sizeMap[checkNode.getAttribute('size')] || 1.0;
+                    break;
+                }
+                if (checkNode === editor) break;
+                checkNode = checkNode.parentNode;
             }
 
-            // Calculate new size (clamp to 1-7 range)
-            let newSize = currentSize + (multiplier > 1 ? 1 : -1);
-            if (newSize < 1) newSize = 1;
-            if (newSize > 7) newSize = 7;
+            // Calculate new size
+            let newSizeEm = currentSizeEm * multiplier;
+            // Clamp between 0.5 and 5.0
+            newSizeEm = Math.max(0.5, Math.min(5.0, newSizeEm));
 
-            // Apply the size
-            document.execCommand('fontSize', false, newSize.toString());
+            if (existingSpan) {
+                // Optimization: Directly update existing span if it perfectly matches selection
+                existingSpan.style.fontSize = newSizeEm.toFixed(2) + 'em';
+            } else {
+                // Use document.execCommand with a unique size value to mark the selection
+                // '7' is usually safe as it's rarely used by default
+                // We use a reset first to ensure the marker is always applied fresh
+                document.execCommand('fontSize', false, '3');
+                document.execCommand('fontSize', false, '7');
+                
+                // Find all newly created font tags and replace them with styled spans
+                const fontTags = Array.from(editor.querySelectorAll('font[size="7"]'));
+                const newSpans = [];
+                fontTags.forEach(font => {
+                    const s = document.createElement('span');
+                    s.style.fontSize = newSizeEm.toFixed(2) + 'em';
+                    while (font.firstChild) s.appendChild(font.firstChild);
+                    font.parentNode.replaceChild(s, font);
+                    newSpans.push(s);
+                });
+
+                // Restore selection to the new spans
+                if (newSpans.length > 0) {
+                    const newRange = document.createRange();
+                    if (newSpans.length === 1) {
+                        // Select inside the span to ensure next click finds it
+                        newRange.selectNodeContents(newSpans[0]);
+                    } else {
+                        newRange.setStartBefore(newSpans[0]);
+                        newRange.setEndAfter(newSpans[newSpans.length - 1]);
+                    }
+                    selection.removeAllRanges();
+                    selection.addRange(newRange);
+                }
+            }
 
             editor.focus();
             updateSubtitlePreview();
@@ -4116,13 +4230,16 @@
                 autoSaveSubtitle(); // Auto-save subtitle edits
             }
         });
-        document.getElementById('subtitle-font').addEventListener('change', updateSubtitlePreview);
+        document.getElementById('subtitle-font').addEventListener('change', () => { updateSubtitlePreview(); saveGlobalPosition(globalPosition); });
         document.getElementById('subtitle-size').addEventListener('input', updateSubtitlePreview);
+        document.getElementById('subtitle-size').addEventListener('change', () => { saveGlobalPosition(globalPosition); });
+        document.getElementById('subtitle-bold').addEventListener('change', () => { updateSubtitlePreview(); saveGlobalPosition(globalPosition); });
         document.getElementById('subtitle-color').addEventListener('input', updateSubtitlePreview);
+        document.getElementById('subtitle-color').addEventListener('change', () => { saveGlobalPosition(globalPosition); });
         document.getElementById('subtitle-bg').addEventListener('input', updateSubtitlePreview);
+        document.getElementById('subtitle-bg').addEventListener('change', () => { saveGlobalPosition(globalPosition); });
         document.getElementById('subtitle-bg-opacity').addEventListener('input', updateSubtitlePreview);
-        document.getElementById('subtitle-bg').addEventListener('input', updateSubtitlePreview);
-        document.getElementById('subtitle-color').addEventListener('input', updateSubtitlePreview);
+        document.getElementById('subtitle-bg-opacity').addEventListener('change', () => { saveGlobalPosition(globalPosition); });
         document.getElementById('subtitle-position').addEventListener('change', async () => {
             const newPosition = document.getElementById('subtitle-position').value;
             await handlePositionChange(newPosition);
@@ -4143,6 +4260,7 @@
                 horizontalAlign = align;
                 updateAlignButtons(align, verticalAlign);
                 updateSubtitlePreview();
+                await saveGlobalPosition(globalPosition);
             });
         });
 
@@ -4153,6 +4271,7 @@
                 verticalAlign = valign;
                 updateAlignButtons(horizontalAlign, valign);
                 updateSubtitlePreview();
+                await saveGlobalPosition(globalPosition);
             });
         });
 
@@ -4163,6 +4282,9 @@
             applyColor(color);
             // Update CSS variable for color preview
             document.querySelector('.color-picker-wrapper').style.setProperty('--current-color', color);
+            
+            // Restore editor focus
+            document.getElementById('subtitle-text').focus();
         });
 
         customColorPicker.addEventListener('change', (e) => {
@@ -4390,21 +4512,20 @@
                 };
 
                 // Get current styling settings
-                const settings = {
-                    mode: document.getElementById('karaoke-toggle')?.checked ? 
-                          (document.getElementById('karaoke-mode')?.value || 'normal') : 'standard',
-                    fontSize: parseInt(document.getElementById('subtitle-size')?.value || '48'),
-                    primaryColor: document.getElementById('subtitle-color')?.value || '#ffffff',
-                    textColor: document.getElementById('highlight-text-color')?.value || '#ffff00',
-                    pastColor: document.getElementById('past-color')?.value || '#808080',
-                    glowColor: document.getElementById('highlight-glow-color')?.value || '#ffff00',
-                    glowBlur: parseInt(document.getElementById('highlight-glow-blur')?.value || '10'),
-                    bgColor: document.getElementById('subtitle-bg')?.value || '#000000',
-                    bgOpacity: parseInt(document.getElementById('subtitle-bg-opacity')?.value || '70') / 100,
-                    fontName: document.getElementById('subtitle-font')?.value || 'Arial',
-                    font_weight: document.getElementById('highlight-font-weight')?.value || 'bold',
-                    outlineColor: '#000000',
-                    subtitle_position: globalPosition,
+                            const settings = {
+                                mode: document.getElementById('karaoke-toggle')?.checked ? 
+                                      (document.getElementById('karaoke-mode')?.value || 'normal') : 'standard',
+                                fontSize: parseInt(document.getElementById('subtitle-size')?.value || '48'),
+                                primaryColor: document.getElementById('subtitle-color')?.value || '#ffffff',
+                                textColor: document.getElementById('highlight-text-color')?.value || '#ffff00',
+                                pastColor: document.getElementById('past-color')?.value || '#808080',
+                                glowColor: document.getElementById('highlight-glow-color')?.value || '#ffff00',
+                                glowBlur: parseInt(document.getElementById('highlight-glow-blur')?.value || '10'),
+                                bgColor: document.getElementById('subtitle-bg')?.value || '#000000',
+                                bgOpacity: parseInt(document.getElementById('subtitle-bg-opacity')?.value || '70') / 100,
+                                fontName: document.getElementById('subtitle-font')?.value || 'Arial',
+                                font_weight: document.getElementById('subtitle-bold')?.checked ? 'bold' : 'normal',
+                                outlineColor: '#000000',                    subtitle_position: globalPosition,
                     subtitle_top: customPosition ? customPosition.top : null,
                     subtitle_left: customPosition ? (horizontalAlign === 'center' ? customPosition.centerX : customPosition.left) : null,
                     subtitle_h_align: horizontalAlign,
@@ -4419,6 +4540,8 @@
                     body: JSON.stringify({
                         folder: folderNumber,
                         theme: themeNumber,
+                        themeStart: startSeconds,
+                        themeEnd: endSeconds,
                         settings: settings
                     })
                 }).catch(err => {
@@ -4752,7 +4875,7 @@
             document.getElementById('highlight-text-color').value = '#ffff00';
             document.getElementById('highlight-glow-color').value = '#ffff00';
             document.getElementById('highlight-glow-blur').value = '10';
-            document.getElementById('highlight-font-weight').value = 'bold';
+            document.getElementById('highlight-font-weight').value = 'normal';
             document.getElementById('highlight-preset').value = 'yellow-glow';
             document.getElementById('karaoke-mode').value = 'normal';
             document.getElementById('font-size-scale').value = '100';
@@ -4760,6 +4883,7 @@
             document.getElementById('past-color').value = '#808080';
             updateHighlightStyle();
             saveHighlightStyle();
+            updateSubtitlePreview();
         }
 
         // Preset style definitions
@@ -4767,7 +4891,7 @@
             'yellow-glow': { textColor: '#ffff00', glowColor: '#ffff00', glowBlur: '10', fontWeight: 'bold' },
             'red-bold': { textColor: '#ff3333', glowColor: '#ff0000', glowBlur: '8', fontWeight: 'bold' },
             'cyan-neon': { textColor: '#00ffff', glowColor: '#00ffff', glowBlur: '20', fontWeight: 'bold' },
-            'green-underline': { textColor: '#00ff00', glowColor: '#00ff00', glowBlur: '12', fontWeight: 'bold' },
+            'green-glow': { textColor: '#00ff00', glowColor: '#00ff00', glowBlur: '12', fontWeight: 'bold' },
             'pink-soft': { textColor: '#ff69b4', glowColor: '#ff1493', glowBlur: '15', fontWeight: '500' },
             'orange-fire': { textColor: '#ff8c00', glowColor: '#ff4500', glowBlur: '18', fontWeight: 'bold' },
             'white-clean': { textColor: '#ffffff', glowColor: '#ffffff', glowBlur: '5', fontWeight: 'normal' },
@@ -4786,6 +4910,7 @@
                 document.getElementById('highlight-font-weight').value = preset.fontWeight;
                 updateHighlightStyle();
                 saveHighlightStyle();
+                updateSubtitlePreview();
             }
         }
 
@@ -4886,7 +5011,7 @@
                 pastColor: document.getElementById('past-color')?.value || '#808080',
                 font_name: document.getElementById('subtitle-font')?.value || 'Arial',
                 fontName: document.getElementById('subtitle-font')?.value || 'Arial',
-                font_weight: document.getElementById('highlight-font-weight')?.value || 'bold',
+                font_weight: document.getElementById('subtitle-bold')?.checked ? 'bold' : 'normal',
                 glowColor: document.getElementById('highlight-glow-color')?.value || '#ffff00',
                 glowBlur: parseInt(document.getElementById('highlight-glow-blur')?.value || '10'),
                 bgColor: document.getElementById('subtitle-bg')?.value || '#000000',
@@ -4917,11 +5042,11 @@
             videoControlsLocked = !videoControlsLocked;
             const lockBtn = document.getElementById('lock-video-btn');
             const lockIcon = document.getElementById('lock-icon');
-            const previewWrapper = document.querySelector('.preview-wrapper');
+            const wrappers = document.querySelectorAll('.video-wrapper, .preview-wrapper');
 
             if (videoControlsLocked) {
                 lockBtn.classList.add('locked');
-                if (previewWrapper) previewWrapper.classList.add('controls-locked');
+                wrappers.forEach(w => w.classList.add('controls-locked'));
                 lockIcon.textContent = '🔒';
                 // Update button text
                 lockBtn.innerHTML = '<span id="lock-icon">🔒</span> Unlock';
@@ -4933,7 +5058,7 @@
                 }
             } else {
                 lockBtn.classList.remove('locked');
-                if (previewWrapper) previewWrapper.classList.remove('controls-locked');
+                wrappers.forEach(w => w.classList.remove('controls-locked'));
                 lockIcon.textContent = '🔓';
                 // Update button text
                 lockBtn.innerHTML = '<span id="lock-icon">🔓</span> Lock';
@@ -4958,16 +5083,26 @@
             const wrapper = canvas.parentElement;
             const rect = canvas.getBoundingClientRect();
             
+            const previewVideo = document.getElementById('preview-video');
+            const previewWidth = previewVideo.offsetWidth || canvas.width;
+            const previewHeight = previewVideo.offsetHeight || canvas.height;
+
             if (customPosition) {
+                // Scale from logical 1080x1920 back to current view pixels
                 subtitleStartPos = {
-                    left: customPosition.left,
-                    top: customPosition.top
+                    left: (customPosition.centerX / 1080) * previewWidth,
+                    top: (customPosition.top / 1920) * previewHeight
                 };
             } else {
-                // Initialize from bottom center (relative to canvas pixels)
+                // Initialize from actual vertical center point based on current globalPosition
+                let initialTopView;
+                if (globalPosition === 'top') initialTopView = (100 * (previewHeight / 1920));
+                else if (globalPosition === 'middle') initialTopView = previewHeight / 2;
+                else initialTopView = previewHeight - (100 * (previewHeight / 1920));
+                
                 subtitleStartPos = {
-                    left: canvas.width / 2,
-                    top: canvas.height - 100
+                    left: previewWidth / 2,
+                    top: initialTopView
                 };
             }
 
@@ -4981,13 +5116,33 @@
             const deltaX = e.clientX - subtitleDragStart.x;
             const deltaY = e.clientY - subtitleDragStart.y;
 
-            // Update position (state-driven)
+            // Get preview video dimensions for scaling
+            const previewVideo = document.getElementById('preview-video');
+            const previewWidth = previewVideo.offsetWidth || canvas.width;
+            const previewHeight = previewVideo.offsetHeight || canvas.height;
+            
+            // Current center point in preview pixels
+            const viewCenterX = subtitleStartPos.left + deltaX;
+            const viewCenterY = subtitleStartPos.top + deltaY;
+            
+            // Convert to logical 1080x1920 coordinates
+            const logicalCenterX = (viewCenterX / previewWidth) * 1080;
+            const logicalCenterY = (viewCenterY / previewHeight) * 1920;
+
+            // Update position (state-driven) - ALWAYS store in logical coordinates
             customPosition = {
-                left: subtitleStartPos.left + deltaX,
-                top: subtitleStartPos.top + deltaY,
-                centerX: subtitleStartPos.left + deltaX,
+                left: logicalCenterX,
+                top: logicalCenterY,
+                centerX: logicalCenterX,
                 width: 0 
             };
+
+            // Auto-switch dropdown to 'custom' if not already
+            const positionSelect = document.getElementById('subtitle-position');
+            if (positionSelect && positionSelect.value !== 'custom') {
+                positionSelect.value = 'custom';
+                globalPosition = 'custom';
+            }
 
             // Re-render immediately
             updateSubtitlePreview();

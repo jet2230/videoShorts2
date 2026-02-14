@@ -11,6 +11,7 @@ import time
 import queue
 import os
 import sys
+import re
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -84,8 +85,6 @@ task_counter = 0
 import multiprocessing
 
 # Global process manager for shared state
-# We initialize it here as None and will set up the actual objects 
-# inside the if __name__ == '__main__': block to avoid recursion errors.
 task_manager = None
 tasks = {}
 task_processes = {}
@@ -95,13 +94,32 @@ task_lock = threading.RLock()
 canvas_karaoke_progress = {}
 canvas_karaoke_lock = threading.RLock()
 
+def ensure_manager():
+    """Ensure that the multiprocessing manager and shared dictionaries are initialized."""
+    global task_manager, tasks, canvas_karaoke_progress
+    if task_manager is None:
+        app_logger.info("Initializing multiprocessing manager and shared state...")
+        task_manager = multiprocessing.Manager()
+        
+        # Convert existing tasks to managed dict if it's a plain dict
+        if not hasattr(tasks, 'shm'): # Rough check for Manager.dict
+            old_tasks = dict(tasks)
+            tasks = task_manager.dict()
+            for k, v in old_tasks.items():
+                tasks[k] = v
+                
+        # Convert existing progress to managed dict if it's a plain dict
+        if not hasattr(canvas_karaoke_progress, 'shm'):
+            old_progress = dict(canvas_karaoke_progress)
+            canvas_karaoke_progress = task_manager.dict()
+            for k, v in old_progress.items():
+                canvas_karaoke_progress[k] = v
+    return task_manager
+
 def run_task_with_callback(task_id: str, func, *args, **kwargs):
     """Run a function in a background process with shared state support."""
-    global tasks, task_manager, task_processes
-    if task_manager is None:
-        # Fallback for unexpected environments, though it should be initialized in main
-        task_manager = multiprocessing.Manager()
-        tasks = task_manager.dict()
+    global tasks, task_processes
+    ensure_manager()
 
     # Ensure task entry exists in the shared dictionary
     with task_lock:
@@ -127,7 +145,7 @@ def run_task_with_callback(task_id: str, func, *args, **kwargs):
 def _process_wrapper(task_id, func, shared_tasks, args, kwargs):
     """Internal wrapper that runs inside the child process."""
     import sys
-    import re
+
     import traceback
     
     # Define a callback that updates the SHARED dictionary
@@ -438,7 +456,7 @@ def get_themes(folder_number: str):
     shorts_dir = folder / 'shorts'
     existing_shorts = {}
     if shorts_dir.exists():
-        import re
+
         for short_file in shorts_dir.glob('theme_*.mp4'):
             # Extract theme number from filename: theme_001_title.mp4
             match = re.match(r'theme_(\d+)_', short_file.name)
@@ -495,7 +513,7 @@ def get_themes(folder_number: str):
                 with open(adjust_file, 'r', encoding='utf-8') as f:
                     content = f.read()
                     # Parse adjusted values from the file
-                    import re
+
                     title_match = re.search(r'\*\*Title:\*\*\s*(.+?)(?:\n\n|\n\*)', content)
                     time_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})', content)
 
@@ -607,7 +625,7 @@ def update_theme():
         with open(adjust_file, 'r', encoding='utf-8') as f:
             content = f.read()
             # Extract existing subtitle_position line
-            import re
+
             position_match = re.search(r'\*\*subtitle_position:\*\*\s*(top|middle|bottom)', content)
             if position_match:
                 existing_position = position_match.group(1)
@@ -628,7 +646,7 @@ def update_theme():
 @app.route('/api/reset-theme', methods=['POST'])
 def reset_theme():
     """Reset theme time adjustment but preserve Position setting."""
-    import re
+
     data = request.json
     folder_number = data.get('folder')
     theme_number = int(data.get('theme'))
@@ -705,7 +723,7 @@ def reset_theme():
 @app.route('/api/theme-subtitles/<folder_number>/<theme_number>', methods=['GET'])
 def get_theme_subtitles(folder_number: str, theme_number: str):
     """Get adjusted subtitles for a specific theme, or fall back to original filtered by theme time range."""
-    import re
+
 
     base_dir = Path(settings.get('video', 'output_dir'))
     folder = None
@@ -889,7 +907,7 @@ def get_theme_subtitles(folder_number: str, theme_number: str):
 @app.route('/api/all-subtitles/<folder_number>', methods=['GET'])
 def get_all_subtitles(folder_number: str):
     """Get ALL subtitles from the original SRT file with sequence numbers (no theme filtering)."""
-    import re
+
     theme_number = request.args.get('theme')
 
     base_dir = Path(settings.get('video', 'output_dir'))
@@ -1148,7 +1166,7 @@ def save_cue_text():
         if not folder:
             return jsonify({'error': 'Folder not found'}), 404
 
-        import re
+
 
         try:
             # Incoming timestamps from UI are ABSOLUTE HH:MM:SS.mmm
@@ -1285,7 +1303,7 @@ def save_cue_text():
 @app.route('/api/save-global-position', methods=['POST'])
 def save_global_position():
     """Save global subtitle position for a theme to the adjust.md file."""
-    import re
+
     data = request.json
     folder_number = data.get('folder')
     theme_number = data.get('theme')
@@ -1295,6 +1313,14 @@ def save_global_position():
     custom_top = data.get('top')
     h_align = data.get('h_align', 'center')
     v_align = data.get('v_align', 'middle')
+    
+    # Additional styling fields
+    font_size = data.get('fontSize')
+    subtitle_bold = data.get('subtitleBold')
+    primary_color = data.get('primaryColor')
+    bg_color = data.get('bgColor')
+    bg_opacity = data.get('bgOpacity')
+    font_name = data.get('fontName')
 
     if not all([folder_number, theme_number]):
         return jsonify({'error': 'Missing required fields'}), 400
@@ -1319,6 +1345,14 @@ def save_global_position():
     existing_title = None
     existing_time_range = None
     existing_folder = None
+    
+    # Preserve existing styling if not provided
+    existing_font_size = None
+    existing_subtitle_bold = None
+    existing_primary_color = None
+    existing_bg_color = None
+    existing_bg_opacity = None
+    existing_font_name = None
 
     if adjust_file.exists():
         with open(adjust_file, 'r', encoding='utf-8') as f:
@@ -1333,6 +1367,20 @@ def save_global_position():
                 existing_time_range = time_match.group(1).strip()
             if folder_match:
                 existing_folder = folder_match.group(1).strip()
+                
+            # Extract existing styling
+            fs_match = re.search(r'\*\*subtitle_font_size:\*\*\s*(\d+)', content)
+            if fs_match: existing_font_size = fs_match.group(1)
+            sb_match = re.search(r'\*\*subtitle_bold:\*\*\s*(true|false)', content)
+            if sb_match: existing_subtitle_bold = sb_match.group(1) == 'true'
+            pc_match = re.search(r'\*\*subtitle_primary_color:\*\*\s*(#[0-9a-fA-F]+)', content)
+            if pc_match: existing_primary_color = pc_match.group(1)
+            bc_match = re.search(r'\*\*subtitle_bg_color:\*\*\s*(#[0-9a-fA-F]+)', content)
+            if bc_match: existing_bg_color = bc_match.group(1)
+            bo_match = re.search(r'\*\*subtitle_bg_opacity:\*\*\s*([0-9.]+)', content)
+            if bo_match: existing_bg_opacity = bo_match.group(1)
+            fn_match = re.search(r'\*\*subtitle_font_name:\*\*\s*(.+)', content)
+            if fn_match: existing_font_name = fn_match.group(1).strip()
     else:
         # No existing file, fetch theme data from themes.md
         themes_file = folder / 'themes.md'
@@ -1375,6 +1423,25 @@ def save_global_position():
         else:
             # Preset position
             f.write(f"**subtitle_position:** {position}\n")
+            
+        # Write additional styling (prefer new provided values, then existing)
+        fs = font_size if font_size is not None else existing_font_size
+        if fs is not None: f.write(f"**subtitle_font_size:** {fs}\n")
+        
+        sb = subtitle_bold if subtitle_bold is not None else existing_subtitle_bold
+        if sb is not None: f.write(f"**subtitle_bold:** {'true' if sb else 'false'}\n")
+        
+        pc = primary_color if primary_color is not None else existing_primary_color
+        if pc is not None: f.write(f"**subtitle_primary_color:** {pc}\n")
+        
+        bc = bg_color if bg_color is not None else existing_bg_color
+        if bc is not None: f.write(f"**subtitle_bg_color:** {bc}\n")
+        
+        bo = bg_opacity if bg_opacity is not None else existing_bg_opacity
+        if bo is not None: f.write(f"**subtitle_bg_opacity:** {bo}\n")
+        
+        fn = font_name if font_name is not None else existing_font_name
+        if fn is not None: f.write(f"**subtitle_font_name:** {fn}\n")
 
         if existing_folder:
             f.write(f"\n**Folder:** {existing_folder}\n")
@@ -1392,7 +1459,7 @@ def save_global_position():
 @app.route('/api/get-global-position', methods=['GET'])
 def get_global_position():
     """Get global subtitle position for a theme from the adjust.md file."""
-    import re
+
     folder_number = request.args.get('folder')
     theme_number = request.args.get('theme')
 
@@ -1418,15 +1485,32 @@ def get_global_position():
         with open(adjust_file, 'r', encoding='utf-8') as f:
             content = f.read()
 
+        # Always try to read styling fields if they exist
+        font_size_match = re.search(r'\*\*subtitle_font_size:\*\*\s*(\d+)', content)
+        primary_color_match = re.search(r'\*\*subtitle_primary_color:\*\*\s*(#[0-9a-fA-F]+)', content)
+        bg_color_match = re.search(r'\*\*subtitle_bg_color:\*\*\s*(#[0-9a-fA-F]+)', content)
+        bg_opacity_match = re.search(r'\*\*subtitle_bg_opacity:\*\*\s*([0-9.]+)', content)
+        font_name_match = re.search(r'\*\*subtitle_font_name:\*\*\s*(.+)', content)
+        subtitle_bold_match = re.search(r'\*\*subtitle_bold:\*\*\s*(true|false)', content)
+        
+        styling_data = {
+            'font_size': int(font_size_match.group(1)) if font_size_match else None,
+            'subtitle_bold': subtitle_bold_match.group(1) == 'true' if subtitle_bold_match else None,
+            'primary_color': primary_color_match.group(1) if primary_color_match else None,
+            'bg_color': bg_color_match.group(1) if bg_color_match else None,
+            'bg_opacity': float(bg_opacity_match.group(1)) if bg_opacity_match else None,
+            'font_name': font_name_match.group(1).strip() if font_name_match else None
+        }
+
         # Check if it's a custom position with coordinates
         position_match = re.search(r'\*\*subtitle_position:\*\*\s*custom', content)
         if position_match:
             # Read custom coordinates
             left_match = re.search(r'\*\*subtitle_left:\*\*\s*(\d+)', content)
             top_match = re.search(r'\*\*subtitle_top:\*\*\s*(\d+)', content)
-            h_align_match = re.search(r'\*\*subtitle_h_align:\*\*\s*(left|center|right)', content)
-            v_align_match = re.search(r'\*\*subtitle_v_align:\*\*\s*(top|middle|bottom)', content)
-
+            h_align_match = re.search(r'\*\*subtitle_h_align:\*\*\s*(\w+)', content)
+            v_align_match = re.search(r'\*\*subtitle_v_align:\*\*\s*(\w+)', content)
+            
             result = {
                 'position': 'custom',
                 'left': int(left_match.group(1)) if left_match else None,
@@ -1434,6 +1518,7 @@ def get_global_position():
                 'h_align': h_align_match.group(1) if h_align_match else 'center',
                 'v_align': v_align_match.group(1) if v_align_match else 'middle'
             }
+            result.update(styling_data)
             print(f"[DEBUG] Found global custom position: folder={folder_number}, theme={theme_number}, result={result}")
             return jsonify(result)
 
@@ -1441,8 +1526,10 @@ def get_global_position():
         position_match = re.search(r'\*\*subtitle_position:\*\*\s*(top|middle|bottom)', content)
         if position_match:
             position = position_match.group(1)
+            result = {'position': position}
+            result.update(styling_data)
             print(f"[DEBUG] Found global position: folder={folder_number}, theme={theme_number}, position={position}")
-            return jsonify({'position': position})
+            return jsonify(result)
 
     # No position found, return default
     print(f"[DEBUG] No global position found: folder={folder_number}, theme={theme_number}, using default='bottom'")
@@ -1461,7 +1548,7 @@ def list_shorts():
             if shorts_dir.exists():
                 for short_file in sorted(shorts_dir.glob('theme_*.mp4')):
                     # Extract theme number from filename
-                    import re
+
                     match = re.match(r'theme_(\d+)_', short_file.name)
                     theme_num = int(match.group(1)) if match else 0
 
@@ -1547,6 +1634,7 @@ def youtube_search():
 def process_video():
     """Process a new video (URL or local file)."""
     global task_counter
+    ensure_manager()
 
     data = request.json
     url = data.get('url', '').strip()
@@ -1627,6 +1715,7 @@ def _process_video(url: str, local_file: str, model: str, language: str, resolut
 def regenerate_themes():
     """Regenerate themes for an existing video."""
     global task_counter
+    ensure_manager()
 
     data = request.json
     folder_number = data.get('folder_number', '').strip()
@@ -1716,6 +1805,7 @@ def create_shorts():
     """Create shorts for selected themes."""
     app_logger.info("CREATE_SHORTS ENDPOINT HIT")
     global task_counter
+    ensure_manager()
 
     data = request.json
     folder_number = data.get('folder_number', '').strip()
@@ -1749,7 +1839,7 @@ def create_shorts():
                     current = dict(tasks[task_id])
                     current['log'] = (current.get('log', '') + '\n' + msg).strip()
                     # Extract percentage if present
-                    import re
+
                     match = re.search(r'Progress:\s*(\d+)%', msg)
                     if match:
                         current['progress'] = int(match.group(1))
@@ -1827,6 +1917,7 @@ def _create_shorts(folder_number: str, themes: List, progress_callback=None, can
 @app.route('/api/task/<task_id>', methods=['GET'])
 def get_task_status(task_id: str):
     """Get status of a background task."""
+    ensure_manager()
     with task_lock:
         if task_id not in tasks:
             return jsonify({'error': 'Task not found'}), 404
@@ -1836,6 +1927,7 @@ def get_task_status(task_id: str):
 @app.route('/api/task/<task_id>/cancel', methods=['POST'])
 def cancel_task(task_id: str):
     """Cancel a background task by terminating subprocesses and cleaning up files."""
+    ensure_manager()
     import subprocess
     import signal
     import shutil
@@ -2021,7 +2113,7 @@ def get_retranscribe_settings(folder_number: str):
             content = f.read()
 
         # Parse model and language from theme.md
-        import re
+
         # Handle markdown formatting with **
         model_match = re.search(r'\*\*Whisper Model:\*\*\s*(\w+)', content)
         language_match = re.search(r'\*\*Language:\*\*\s*(\w+)', content)
@@ -2115,7 +2207,7 @@ def _run_retranscribe_task(folder_number, folder, video_file, model, language, b
             sys.__stdout__.flush()
             
             display_percent = None
-            import re
+
             match = re.search(r'Progress:\s*(\d+)%', msg_str)
             if match:
                 raw_percent = int(match.group(1))
@@ -2202,6 +2294,7 @@ def _run_retranscribe_task(folder_number, folder, video_file, model, language, b
 @app.route('/api/re-transcribe', methods=['POST'])
 def re_transcribe():
     """Re-transcribe an existing video in the library with progress tracking."""
+    ensure_manager()
     sys.__stdout__.write("API: /api/re-transcribe called\n")
     sys.__stdout__.flush()
     try:
@@ -2268,6 +2361,7 @@ def re_transcribe():
 @app.route('/api/re-transcribe-status/<task_id>')
 def retranscribe_status(task_id: str):
     """Get the status of a re-transcribe task."""
+    ensure_manager()
     app_logger.debug(f"[DEBUG] Status requested for task {task_id}, tasks keys: {list(tasks.keys())}")
     with task_lock:
         if task_id not in tasks:
@@ -2300,6 +2394,7 @@ edit_counter = 0
 def process_video_edit():
     """Process video with effects including face tracking."""
     global edit_counter
+    ensure_manager()
 
     data = request.json
     video_path = data.get('video_path')
@@ -2471,6 +2566,7 @@ def check_word_timestamps():
 @app.route('/api/create-word-timestamps', methods=['POST'])
 def create_word_timestamps():
     """Create word timestamps by re-transcribing the video with word_timestamps=True."""
+    ensure_manager()
     data = request.json
     folder_number = data.get('folder')
 
@@ -2555,7 +2651,7 @@ def _create_word_timestamps(folder_number: str, video_path: str, progress_callba
 @app.route('/api/save-karaoke-setting', methods=['POST'])
 def save_karaoke_setting():
     """Save karaoke setting to adjust.md file."""
-    import re
+
     data = request.json
     folder_number = data.get('folder')
     theme_number = data.get('theme')
@@ -2604,7 +2700,7 @@ def save_karaoke_setting():
 @app.route('/api/get-karaoke-setting', methods=['GET'])
 def get_karaoke_setting():
     """Get karaoke setting from adjust.md file."""
-    import re
+
     folder_number = request.args.get('folder')
     theme_number = request.args.get('theme')
 
@@ -2642,7 +2738,7 @@ def get_karaoke_setting():
 @app.route('/api/save-highlight-style', methods=['POST'])
 def save_highlight_style():
     """Save highlight style settings to JSON file."""
-    import re
+
     data = request.json
     folder_number = data.get('folder')
     style_data = {
@@ -2756,7 +2852,8 @@ def get_theme_adjust_settings(folder_path, theme_number):
         'subtitle_left': None,
         'subtitle_top': None,
         'subtitle_h_align': 'center',
-        'subtitle_v_align': 'bottom'
+        'subtitle_v_align': 'bottom',
+        'subtitle_bold': False
     }
     
     if adjust_file.exists():
@@ -2764,7 +2861,7 @@ def get_theme_adjust_settings(folder_path, theme_number):
             content = f.read()
             
         # Extract subtitle position
-        import re
+
         pos_match = re.search(r'\*\*subtitle_position:\*\*\s*(\w+)', content)
         if pos_match:
             settings['subtitle_position'] = pos_match.group(1)
@@ -2786,6 +2883,31 @@ def get_theme_adjust_settings(folder_path, theme_number):
         if v_align_match:
             settings['subtitle_v_align'] = v_align_match.group(1)
             
+        # Additional styling fields
+        font_size_match = re.search(r'\*\*subtitle_font_size:\*\*\s*(\d+)', content)
+        if font_size_match:
+            settings['fontSize'] = int(font_size_match.group(1))
+            
+        primary_color_match = re.search(r'\*\*subtitle_primary_color:\*\*\s*(#[0-9a-fA-F]+)', content)
+        if primary_color_match:
+            settings['primaryColor'] = primary_color_match.group(1)
+            
+        bg_color_match = re.search(r'\*\*subtitle_bg_color:\*\*\s*(#[0-9a-fA-F]+)', content)
+        if bg_color_match:
+            settings['bgColor'] = bg_color_match.group(1)
+            
+        bg_opacity_match = re.search(r'\*\*subtitle_bg_opacity:\*\*\s*([0-9.]+)', content)
+        if bg_opacity_match:
+            settings['bgOpacity'] = float(bg_opacity_match.group(1)) / 100.0 if float(bg_opacity_match.group(1)) > 1.0 else float(bg_opacity_match.group(1))
+            
+        font_name_match = re.search(r'\*\*subtitle_font_name:\*\*\s*(.+)', content)
+        if font_name_match:
+            settings['fontName'] = font_name_match.group(1).strip()
+            
+        subtitle_bold_match = re.search(r'\*\*subtitle_bold:\*\*\s*(true|false)', content)
+        if subtitle_bold_match:
+            settings['subtitle_bold'] = subtitle_bold_match.group(1) == 'true'
+            
     return settings
 
 
@@ -2793,6 +2915,7 @@ def get_theme_adjust_settings(folder_path, theme_number):
 def encode_canvas_karaoke():
     """Generate and encode canvas karaoke video server-side (fast)."""
     app_logger.info("ENCODE_CANVAS_KARAOKE ENDPOINT HIT")
+    ensure_manager()
     try:
         data = request.get_json()
         folder_number = data.get('folder')
@@ -2820,37 +2943,55 @@ def encode_canvas_karaoke():
             return jsonify({'error': 'No video file found'}), 404
         video_file = video_files[0]
 
-        # Get theme timing - prefer client-provided times, fall back to themes.md
+        # Get theme timing - prefer client-provided times, fall back to adjust.md, then themes.md
         theme_start = data.get('themeStart')
         theme_end = data.get('themeEnd')
+        
+        start_time = 0
+        end_time = 0
 
         if theme_start is not None and theme_end is not None:
             # Use times provided by client (current theme length in browser)
             start_time = float(theme_start)
             end_time = float(theme_end)
         else:
-            # Fall back to reading from themes.md
-            themes_file = folder / 'themes.md'
-            if not themes_file.exists():
-                return jsonify({'error': 'themes.md not found and no client times provided'}), 400
+            # Try to read from adjust.md
+            adjust_file = folder / 'shorts' / f'theme_{int(theme_number):03d}_adjust.md'
+            if adjust_file.exists():
+                with open(adjust_file, 'r', encoding='utf-8') as f:
+                    adj_content = f.read()
 
-            with open(themes_file, 'r', encoding='utf-8') as f:
-                themes_content = f.read()
+                tr_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})', adj_content)
+                if tr_match:
+                    def parse_ts(s):
+                        h, m, sec = map(int, s.split(':'))
+                        return h * 3600 + m * 60 + sec
+                    start_time = parse_ts(tr_match.group(1))
+                    end_time = parse_ts(tr_match.group(2))
+            
+            # Fall back to reading from themes.md if still 0
+            if start_time == 0 and end_time == 0:
+                themes_file = folder / 'themes.md'
+                if not themes_file.exists():
+                    return jsonify({'error': 'themes.md not found and no client times provided'}), 400
 
-            # Parse time range
-            import re
-            time_pattern = r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})'
-            time_match = re.search(time_pattern, themes_content)
+                with open(themes_file, 'r', encoding='utf-8') as f:
+                    themes_content = f.read()
 
-            if not time_match:
-                return jsonify({'error': 'Could not parse theme time range from themes.md'}), 400
+                # Parse time range
 
-            def parse_time_str(time_str):
-                h, m, s = map(int, time_str.split(':'))
-                return h * 3600 + m * 60 + s
+                time_pattern = r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})'
+                time_match = re.search(time_pattern, themes_content)
 
-            start_time = parse_time_str(time_match.group(1))
-            end_time = parse_time_str(time_match.group(2))
+                if not time_match:
+                    return jsonify({'error': 'Could not parse theme time range from themes.md'}), 400
+
+                def parse_time_str(time_str):
+                    h, m, s = map(int, time_str.split(':'))
+                    return h * 3600 + m * 60 + s
+
+                start_time = parse_time_str(time_match.group(1))
+                end_time = parse_time_str(time_match.group(2))
 
         # Get word timestamps
         word_timestamps_file = None
@@ -2885,11 +3026,15 @@ def encode_canvas_karaoke():
         
         # Merge into karaoke_settings (but let incoming data override if present)
         final_settings = {
-            'fontSize': karaoke_settings.get('fontSize', 48) * 2,  # Double for 1080x1920
-            'fontName': karaoke_settings.get('fontName', 'Arial'),
+            'fontSize': adjust_settings.get('fontSize', karaoke_settings.get('fontSize', 48) * 2),
+            'fontName': adjust_settings.get('fontName', karaoke_settings.get('fontName', 'Arial')),
             'textColor': karaoke_settings.get('textColor', '#ffff00'),
+            'primaryColor': adjust_settings.get('primaryColor', '#ffffff'),
             'pastColor': karaoke_settings.get('pastColor', '#808080'),
-            'mode': karaoke_settings.get('mode', 'normal')
+            'mode': karaoke_settings.get('mode', 'normal'),
+            'bgColor': adjust_settings.get('bgColor', '#000000'),
+            'bgOpacity': adjust_settings.get('bgOpacity', 0.63),
+            'font_weight': 'bold' if adjust_settings.get('subtitle_bold', False) else 'normal'
         }
         final_settings.update(adjust_settings)
 
@@ -3011,6 +3156,7 @@ def encode_canvas_karaoke():
 @app.route('/api/canvas-karaoke-progress/<job_id>')
 def canvas_karaoke_progress_endpoint(job_id):
     """Get progress for a canvas karaoke export job."""
+    ensure_manager()
     with canvas_karaoke_lock:
         if job_id not in canvas_karaoke_progress:
             return jsonify({'error': 'Job not found'}), 404
@@ -3065,10 +3211,13 @@ from subtitle_renderer import render_canvas_karaoke_video
 def export_canvas_karaoke():
     """Export canvas karaoke video using FFmpeg on server (fast processing)."""
     app_logger.info("EXPORT_CANVAS_KARAOKE ENDPOINT HIT")
+    ensure_manager()
     try:
         data = request.get_json()
         folder_number = data.get('folder')
         theme_number = data.get('theme')
+        theme_start_provided = data.get('themeStart')
+        theme_end_provided = data.get('themeEnd')
         karaoke_settings = data.get('settings', {})
 
         if not folder_number or not theme_number:
@@ -3090,7 +3239,7 @@ def export_canvas_karaoke():
                 'error': None
             }
 
-        def run_export_thread(jid, f_num, t_num, settings_dict):
+        def run_export_thread(jid, f_num, t_num, settings_dict, start_override=None, end_override=None):
             app_logger.info(f"THREAD START: run_export_thread jid={jid} folder={f_num} theme={t_num}")
             try:
                 # Get folder path
@@ -3131,37 +3280,64 @@ def export_canvas_karaoke():
                         canvas_karaoke_progress[jid] = {'status': 'error', 'error': 'Subtitle file not found', 'complete': False}
                     return
 
-                # Get theme timing and title from themes.md
-                themes_file = folder / 'themes.md'
+                # Determine start and end times
                 start_time = 0
                 end_time = 0
                 theme_title = ""
-                if themes_file.exists():
-                    with open(themes_file, 'r', encoding='utf-8') as f:
-                        content = f.read()
+
+                if start_override is not None and end_override is not None:
+                    start_time = float(start_override)
+                    end_time = float(end_override)
+                    app_logger.info(f"Using client-provided times: {start_time} - {end_time}")
+                
+                # Check adjust.md if times not provided or to get title
+                adjust_file = folder / 'shorts' / f'theme_{int(t_num):03d}_adjust.md'
+                if adjust_file.exists():
+                    with open(adjust_file, 'r', encoding='utf-8') as f:
+                        adj_content = f.read()
                     
-                    # Robust extraction
-                    try:
-                        import re
-                        # 1. Try to find the section for this theme
-                        theme_section_pattern = rf'### Theme {t_num}:(.*?)(?=### Theme|\Z)'
-                        section_match = re.search(theme_section_pattern, content, re.DOTALL)
-                        if section_match:
-                            section = section_match.group(0)
-                            # Extract Title
-                            title_match = re.search(rf'### Theme {t_num}:\s*(.*?)\n', section)
-                            if title_match: theme_title = title_match.group(1).strip()
-                            
-                            # Extract Time Range
-                            time_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})', section)
-                            if time_match:
-                                def parse_t(s):
-                                    h, m, sec = map(int, s.split(':'))
-                                    return h * 3600 + m * 60 + sec
-                                start_time = parse_t(time_match.group(1))
-                                end_time = parse_t(time_match.group(2))
-                    except Exception as e:
-                        app_logger.error(f"Error parsing themes.md: {e}")
+                    t_match = re.search(r'\*\*Title:\*\*\s*(.+)', adj_content)
+                    if t_match: theme_title = t_match.group(1).strip()
+                    
+                    if start_time == 0 and end_time == 0:
+                        tr_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})', adj_content)
+                        if tr_match:
+                            def parse_ts(s):
+                                h, m, sec = map(int, s.split(':'))
+                                return h * 3600 + m * 60 + sec
+                            start_time = parse_ts(tr_match.group(1))
+                            end_time = parse_ts(tr_match.group(2))
+                            app_logger.info(f"Using adjust.md times: {start_time} - {end_time}")
+
+                # Fallback to themes.md
+                if start_time == 0 and end_time == 0:
+                    themes_file = folder / 'themes.md'
+                    if themes_file.exists():
+                        with open(themes_file, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                        
+                        try:
+                            # 1. Try to find the section for this theme
+                            theme_section_pattern = rf'### Theme {t_num}:(.*?)(?=### Theme|\Z)'
+                            section_match = re.search(theme_section_pattern, content, re.DOTALL)
+                            if section_match:
+                                section = section_match.group(0)
+                                # Extract Title
+                                if not theme_title:
+                                    title_match = re.search(rf'### Theme {t_num}:\s*(.*?)\n', section)
+                                    if title_match: theme_title = title_match.group(1).strip()
+                                
+                                # Extract Time Range
+                                time_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})', section)
+                                if time_match:
+                                    def parse_t(s):
+                                        h, m, sec = map(int, s.split(':'))
+                                        return h * 3600 + m * 60 + sec
+                                    start_time = parse_t(time_match.group(1))
+                                    end_time = parse_t(time_match.group(2))
+                                    app_logger.info(f"Using themes.md times: {start_time} - {end_time}")
+                        except Exception as e:
+                            app_logger.error(f"Error parsing themes.md: {e}")
 
                 # Direct log for debugging
                 with open('server.log', 'a') as f_log:
@@ -3185,6 +3361,24 @@ def export_canvas_karaoke():
                         canvas_karaoke_progress[jid] = current
 
                 # Call the actual renderer
+                
+                # Get adjustments for this theme to ensure latest styling is used
+                adjust_settings = get_theme_adjust_settings(folder, t_num)
+                
+                # Setup final settings for the renderer, merging incoming with adjust.md
+                final_render_settings = {
+                    'fontSize': adjust_settings.get('fontSize', settings_dict.get('fontSize', 48) * 2),
+                    'fontName': adjust_settings.get('fontName', settings_dict.get('fontName', 'Arial')),
+                    'textColor': settings_dict.get('textColor', '#ffff00'),
+                    'primaryColor': adjust_settings.get('primaryColor', '#ffffff'),
+                    'pastColor': settings_dict.get('pastColor', '#808080'),
+                    'mode': settings_dict.get('mode', 'normal'),
+                    'bgColor': adjust_settings.get('bgColor', '#000000'),
+                    'bgOpacity': adjust_settings.get('bgOpacity', 0.63),
+                    'font_weight': 'bold' if adjust_settings.get('subtitle_bold', False) else 'normal'
+                }
+                final_render_settings.update(adjust_settings)
+                
                 success = render_canvas_karaoke_video(
                     str(video_file),
                     str(word_timestamps_file),
@@ -3192,7 +3386,7 @@ def export_canvas_karaoke():
                     str(output_path),
                     float(start_time),
                     float(end_time),
-                    settings_dict,
+                    final_render_settings,
                     progress_callback=progress_cb
                 )
 
@@ -3215,7 +3409,7 @@ def export_canvas_karaoke():
                     canvas_karaoke_progress[jid] = {'status': 'error', 'error': str(e), 'complete': False}
 
         # Start the thread
-        threading.Thread(target=run_export_thread, args=(job_id, folder_number, theme_number, karaoke_settings)).start()
+        threading.Thread(target=run_export_thread, args=(job_id, folder_number, theme_number, karaoke_settings, theme_start_provided, theme_end_provided)).start()
 
         return jsonify({'success': True, 'job_id': job_id})
 
@@ -3266,9 +3460,7 @@ if __name__ == '__main__':
     import signal
     
     # Initialize shared state
-    task_manager = multiprocessing.Manager()
-    tasks = task_manager.dict()
-    canvas_karaoke_progress = task_manager.dict()
+    ensure_manager()
 
     print("=" * 60)
     print("YouTube Shorts Creator - Web Server")
