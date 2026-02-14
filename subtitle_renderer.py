@@ -20,6 +20,17 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Add a file handler for direct logging if not already present
+if not logger.handlers:
+    try:
+        from logging.handlers import RotatingFileHandler
+        fh = RotatingFileHandler('server.log', maxBytes=100*1024, backupCount=1)
+        fh.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        logger.addHandler(fh)
+        logger.setLevel(logging.INFO)
+    except:
+        pass
+
 
 class UniversalSubtitleRenderer:
     """Universal renderer for all subtitle styles (standard and karaoke)."""
@@ -278,6 +289,8 @@ class UniversalSubtitleRenderer:
 
         # Skip if no subtitle text
         if not subtitle_text or not subtitle_text.strip():
+            if int(current_time * 10) % 50 == 0:
+                logger.info(f"No subtitle text at {current_time:.2f}s")
             return cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
             
         if int(current_time * 10) % 50 == 0: # Log roughly every 5 seconds
@@ -328,6 +341,9 @@ class UniversalSubtitleRenderer:
                 y = self.output_height - margin_bottom - total_height
 
         # Render each line
+        if int(current_time * 10) % 50 == 0:
+            logger.info(f"Rendering {len(lines)} lines at {current_time:.2f}s (text: {subtitle_text[:20]}...)")
+
         for line in lines:
             # Calculate line width
             line_width = self._get_text_width(line, font)
@@ -512,9 +528,9 @@ def render_canvas_karaoke_video(
     
     logger.info(f"Loading subtitles from: {subtitle_srt_path}")
 
-    # Additional check: detect based on subtitle times vs start_time
     subtitles = _parse_srt(subtitle_srt_path)
     if subtitles:
+        logger.info(f"Parsed {len(subtitles)} subtitles. First sub: {subtitles[0]['start']}s - {subtitles[0]['end']}s: {subtitles[0]['text'][:30]}")
         # Calculate how many subtitles overlap with the theme's time range if treated as absolute
         overlapping_count = 0
         for sub in subtitles:

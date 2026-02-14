@@ -1732,7 +1732,25 @@ def create_shorts():
 
 def _create_shorts(folder_number: str, themes: List, progress_callback=None, cancel_check=None):
     """Create shorts in background."""
-    print(f"[DEBUG] _create_shorts: progress_callback={progress_callback is not None}, cancel_check={cancel_check is not None}")
+    # Re-initialize logging for the child process
+    import logging
+    from logging.handlers import RotatingFileHandler
+    
+    # Simple setup to ensure child process logs to the same file
+    log_h = RotatingFileHandler('server.log', maxBytes=100*1024, backupCount=1)
+    log_h.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    
+    # Get the loggers used in shorts_creator
+    l1 = logging.getLogger('server.py')
+    l1.setLevel(logging.INFO)
+    l1.addHandler(log_h)
+    
+    l2 = logging.getLogger('subtitle_renderer')
+    l2.setLevel(logging.INFO)
+    l2.addHandler(log_h)
+    
+    l1.info(f"[DEBUG] _create_shorts: folder={folder_number}, themes={themes}")
+    
     # Check for cancellation at start
     if cancel_check and cancel_check():
         raise Exception('Cancelled by user')
