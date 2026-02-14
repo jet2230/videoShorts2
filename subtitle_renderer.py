@@ -20,17 +20,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Add a file handler for direct logging if not already present
-if not logger.handlers:
-    try:
-        from logging.handlers import RotatingFileHandler
-        fh = RotatingFileHandler('server.log', maxBytes=100*1024, backupCount=1)
-        fh.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-        logger.addHandler(fh)
-        logger.setLevel(logging.INFO)
-    except:
-        pass
-
 
 class UniversalSubtitleRenderer:
     """Universal renderer for all subtitle styles (standard and karaoke)."""
@@ -295,8 +284,15 @@ class UniversalSubtitleRenderer:
         pil_image = Image.fromarray(cv2.cvtColor(frame_cropped, cv2.COLOR_BGR2RGB))
         draw = ImageDraw.Draw(pil_image)
         
-        # ALWAYS draw a test marker to confirm rendering is happening
-        draw.text((10, 10), f"TEST RENDER: {current_time:.2f}s", fill=(255, 0, 0), font=None)
+        # ALWAYS draw a large test marker to confirm rendering is happening
+        try:
+            # Use a large size for visibility
+            debug_font = self._get_font(80)
+            draw.text((50, 50), f"DEBUG: {current_time:.2f}s", fill=(255, 0, 0), font=debug_font)
+            if not subtitle_text:
+                draw.text((50, 150), "NO SUBTITLE TEXT FOUND", fill=(255, 0, 0), font=debug_font)
+        except:
+            draw.text((10, 10), f"D: {current_time:.2f}s", fill=(255, 0, 0))
 
         # Skip if no subtitle text
         if not subtitle_text or not subtitle_text.strip():
@@ -571,6 +567,10 @@ def render_canvas_karaoke_video(
 
     # Create renderer
     renderer = UniversalSubtitleRenderer(video_path, word_timestamps, settings)
+    
+    with open('server.log', 'a') as f:
+        f.write(f"[{datetime.now()}] RENDERER START: {video_path} from {start_time} to {end_time}, subs={len(subtitles)}\n")
+        f.flush()
 
     # Setup FFmpeg command
     import tempfile
@@ -588,6 +588,11 @@ def render_canvas_karaoke_video(
         frame_pattern = temp_dir / 'frame_%06d.jpg'  # Use JPEG for faster I/O
 
         logger.info(f"Generating {total_frames} frames from {start_time}s to {end_time}s at {fps}fps (original video FPS)")
+        
+        # Log to server.log directly if needed
+        with open('server.log', 'a') as f:
+            f.write(f"RENDERER DEBUG: fps={fps}, total_frames={total_frames}, start={start_time}, end={end_time}\n")
+            f.flush()
 
         if progress_callback:
             progress_callback(0, "rendering", "Seeking to start position...")

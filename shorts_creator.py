@@ -1340,7 +1340,9 @@ Video Path: {video_info['video_path']}
             os.symlink(trimmed_srt_path.absolute(), safe_srt_link)
             
             # Subtitles filter needs careful path escaping
-            vf_filter = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}:(iw-ow)/2:(ih-oh)/2,subtitles={safe_srt_link}"
+            # Using absolute path for the subtitles filter
+            abs_srt_path = safe_srt_link.absolute()
+            vf_filter = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}:(iw-ow)/2:(ih-oh)/2,subtitles='{abs_srt_path}'"
 
             # Try NVIDIA hardware acceleration first
             gpu_cmd = [
