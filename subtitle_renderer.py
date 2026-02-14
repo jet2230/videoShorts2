@@ -11,7 +11,7 @@ os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "hwaccel;none"
 
 import cv2
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from pathlib import Path
 import json
 import subprocess
@@ -61,6 +61,10 @@ class UniversalSubtitleRenderer:
         self.primary_color = self._hex_to_rgb(settings.get('primaryColor', '#ffffff'))
         self.past_color = self._hex_to_rgb(settings.get('pastColor', '#808080'))
         self.outline_color = self._hex_to_rgb(settings.get('outlineColor', '#000000'))
+        
+        # Glow settings
+        self.glow_color = self._hex_to_rgb(settings.get('glowColor', '#ffff00'))
+        self.glow_blur = int(settings.get('glowBlur', 0))
         
         self.mode = settings.get('mode', 'standard')  # 'standard', 'normal', 'cumulative'
         self.font_weight = settings.get('font_weight', 'bold')
@@ -364,10 +368,17 @@ class UniversalSubtitleRenderer:
         if int(current_time * 10) % 50 == 0:
             logger.info(f"Rendering {len(lines)} lines at {current_time:.2f}s (y={y}, text: {subtitle_text[:20]}...)")
 
+        # Convert to RGBA for glow/transparency support
+        pil_image = pil_image.convert("RGBA")
+        
+        # Create a separate layer for glow
+        glow_layer = Image.new("RGBA", pil_image.size, (0, 0, 0, 0))
+        glow_draw = ImageDraw.Draw(glow_layer)
+
+        # First pass: Draw background boxes and collect glowing words
+        y_copy = y
         for line in lines:
-            # Calculate line width
             line_width = self._get_text_width(line, font)
-            
             if self.subtitle_position == 'custom' and self.subtitle_left is not None:
                 if self.subtitle_h_align == 'left':
                     x = self.subtitle_left
@@ -376,31 +387,62 @@ class UniversalSubtitleRenderer:
                 else: # center
                     x = self.subtitle_left - (line_width / 2)
             else:
-                # Always center for preset positions
                 x = (self.output_width - line_width) / 2
 
             # Draw background box for the line
             box_padding = 10
+            draw = ImageDraw.Draw(pil_image)
             draw.rectangle(
-                [x - box_padding, y - box_padding, x + line_width + box_padding, y + line_height],
+                [x - box_padding, y_copy, x + line_width + box_padding, y_copy + line_height],
                 fill=(0, 0, 0, 160) # Semi-transparent black
             )
+            y_copy += line_height
 
-            # Render each word in the line
+        # Second pass: Draw text (glow, then outline, then main text)
+        for line in lines:
+            line_width = self._get_text_width(line, font)
+            if self.subtitle_position == 'custom' and self.subtitle_left is not None:
+                if self.subtitle_h_align == 'left':
+                    x = self.subtitle_left
+                elif self.subtitle_h_align == 'right':
+                    x = self.subtitle_left - line_width
+                else: # center
+                    x = self.subtitle_left - (line_width / 2)
+            else:
+                x = (self.output_width - line_width) / 2
+
+            x_start = x
+            text_y = y + (line_height * 0.05) # Slightly offset for better centering in box
+            
             for word_info in line:
-                # Draw outline/shadow
+                word_text = word_info['text']
+                word_color = word_info['color']
+                
+                # Check if this word should glow (if it's the highlight color)
+                highlight_color_rgb = self._hex_to_rgb(self.settings.get('textColor', '#ffff00'))
+                
+                if word_color == highlight_color_rgb and self.glow_blur > 0:
+                    glow_draw.text((x, text_y), word_text, fill=self.glow_color + (255,), font=font)
+                
+                # Draw outline/shadow on main image
                 offsets = [(-2,-2), (2,-2), (-2,2), (2,2)]
                 for dx, dy in offsets:
-                    draw.text((x+dx, y+dy), word_info['text'], fill=self.outline_color, font=font)
+                    draw.text((x+dx, text_y+dy), word_text, fill=self.outline_color + (255,), font=font)
                 
-                # Draw main text
-                draw.text((x, y), word_info['text'], fill=word_info['color'], font=font)
-                x += self._get_word_width(word_info['text'], font) + self._get_space_width(font)
+                # Draw main text on main image
+                draw.text((x, text_y), word_text, fill=word_color + (255,), font=font)
+                
+                x += self._get_word_width(word_text, font) + self._get_space_width(font)
 
             y += line_height
 
+        # Apply blur to glow layer and composite
+        if self.glow_blur > 0:
+            glow_layer = glow_layer.filter(ImageFilter.GaussianBlur(radius=self.glow_blur))
+            pil_image = Image.alpha_composite(pil_image, glow_layer)
+
         # Convert back to OpenCV format
-        return cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+        return cv2.cvtColor(np.array(pil_image.convert("RGB")), cv2.COLOR_RGB2BGR)
 
     def _get_font(self, size: int) -> ImageFont.FreeTypeFont:
         """Get font with fallbacks."""
