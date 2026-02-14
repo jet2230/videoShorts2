@@ -1431,14 +1431,14 @@
             <!-- Manual time extension inputs -->
             <div class="time-extension-controls">
                 <div class="nudge-group">
-                    <button class="nudge-btn" onclick="nudgeTheme('left', -1)" title="Earlier by 1s">--</button>
-                    <button class="nudge-btn" onclick="nudgeTheme('left', -0.1)" title="Earlier by 0.1s">-</button>
+                    <button class="nudge-btn" onclick="nudgeTheme('left', -1)" title="Start Earlier by 1s">--</button>
+                    <button class="nudge-btn" onclick="nudgeTheme('left', -0.1)" title="Start Earlier by 0.1s">-</button>
                     <div class="extension-input-group">
                         <label class="extension-label">Ext Left</label>
                         <button id="apply-ext-left" class="extension-apply-btn">Apply</button>
                     </div>
-                    <button class="nudge-btn" onclick="nudgeTheme('left', 0.1)" title="Later by 0.1s">+</button>
-                    <button class="nudge-btn" onclick="nudgeTheme('left', 1)" title="Later by 1s">++</button>
+                    <button class="nudge-btn" onclick="nudgeTheme('left', 0.1)" title="Start Later by 0.1s">+</button>
+                    <button class="nudge-btn" onclick="nudgeTheme('left', 1)" title="Start Later by 1s">++</button>
                 </div>
                 
                 <input type="time" id="ext-left-end" class="extension-time-input" step="1" min="00:00:00" max="01:00:00">
@@ -1446,14 +1446,14 @@
                 <input type="time" id="ext-right-end" class="extension-time-input" step="1" min="00:00:00" max="01:00:00">
                 
                 <div class="nudge-group">
-                    <button class="nudge-btn" onclick="nudgeTheme('right', -1)" title="Earlier by 1s">--</button>
-                    <button class="nudge-btn" onclick="nudgeTheme('right', -0.1)" title="Earlier by 0.1s">-</button>
+                    <button class="nudge-btn" onclick="nudgeTheme('right', -1)" title="End Earlier by 1s">--</button>
+                    <button class="nudge-btn" onclick="nudgeTheme('right', -0.1)" title="End Earlier by 0.1s">-</button>
                     <div class="extension-input-group">
                         <button id="apply-ext-right" class="extension-apply-btn">Apply</button>
                         <label class="extension-label">Ext Right</label>
                     </div>
-                    <button class="nudge-btn" onclick="nudgeTheme('right', 0.1)" title="Later by 0.1s">+</button>
-                    <button class="nudge-btn" onclick="nudgeTheme('right', 1)" title="Later by 1s">++</button>
+                    <button class="nudge-btn" onclick="nudgeTheme('right', 0.1)" title="End Later by 0.1s">+</button>
+                    <button class="nudge-btn" onclick="nudgeTheme('right', 1)" title="End Later by 1s">++</button>
                 </div>
             </div>
 
