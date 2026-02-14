@@ -1290,6 +1290,9 @@ Video Path: {video_info['video_path']}
         # Setup renderer settings
         render_settings = {
             'mode': karaoke_style.get('karaoke_mode', 'normal') if adjust_settings.get('karaoke_enabled', True) else 'standard',
+            'effect_type': karaoke_style.get('effectType', 'none'),
+            'auto_emoji': karaoke_style.get('autoEmoji', False),
+            'keyword_scaling': karaoke_style.get('keywordScaling', False),
             'fontSize': adjust_settings.get('fontSize', 48 * 2), # Use saved size or default
             'fontName': adjust_settings.get('fontName', 'Arial'),
             'textColor': karaoke_style.get('textColor', '#ffff00'),
@@ -1307,6 +1310,43 @@ Video Path: {video_info['video_path']}
             'subtitle_h_align': adjust_settings.get('subtitle_h_align', 'center'),
             'subtitle_v_align': adjust_settings.get('subtitle_v_align', 'bottom')
         }
+
+        # Extract audio levels for reactive effects if needed
+        if render_settings.get('effect_type') == 'volume_shake':
+            try:
+                import tempfile
+                import wave
+                import numpy as np
+                
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    audio_tmp = Path(tmp_dir) / "audio.wav"
+                    cmd = [
+                        'ffmpeg', '-y', '-ss', str(start_seconds), '-i', str(video_path),
+                        '-t', str(end_seconds - start_seconds), '-vn', '-acodec', 'pcm_s16le',
+                        '-ar', '16000', '-ac', '1', str(audio_tmp)
+                    ]
+                    subprocess.run(cmd, capture_output=True, check=True)
+                    
+                    if audio_tmp.exists():
+                        with wave.open(str(audio_tmp), 'rb') as wav:
+                            n_frames = wav.getnframes()
+                            data = wav.readframes(n_frames)
+                            audio = np.frombuffer(data, dtype=np.int16).astype(np.float32)
+                            
+                        window_size = int(16000 * 0.1) # 100ms
+                        levels = []
+                        for i in range(0, len(audio), window_size):
+                            window = audio[i:i+window_size]
+                            if len(window) == 0: continue
+                            rms = np.sqrt(np.mean(window**2))
+                            levels.append(float(rms))
+                            
+                        if levels:
+                            max_l = max(levels)
+                            if max_l > 0:
+                                render_settings['audio_levels'] = [l / max_l for l in levels]
+            except Exception as ae:
+                print(f"    ⚠️ Failed to extract audio levels: {ae}")
 
         from subtitle_renderer import render_canvas_karaoke_video
         import logging

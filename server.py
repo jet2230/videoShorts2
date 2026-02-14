@@ -2390,6 +2390,53 @@ edit_processes: Dict[str, Dict] = {}
 edit_counter = 0
 
 
+def _extract_audio_levels(video_path: Path, start_time: float, end_time: float) -> List[float]:
+    """Extract audio volume levels from a video segment using FFmpeg."""
+    import tempfile
+    import shutil
+    
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        audio_tmp = Path(tmp_dir) / "audio.wav"
+        
+        # Extract audio segment to WAV
+        cmd = [
+            'ffmpeg', '-y', '-ss', str(start_time), '-i', str(video_path),
+            '-t', str(end_time - start_time), '-vn', '-acodec', 'pcm_s16le',
+            '-ar', '16000', '-ac', '1', str(audio_tmp)
+        ]
+        subprocess.run(cmd, capture_output=True, check=True)
+        
+        if not audio_tmp.exists():
+            return []
+            
+        # Read WAV data
+        import numpy as np
+        import wave
+        
+        with wave.open(str(audio_tmp), 'rb') as wav:
+            n_frames = wav.getnframes()
+            data = wav.readframes(n_frames)
+            audio = np.frombuffer(data, dtype=np.int16).astype(np.float32)
+            
+        # Calculate RMS levels in small windows (e.g., 100ms)
+        sample_rate = 16000
+        window_size = int(sample_rate * 0.1) # 100ms
+        levels = []
+        
+        for i in range(0, len(audio), window_size):
+            window = audio[i:i+window_size]
+            if len(window) == 0: continue
+            rms = np.sqrt(np.mean(window**2))
+            levels.append(float(rms))
+            
+        # Normalize levels to 0.0 - 1.0 range
+        if not levels: return []
+        max_level = max(levels)
+        if max_level > 0:
+            levels = [l / max_level for l in levels]
+            
+        return levels
+
 @app.route('/api/process-edit', methods=['POST'])
 def process_video_edit():
     """Process video with effects including face tracking."""
@@ -2747,8 +2794,11 @@ def save_highlight_style():
         'glowColor': data.get('glowColor', '#ffff00'),
         'glowBlur': data.get('glowBlur', '10'),
         'fontWeight': data.get('fontWeight', 'bold'),
-        # Karaoke mode settings
+        # Karaoke mode and effect settings
         'karaoke_mode': data.get('karaokeMode', 'normal'),
+        'effectType': data.get('effectType', 'none'),
+        'autoEmoji': data.get('autoEmoji', False),
+        'keywordScaling': data.get('keywordScaling', False),
         'font_size_scale': data.get('fontSizeScale', 1.0),
         'past_color': data.get('pastColor', None)
     }
@@ -3032,11 +3082,23 @@ def encode_canvas_karaoke():
             'primaryColor': adjust_settings.get('primaryColor', '#ffffff'),
             'pastColor': karaoke_settings.get('pastColor', '#808080'),
             'mode': karaoke_settings.get('mode', 'normal'),
+            'effect_type': karaoke_settings.get('effectType', 'none'),
+            'auto_emoji': karaoke_settings.get('autoEmoji', False),
+            'keyword_scaling': karaoke_settings.get('keywordScaling', False),
             'bgColor': adjust_settings.get('bgColor', '#000000'),
             'bgOpacity': adjust_settings.get('bgOpacity', 0.63),
             'font_weight': 'bold' if adjust_settings.get('subtitle_bold', False) else 'normal'
         }
         final_settings.update(adjust_settings)
+
+        # Extract audio levels for reactive effects if needed
+        if final_settings.get('effect_type') == 'volume_shake':
+            try:
+                app_logger.info(f"Extracting audio levels for theme {theme_number}...")
+                audio_levels = _extract_audio_levels(video_file, start_time, end_time)
+                final_settings['audio_levels'] = audio_levels
+            except Exception as ae:
+                app_logger.warning(f"Failed to extract audio levels: {ae}")
 
         # Create job ID
         job_id = f"{folder_number}_{theme_number}"
@@ -3373,11 +3435,24 @@ def export_canvas_karaoke():
                     'primaryColor': adjust_settings.get('primaryColor', '#ffffff'),
                     'pastColor': settings_dict.get('pastColor', '#808080'),
                     'mode': settings_dict.get('mode', 'normal'),
+                    'effect_type': settings_dict.get('effect_type', 'none'),
+                    'auto_emoji': settings_dict.get('auto_emoji', False),
+                    'keyword_scaling': settings_dict.get('keyword_scaling', False),
                     'bgColor': adjust_settings.get('bgColor', '#000000'),
                     'bgOpacity': adjust_settings.get('bgOpacity', 0.63),
                     'font_weight': 'bold' if adjust_settings.get('subtitle_bold', False) else 'normal'
                 }
                 final_render_settings.update(adjust_settings)
+                
+                # Extract audio levels for reactive effects if needed
+                if final_render_settings.get('effect_type') == 'volume_shake':
+                    try:
+                        app_logger.info(f"Extracting audio levels for export of theme {t_num}...")
+                        audio_levels = _extract_audio_levels(video_file, start_time, end_time)
+                        final_render_settings['audio_levels'] = audio_levels
+                        final_render_settings['base_time'] = float(start_time)
+                    except Exception as ae:
+                        app_logger.warning(f"Failed to extract audio levels for export: {ae}")
                 
                 success = render_canvas_karaoke_video(
                     str(video_file),
