@@ -21,8 +21,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class CanvasKaraokeRenderer:
-    """Render karaoke subtitles on video frames server-side."""
+class UniversalSubtitleRenderer:
+    """Universal renderer for all subtitle styles (standard and karaoke)."""
 
     def __init__(self, video_path: str, word_timestamps: List[Dict], settings: Dict):
         """
@@ -31,10 +31,10 @@ class CanvasKaraokeRenderer:
         Args:
             video_path: Path to video file
             word_timestamps: List of word timestamps with 'word', 'start', 'end'
-            settings: Rendering settings (fontSize, fontName, textColor, pastColor, mode)
+            settings: Rendering settings
         """
         self.video_path = Path(video_path)
-        self.word_timestamps = word_timestamps
+        self.word_timestamps = word_timestamps or []
         self.settings = settings
 
         # Video properties
@@ -43,61 +43,58 @@ class CanvasKaraokeRenderer:
             self.cap.set(cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_NONE)
         
         if not self.cap.isOpened():
-            # Fallback to default if CAP_FFMPEG fails
             self.cap = cv2.VideoCapture(str(video_path))
 
         self.fps = self.cap.get(cv2.CAP_PROP_FPS)
         self.width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         self.height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-        # Rendering settings
+        # Rendering settings (always 1080x1920 vertical)
         self.output_width = 1080
         self.output_height = 1920
         self.font_size = int(settings.get('fontSize', 48))
         self.font_name = settings.get('fontName', 'Arial')
-        self.text_color = settings.get('textColor', '#ffff00')
+        self.text_color = settings.get('textColor', '#ffff00') # Highlight color
+        self.primary_color = settings.get('primaryColor', '#ffffff') # Standard color
         self.past_color = settings.get('pastColor', '#808080')
-        self.mode = settings.get('mode', 'normal')  # 'normal' or 'cumulative'
-        self.fade_duration = 0.5  # seconds
+        self.outline_color = settings.get('outlineColor', '#000000')
+        self.mode = settings.get('mode', 'standard')  # 'standard', 'normal', 'cumulative'
+        self.font_weight = settings.get('font_weight', 'bold')
 
         # Subtitle positioning
         self.subtitle_position = settings.get('subtitle_position', 'bottom')
-        self.subtitle_left = settings.get('subtitle_left')
-        self.subtitle_top = settings.get('subtitle_top')
-        self.subtitle_h_align = settings.get('subtitle_h_align', 'center')
-        self.subtitle_v_align = settings.get('subtitle_v_align', 'bottom')
-
-        # Calculate scaling
-        self.scale_x = self.output_width / self.width
-        self.scale_y = self.output_height / self.height
+        self.subtitle_left = settings.get('subtitle_left') # Custom X
+        self.subtitle_top = settings.get('subtitle_top')   # Custom Y
 
         # Pre-calculate word timings
-        self._build_word_index()
-
-    def _build_word_index(self):
-        """Build index for quick word lookup by time."""
         self.words_by_time = sorted(self.word_timestamps, key=lambda w: w['start'])
+
+    def _hex_to_rgb(self, hex_color: str) -> Tuple[int, int, int]:
+        """Convert #RRGGBB to (R, G, B)."""
+        hex_color = hex_color.lstrip('#')
+        if len(hex_color) == 3:
+            hex_color = ''.join([c*2 for f in hex_color])
+        return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
 
     def get_words_at_time(self, current_time: float, subtitle_text: str) -> Tuple[List[Dict], int]:
         """
         Get word list and highlighted word index for current time.
-
-        Returns:
-            Tuple of (words_with_colors, highlighted_index)
+        
+        Args:
+            current_time: Current time in seconds
+            subtitle_text: Subtitle text
         """
         words = subtitle_text.split()
+        
+        # Determine highlighted index if in karaoke mode
         highlighted_index = -1
-
-        # Find which word in global timestamps is active at current_time
         current_word_ts = None
-        current_global_index = -1
-        for i, word_ts in enumerate(self.words_by_time):
-            if word_ts['start'] <= current_time < word_ts['end']:
-                current_word_ts = word_ts
-                current_global_index = i
-                break
-
-        # Try to find this word in the subtitle text
+        if self.mode != 'standard':
+            for i, word_ts in enumerate(self.words_by_time):
+                if word_ts['start'] <= current_time < word_ts['end']:
+                    current_word_ts = word_ts
+                    break
+        
         if current_word_ts:
             ts_word_lower = current_word_ts['word'].lower().strip('.,!?;:"\'')
             for j, word in enumerate(words):
@@ -121,7 +118,7 @@ class CanvasKaraokeRenderer:
         # Now assign colors based on word position in subtitle
         # Words before current position get "past" color, current gets highlight
         for j, word in enumerate(words):
-            word_color = '#ffffff'  # Default white
+            word_color = self.primary_color  # Default primary color
 
             # Simple heuristic: first N words where N = words_before % subtitle_length
             # This is approximate but works for sequential word timing
@@ -136,7 +133,7 @@ class CanvasKaraokeRenderer:
                         if self.mode == 'cumulative':
                             word_color = self.past_color
                         else:
-                            word_color = '#ffffff'
+                            word_color = self.primary_color
                     elif current_time >= word_ts['start']:
                         # Currently being spoken
                         word_color = self.text_color
@@ -206,22 +203,19 @@ class CanvasKaraokeRenderer:
         # Get word timestamps for this subtitle
         subtitle_word_timestamps = self.get_words_for_subtitle(subtitle_start, subtitle_end, subtitle_text)
 
-        # Find highlighted word index
+        # Find highlighted word index using POSITIONAL matching
+        # (Find which word in the audio sequence we are currently at)
         highlighted_index = -1
         for i, word_ts in enumerate(subtitle_word_timestamps):
             if word_ts['start'] <= current_time < word_ts['end']:
-                # Try to match word by text (strip whitespace and punctuation)
-                word_lower = word_ts['word'].lower().strip().strip('.,!?;:"\'')
-                for j, word in enumerate(words):
-                    if word.lower().strip().strip('.,!?;:"\'') == word_lower:
-                        highlighted_index = j
-                        break
+                # Positional match: highlight the i-th word in the subtitle
+                highlighted_index = i
                 break
 
         # Color words based on timing
         colored_words = []
         for j, word in enumerate(words):
-            word_color = '#ffffff'  # Default white
+            word_color = self.primary_color  # Default primary color
 
             # Get the timestamp for this word (by position)
             if j < len(subtitle_word_timestamps):
@@ -231,15 +225,14 @@ class CanvasKaraokeRenderer:
                     if self.mode == 'cumulative':
                         word_color = self.past_color
                     else:
-                        word_color = '#ffffff'  # Normal mode - back to white
+                        word_color = self.primary_color  # Normal mode - back to primary color
                 elif current_time >= word_ts['start']:
                     # Currently being spoken
                     word_color = self.text_color
-
-            colored_words.append({
-                'text': word,
-                'color': word_color
-            })
+            elif highlighted_index == -1 and j < len(words) and current_time >= subtitle_end:
+                # Fallback for end of subtitle
+                if self.mode == 'cumulative':
+                    word_color = self.past_color
 
         return colored_words, highlighted_index
 
@@ -523,13 +516,13 @@ def render_canvas_karaoke_video(
         logger.warning("No subtitles parsed from SRT file")
 
     # Create renderer
-    renderer = CanvasKaraokeRenderer(video_path, word_timestamps, settings)
+    renderer = UniversalSubtitleRenderer(video_path, word_timestamps, settings)
 
     # Setup FFmpeg command
     import tempfile
     import shutil
 
-    temp_dir = Path(tempfile.mkdtemp(prefix='canvas_karaoke_'))
+    temp_dir = Path(tempfile.mkdtemp(prefix='short_renderer_'))
 
     try:
         # Generate frames at original video FPS for proper sync

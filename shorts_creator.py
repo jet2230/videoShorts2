@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import Dict, List, Optional
 import yt_dlp
 
-from ass_formatter import ASSFormatter
 from transcribe_whisper import TranscribeWhisper
 
 
@@ -1179,6 +1178,49 @@ Video Path: {video_info['video_path']}
 
         return output_path
 
+    def get_theme_adjust_settings(self, folder_path: Path, theme_number: int) -> Dict:
+        """Read theme adjustment settings from theme_XXX_adjust.md."""
+        adjust_file = folder_path / 'shorts' / f'theme_{theme_number:03d}_adjust.md'
+        
+        # Default settings
+        res = {
+            'subtitle_position': 'bottom',
+            'subtitle_left': None,
+            'subtitle_top': None,
+            'subtitle_h_align': 'center',
+            'subtitle_v_align': 'bottom',
+            'karaoke_enabled': True,
+            'has_adjustments': False
+        }
+        
+        if adjust_file.exists():
+            res['has_adjustments'] = True
+            with open(adjust_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+                
+            # Extract subtitle position
+            import re
+            pos_match = re.search(r'\*\*subtitle_position:\*\*\s*(\w+)', content)
+            if pos_match: res['subtitle_position'] = pos_match.group(1)
+                
+            # Extract custom coordinates if they exist
+            left_match = re.search(r'\*\*subtitle_left:\*\*\s*(\d+)', content)
+            if left_match: res['subtitle_left'] = int(left_match.group(1))
+                
+            top_match = re.search(r'\*\*subtitle_top:\*\*\s*(\d+)', content)
+            if top_match: res['subtitle_top'] = int(top_match.group(1))
+                
+            h_align_match = re.search(r'\*\*subtitle_h_align:\*\*\s*(\w+)', content)
+            if h_align_match: res['subtitle_h_align'] = h_align_match.group(1)
+                
+            v_align_match = re.search(r'\*\*subtitle_v_align:\*\*\s*(\w+)', content)
+            if v_align_match: res['subtitle_v_align'] = v_align_match.group(1)
+
+            karaoke_match = re.search(r'\*\*karaoke_highlighting:\*\*\s*(true|false)', content)
+            if karaoke_match: res['karaoke_enabled'] = karaoke_match.group(1) == 'true'
+                
+        return res
+
     def create_short(self, video_path: Path, theme: Dict, output_dir: Path, srt_path: Path, progress_callback=None) -> str:
         """Create a short video clip using ffmpeg with 9:16 aspect ratio and burnt-in subtitles."""
         output_file = output_dir / f"theme_{theme['number']:03d}_{theme['title'][:30].replace(' ', '_')}.mp4"
@@ -1198,65 +1240,70 @@ Video Path: {video_info['video_path']}
         self.create_trimmed_srt(srt_path, start_seconds, end_seconds, trimmed_srt_path)
         print(f"    Created trimmed subtitles: {trimmed_srt_name}")
 
-        # Path for ffmpeg subtitles filter needs special escaping
-        # We use forward slashes and escape single quotes and colons
-        sub_path = str(trimmed_srt_path).replace('\\', '/')
+        # Check for adjustment settings
+        folder_path = output_dir.parent
+        adjust_settings = self.get_theme_adjust_settings(folder_path, int(theme['number']))
         
-        # Check if we need to create ASS file
-        formatting_json_path = output_dir / f"theme_{theme['number']:03d}_formatting.json"
-        adjust_md_path = theme.get('adjust_file')
-        use_ass = False
+        # If we have adjustments, use the UniversalSubtitleRenderer (server-side)
+        if adjust_settings['has_adjustments']:
+            print(f"    Found adjusted settings, using UniversalSubtitleRenderer...")
+            
+            # Get word timestamps
+            word_timestamps_file = None
+            for file in folder_path.glob('*_word_timestamps.json'):
+                word_timestamps_file = file
+                break
+            
+            # Load highlight style if karaoke is enabled
+            karaoke_style = {}
+            if adjust_settings['karaoke_enabled']:
+                style_file = folder_path / 'highlight_style.json'
+                if style_file.exists():
+                    try:
+                        with open(style_file, 'r', encoding='utf-8') as f:
+                            karaoke_style = json.load(f)
+                    except: pass
 
-        has_formatting = formatting_json_path.exists()
-        has_global_position = False
-        has_word_timestamps = False
+            # Setup renderer settings
+            render_settings = {
+                'mode': karaoke_style.get('karaoke_mode', 'normal') if adjust_settings['karaoke_enabled'] else 'standard',
+                'fontSize': 48 * 2, # Double for 1080x1920
+                'fontName': 'Arial',
+                'textColor': karaoke_style.get('textColor', '#ffff00'),
+                'primaryColor': '#ffffff',
+                'pastColor': karaoke_style.get('past_color', '#808080'),
+                'outlineColor': '#000000',
+                'subtitle_position': adjust_settings['subtitle_position'],
+                'subtitle_left': adjust_settings['subtitle_left'],
+                'subtitle_top': adjust_settings['subtitle_top']
+            }
 
-        video_folder = output_dir.parent
-        word_timestamps_file = None
-        for file in video_folder.glob('*_word_timestamps.json'):
-            word_timestamps_file = file
-            has_word_timestamps = True
-            break
+            from subtitle_renderer import render_canvas_karaoke_video
+            success = render_canvas_karaoke_video(
+                str(video_path),
+                str(word_timestamps_file) if word_timestamps_file else "",
+                str(trimmed_srt_path),
+                str(output_file),
+                start_seconds,
+                end_seconds,
+                render_settings,
+                progress_callback=lambda p, s, m: progress_callback(f"Progress: {int(p)}% {m}") if progress_callback else None
+            )
+            
+            if success:
+                return str(output_file)
+            else:
+                print("    ✗ UniversalSubtitleRenderer failed, falling back to clean cut.")
 
-        if adjust_md_path and adjust_md_path.exists():
-            try:
-                with open(adjust_md_path, 'r', encoding='utf-8') as f:
-                    c = f.read()
-                    has_global_position = bool(re.search(r'\*\*subtitle_position:\*\*\s*custom', c))
-            except: pass
-
-        if has_formatting or has_global_position or has_word_timestamps:
-            ass_output_path = output_dir / f"theme_{theme['number']:03d}.ass"
-            try:
-                settings_dict = {section: dict(settings.items(section)) for section in settings.sections()}
-                ass_formatter = ASSFormatter(settings_dict)
-                use_karaoke = has_word_timestamps
-                karaoke_style = None
-                if use_karaoke:
-                    style_file = output_dir.parent / 'highlight_style.json'
-                    if style_file.exists():
-                        try:
-                            import json
-                            with open(style_file, 'r', encoding='utf-8') as f:
-                                style_data = json.load(f)
-                                karaoke_style = {
-                                    'mode': style_data.get('karaoke_mode', 'normal'),
-                                    'font_size_scale': style_data.get('font_size_scale', 1.0),
-                                    'past_color': style_data.get('past_color', None),
-                                    'textColor': style_data.get('textColor', '#ffff00')
-                                }
-                        except: pass
-                ass_formatter.create_ass_file(trimmed_srt_path, formatting_json_path, ass_output_path, adjust_md_path, use_karaoke=use_karaoke, karaoke_style=karaoke_style)
-                sub_path = str(ass_output_path).replace('\\', '/')
-                use_ass = True
-            except: pass
-
+        # Prepare output path for clean cut (if no adjustments or renderer failed)
+        video_name = f"theme_{theme['number']:03d}_{sanitize_title(theme['title'])}.mp4"
+        final_output_path = output_dir / video_name
+        
+        # We'll first create a "clean" cut of the video (trimmed segment)
+        # The actual burning of subtitles will be handled by the Canvas renderer (WASM or Server-side)
+        
         width = settings.get('video', 'resolution_width')
         height = settings.get('video', 'resolution_height')
-        font_name = settings.get('subtitle', 'font_name')
-        font_size = settings.get('subtitle', 'font_size')
-        margin_v = settings.get('subtitle', 'margin_v')
-        alignment = settings.get('subtitle', 'alignment')
         codec = settings.get('video', 'codec')
         preset = settings.get('video', 'preset')
         crf = settings.get('video', 'crf')
@@ -1273,25 +1320,11 @@ Video Path: {video_info['video_path']}
             safe_video_link = production_tmp_dir / "input_video.mp4"
             os.symlink(video_path.absolute(), safe_video_link)
             
-            # Use appropriate extension for subtitles
-            sub_ext = ".ass" if use_ass else ".srt"
-            safe_sub_link = production_tmp_dir / f"subtitles{sub_ext}"
-            
-            # The actual subtitle file path
-            os.symlink(Path(sub_path).absolute(), safe_sub_link)
-            
             # Temporary output path
             safe_output_path = production_tmp_dir / "output.mp4"
             
-            # In the filter, we now use the "safe" path
-            # FFmpeg filter needs the path relative to current working directory or absolute
-            # Using absolute path to the safe link is best
-            escaped_safe_sub = str(safe_sub_link.absolute()).replace(":", "\\\\:")
-            
-            if use_ass:
-                vf_filter = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}:(iw-ow)/2:(ih-oh)/2,subtitles='{escaped_safe_sub}':force_style='Alignment={alignment},MarginV={margin_v},FontName={font_name}'"
-            else:
-                vf_filter = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}:(iw-ow)/2:(ih-oh)/2,subtitles='{escaped_safe_sub}':force_style='FontSize={font_size},MarginV={margin_v},Alignment={alignment},FontName={font_name}'"
+            # Simple trim filter with scale/crop to vertical
+            vf_filter = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}:(iw-ow)/2:(ih-oh)/2"
 
             # Try NVIDIA hardware acceleration first
             gpu_cmd = [

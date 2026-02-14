@@ -9,7 +9,8 @@ Automatically download YouTube videos, generate subtitles, and identify themes f
 - **Auto-numbered folder structure** (001_, 002_, etc.)
 - **Multi-lingual subtitle generation** using Whisper AI
 - **Arabic subtitles in proper Arabic script** (default) - transliteration disabled
-- **Multiple subtitle formats** (SRT, VTT, TXT)
+- **High-performance Web UI** with 100% WYSIWYG consistency
+- **Unified Canvas Rendering** for server-side and browser-side consistency
 - **Smart theme identification** for 20sec-4min shorts
 - **Pattern-based titles** or **AI-generated titles** (Llama 3)
 - **Auto-detects URLs vs local files** - no flags needed
@@ -140,14 +141,23 @@ videos/
 └── 001_Video_Title/
     ├── video_name.mp4              # Downloaded video
     ├── video_name.srt              # SubRip subtitles
-    ├── video_name.vtt              # WebVTT subtitles
     ├── video_name_subtitles.txt    # Plain text transcript
     ├── video info.txt              # Video metadata
     ├── themes.md                   # Identified shorts themes
-    └── shorts/                     # Created short clips (optional)
+    └── shorts/                     # Created short clips
         ├── theme_001_Theme_Title.mp4
-        └── theme_002_Another_Theme.mp4
+        └── theme_001_Theme_Title_adjust.md # Visual adjustments
 ```
+
+## Browser-based Adjustment & Export
+
+The project includes a powerful web interface for fine-tuning your shorts:
+
+- **WYSIWYG Subtitle Editor:** Drag and drop subtitles directly on the video preview.
+- **Unified Rendering:** The same engine powers the browser preview and final export.
+- **Style Controls:** Adjust font size, colors, and karaoke modes (normal, cumulative).
+- **Client-side Export:** Uses `ffmpeg.wasm` to export adjusted videos directly in your browser.
+- **Server-side Consistency:** Bulk creation from the dashboard respects all browser adjustments.
 
 ## themes.md Format
 

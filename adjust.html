@@ -6,7 +6,7 @@
     <title>Adjust Theme - YouTube Shorts Creator</title>
     <!-- ffmpeg.wasm for client-side video encoding -->
     <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.7/dist/umd/ffmpeg.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/umd/util.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -309,59 +309,21 @@
             object-fit: cover;
         }
 
-        /* Canvas for karaoke rendering */
-        #karaoke-canvas {
+        /* Universal Subtitle Canvas */
+        #karaoke-canvas, #original-karaoke-canvas {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            object-fit: contain;
-            z-index: 15; /* Above video but below controls (z-index 20) */
+            pointer-events: none; /* Default to pass through clicks to video */
+            z-index: 100;
         }
 
-        /* Preview seekbar container */
-        .preview-seekbar-container {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
-            padding: 10px;
-            z-index: 20;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            opacity: 1;
-            transition: opacity 0.3s;
+        /* Enable interaction when editing or dragging */
+        .controls-locked #karaoke-canvas, .controls-locked #original-karaoke-canvas {
             pointer-events: auto;
-        }
-        #preview-video::cue {
-            background-color: transparent !important;
-            color: transparent !important;
-            text-shadow: none !important;
-        }
-        #preview-video::cue-background {
-            background-color: transparent !important;
-        }
-
-        /* Extra hiding for canvas mode - ensure VTT is completely invisible */
-        #preview-video.canvas-mode-active::cue {
-            display: none !important;
-            opacity: 0 !important;
-            visibility: hidden !important;
-        }
-
-        #preview-video.canvas-mode-active::-webkit-media-text-track-display {
-            display: none !important;
-        }
-
-        #preview-video.canvas-mode-active::-webkit-media-text-track-container {
-            display: none !important;
-        }
-
-        #preview-video.canvas-mode-active text {
-            display: none !important;
+            cursor: move;
         }
 
         /* Preview seekbar container */
@@ -429,31 +391,21 @@
             font-family: monospace;
         }
 
-        /* Subtitle overlay */
-        .subtitle-overlay {
+        /* Universal Subtitle Canvas */
+        #karaoke-canvas, #original-karaoke-canvas {
             position: absolute;
-            bottom: 40px;
-            left: 50%;
-            transform: translateX(-50%);
-            text-align: center;
-            width: 80%;
-            pointer-events: none;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Default to pass through clicks to video */
             z-index: 100;
-            display: none;
         }
 
-        .subtitle-overlay.draggable {
+        /* Enable interaction when editing or dragging */
+        .controls-locked #karaoke-canvas, .controls-locked #original-karaoke-canvas {
             pointer-events: auto;
             cursor: move;
-            z-index: 30; /* Above controls (z-index 20) but not too high */
-        }
-
-        .subtitle-text {
-            display: inline-block;
-            padding: 6px 16px;
-            background: rgba(0, 0, 0, 0.8);
-            border-radius: 6px;
-            line-height: 1.4;
         }
 
         /* Shorts 9:16 crop overlay */
@@ -801,6 +753,11 @@
             border-radius: 6px;
             color: #fff;
             font-size: 13px;
+        }
+
+        .form-group select option {
+            background-color: #1a1a2e;
+            color: #fff;
         }
 
         .form-group input:focus,
@@ -1370,9 +1327,11 @@
             </div>
 
             <div class="video-wrapper">
-                <video id="original-video">
-                    <track id="subtitle-track" kind="subtitles" srclang="en" label="English" default>
-                </video>
+                <video id="original-video"></video>
+                
+                <!-- Canvas for subtitles on original video side -->
+                <canvas id="original-karaoke-canvas"></canvas>
+
                 <div id="shorts-overlay" class="shorts-overlay hidden">
                     <div class="shorts-crop-area"></div>
                 </div>
@@ -1473,19 +1432,15 @@
 
         <!-- Right Panel: Theme Clip Preview + Subtitle Editor -->
         <div class="panel" style="position: relative;">
-            <h2>Theme Clip Preview (9:16 Shorts)</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h2 style="margin: 0; color: #00ff9d; font-size: 16px;">🎬 LIVE Subtitle Preview (WYSIWYG)</h2>
+            </div>
             <div class="video-wrapper preview-wrapper">
-                <video id="preview-video" loop playsinline>
-                    <track id="preview-subtitle-track" kind="subtitles" srclang="en" label="English" default>
-                </video>
-                <div class="subtitle-overlay" id="subtitle-overlay">
-                    <span class="subtitle-text" id="subtitle-preview-text">Preview subtitles</span>
-                </div>
+                <video id="preview-video" loop playsinline></video>
                 <div class="autosave-indicator preview-autosave" id="preview-autosave-indicator"></div>
 
-                <!-- Canvas for karaoke rendering (hidden by default) -->
-                <canvas id="karaoke-canvas" style="display:none;"></canvas>
-                <div class="buffer-info" id="canvas-mode-indicator" style="display:none;">Canvas Preview Mode</div>
+                <!-- Canvas for unified subtitle rendering -->
+                <canvas id="karaoke-canvas"></canvas>
 
                 <!-- Custom controls for preview video -->
                 <div class="preview-seekbar-container">
@@ -1497,12 +1452,6 @@
                         <span id="preview-time-display" class="preview-time-display">00:00 / 00:00</span>
                     </div>
                 </div>
-            </div>
-
-            <!-- Canvas Mode Toggle LED - positioned at top center of preview video -->
-            <div id="canvas-mode-led" style="position: absolute; top: 48px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 12px; border-radius: 6px; background: rgba(255,255,255,0.05); transition: all 0.2s ease; user-select: none; z-index: 10;" title="Toggle Canvas Mode">
-                <div id="led-indicator" style="width: 12px; height: 12px; border-radius: 50%; background: #333; box-shadow: inset 0 1px 3px rgba(0,0,0,0.5); transition: all 0.3s ease;"></div>
-                <span style="font-size: 12px; color: #aaa;">Canvas</span>
             </div>
 
             <div class="subtitle-editor" id="subtitle-editor">
@@ -1557,7 +1506,7 @@
                         </div>
                         <div class="form-group">
                             <label>Font Size (px)</label>
-                            <input type="number" id="subtitle-size" value="16" min="12" max="72">
+                            <input type="number" id="subtitle-size" value="80" min="20" max="200">
                         </div>
                     </div>
                     <div class="form-row">
@@ -1706,14 +1655,9 @@
                                         <button id="reset-highlight-style" style="padding: 8px 20px; background: #444; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Reset to Default</button>
                                     </div>
 
-                                    <!-- Canvas Mode Toggle -->
+                                    <!-- Export Video Button -->
                                     <div style="grid-column: 1 / -1; display: flex; justify-content: center; margin-top: 10px;">
-                                        <button id="toggle-canvas-mode" style="padding: 8px 20px; background: #2196F3; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Canvas Preview: OFF</button>
-                                    </div>
-
-                                    <!-- Export Canvas Video Button -->
-                                    <div style="grid-column: 1 / -1; display: flex; justify-content: center; margin-top: 10px;">
-                                        <button id="export-canvas-video" style="padding: 10px 24px; background: linear-gradient(135deg, #4CAF50, #45a049); color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 600;">Export Canvas Karaoke Video (ffmpeg.wasm)</button>
+                                        <button id="export-canvas-video" style="padding: 10px 24px; background: linear-gradient(135deg, #4CAF50, #45a049); color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 600;">🎬 Export Final Short (with Subtitles)</button>
                                     </div>
                                 </div>
                             </div>
@@ -1765,7 +1709,9 @@
 
         // DOM Elements
         const originalVideo = document.getElementById('original-video');
+        const originalCanvas = document.getElementById('original-karaoke-canvas');
         const previewVideo = document.getElementById('preview-video');
+        const canvas = document.getElementById('karaoke-canvas');
         const previewSeekbar = document.getElementById('preview-seekbar');
         const previewPlayBtn = document.getElementById('preview-play-btn');
         const themeBox = document.getElementById('theme-box');
@@ -1798,11 +1744,33 @@
             return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
         }
 
-        // Parse time string to seconds
+        // Parse time string to seconds (supports -HH:MM:SS.mmm)
         function parseTime(timeStr) {
-            const parts = timeStr.split(':');
+            if (!timeStr) return 0;
+            const isNegative = timeStr.startsWith('-');
+            const cleanStr = isNegative ? timeStr.slice(1) : timeStr;
+            const parts = cleanStr.split(':');
             if (parts.length !== 3) return 0;
-            return parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseFloat(parts[2]);
+            const seconds = parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseFloat(parts[2].replace(',', '.'));
+            return isNegative ? -seconds : seconds;
+        }
+
+        // Helper to convert seconds to timestamp string (supports negative values)
+        function formatVttTime(totalSeconds) {
+            const EPSILON = 0.001;
+            if (Math.abs(totalSeconds) < EPSILON) totalSeconds = 0;
+
+            const isNegative = totalSeconds < 0;
+            const absSeconds = Math.abs(totalSeconds);
+
+            const h = Math.floor(absSeconds / 3600);
+            const m = Math.floor((absSeconds % 3600) / 60);
+            const s = absSeconds % 60;
+            const sInt = Math.floor(s);
+            const msInt = Math.round((s - sInt) * 1000);
+
+            const sign = isNegative ? '-' : '';
+            return `${sign}${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${sInt.toString().padStart(2, '0')}.${msInt.toString().padStart(3, '0')}`;
         }
 
         // Auto-save theme adjustment
@@ -1823,29 +1791,11 @@
         let karaokeEnabled = true; // Karaoke word highlighting (default: enabled)
         let wordTimestamps = null; // Word timestamps for preview karaoke effect
 
-        // Canvas mode state
-        let canvasMode = false;
         let canvasRenderer = null;
+        let originalCanvasRenderer = null;
 
-        // Update LED indicator state
-        function updateCanvasLED() {
-            const led = document.getElementById('led-indicator');
-            const ledContainer = document.getElementById('canvas-mode-led');
-            if (canvasMode) {
-                // LED ON - bright green with glow
-                led.style.background = '#00ff00';
-                led.style.boxShadow = '0 0 10px #00ff00, 0 0 20px #00ff00, inset 0 1px 3px rgba(255,255,255,0.3)';
-                ledContainer.style.background = 'rgba(0, 255, 0, 0.15)';
-            } else {
-                // LED OFF - dark grey
-                led.style.background = '#333';
-                led.style.boxShadow = 'inset 0 1px 3px rgba(0,0,0,0.5)';
-                ledContainer.style.background = 'rgba(255,255,255,0.05)';
-            }
-        }
-
-        // KaraokeCanvasRenderer class for canvas-based karaoke with fade-back effects
-        class KaraokeCanvasRenderer {
+        // UniversalSubtitleRenderer class for canvas-based rendering of all subtitle styles
+        class UniversalSubtitleRenderer {
             constructor(canvas, videoElement, wordTimestamps, settings) {
                 this.canvas = canvas;
                 this.video = videoElement;
@@ -1866,7 +1816,10 @@
             }
 
             hexToRgb(hex) {
-                // Handle #RGB and #RRGGBB formats
+                if (hex.startsWith('rgba')) {
+                    const match = hex.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+                    return match ? { r: parseInt(match[1]), g: parseInt(match[2]), b: parseInt(match[3]) } : {r:255, g:255, b:255};
+                }
                 if (hex.startsWith('#')) {
                     hex = hex.slice(1);
                 }
@@ -1881,310 +1834,221 @@
                 } : {r: 255, g: 255, b: 255};
             }
 
-            // Get current subtitle text for given time
-            getCurrentSubtitleText(currentTime) {
-                const textEl = document.getElementById('subtitle-preview-text');
-                return textEl?.textContent?.trim() || '';
-            }
-
-            // Find word timestamp by word text and index
-            findWordTimestamp(word, wordIndex) {
-                if (!this.wordTimestamps || this.wordTimestamps.length === 0) {
-                    return null;
-                }
-
-                // Clean the word for comparison
-                const cleanWord = word.toLowerCase().replace(/[.,!?;:"'\s]/g, '');
-
-                // Try exact match first
-                for (const wt of this.wordTimestamps) {
-                    const cleanWt = (wt.word || '').toLowerCase().replace(/[.,!?;:"'\s]/g, '');
-                    if (cleanWt === cleanWord) {
-                        return wt;
+            // Helper to parse HTML into styled word objects
+            parseSubtitleHTML(html) {
+                if (!html) return [];
+                const div = document.createElement('div');
+                div.innerHTML = html;
+                const result = [];
+                
+                const walk = (node, currentStyle) => {
+                    if (node.nodeType === Node.TEXT_NODE) {
+                        // Split by whitespace but keep the whitespace as separate "words" or handle it
+                        const words = node.textContent.split(/(\s+)/);
+                        words.forEach(word => {
+                            if (word.length > 0) {
+                                result.push({
+                                    text: word,
+                                    ...currentStyle
+                                });
+                            }
+                        });
+                    } else if (node.nodeType === Node.ELEMENT_NODE) {
+                        const newStyle = { ...currentStyle };
+                        const name = node.nodeName.toUpperCase();
+                        
+                        if (name === 'B' || name === 'STRONG') newStyle.bold = true;
+                        if (name === 'I' || name === 'EM') newStyle.italic = true;
+                        
+                        // Handle color from font tag or style
+                        if (name === 'FONT') {
+                            if (node.hasAttribute('color')) newStyle.color = node.getAttribute('color');
+                            if (node.hasAttribute('size')) {
+                                // HTML font size 1-7 to multiplier mapping
+                                const sizeMap = { '1': 0.5, '2': 0.7, '3': 0.9, '4': 1.0, '5': 1.2, '6': 1.4, '7': 1.6 };
+                                newStyle.sizeMultiplier = sizeMap[node.getAttribute('size')] || 1.0;
+                            }
+                        }
+                        
+                        if (node.style.color) newStyle.color = node.style.color;
+                        if (node.style.fontWeight === 'bold' || parseInt(node.style.fontWeight) >= 700) newStyle.bold = true;
+                        if (node.style.fontStyle === 'italic') newStyle.italic = true;
+                        if (node.style.fontSize) {
+                            const emMatch = node.style.fontSize.match(/([\d.]+)em/);
+                            if (emMatch) newStyle.sizeMultiplier = parseFloat(emMatch[1]);
+                        }
+                        
+                        node.childNodes.forEach(child => walk(child, newStyle));
                     }
-                }
-
-                // Try index-based match as fallback
-                if (wordIndex < this.wordTimestamps.length) {
-                    return this.wordTimestamps[wordIndex];
-                }
-
-                return null;
+                };
+                
+                walk(div, { bold: false, italic: false, color: null, sizeMultiplier: 1.0 });
+                
+                // Final pass: filter out pure whitespace but use them to separate words if needed
+                // Actually, our rendering logic uses a fixed spaceWidth, so we only need the words.
+                return result.filter(item => item.text.trim().length > 0);
             }
 
-            // Render a single frame at the given time
-            renderFrame(currentTime, subtitleText) {
+            // Render a single frame at the given time with full styling support
+            renderFrame(currentTime, subtitleData, highlightedWordIndex = -1) {
                 const ctx = this.ctx;
                 const canvas = this.canvas;
 
-                // Debug: log what we're rendering
-                if (Math.random() < 0.05) { // Only log occasionally to avoid spam
-                }
+                // Clear canvas to transparent first (for overlay mode)
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-                // Draw video frame first (if video element is available and ready)
-                if (this.video && this.video.readyState >= 2) {
-                    // Calculate scaling to maintain aspect ratio and cover the canvas
-                    const videoRatio = this.video.videoWidth / this.video.videoHeight;
-                    const canvasRatio = canvas.width / canvas.height;
-
-                    let drawWidth, drawHeight, startX, startY;
-
-                    if (videoRatio > canvasRatio) {
-                        // Video is wider - use height as reference
-                        drawHeight = canvas.height;
-                        drawWidth = drawHeight * videoRatio;
-                        startX = (canvas.width - drawWidth) / 2;
-                        startY = 0;
-                    } else {
-                        // Video is taller - use width as reference
-                        drawWidth = canvas.width;
-                        drawHeight = drawWidth / videoRatio;
-                        startX = 0;
-                        startY = (canvas.height - drawHeight) / 2;
-                    }
-
-                    ctx.drawImage(this.video, startX, startY, drawWidth, drawHeight);
-                } else {
-                    // Fallback to black background if video not available
-                    ctx.fillStyle = '#000000';
-                    ctx.fillRect(0, 0, canvas.width, canvas.height);
-                }
-
-                if (!subtitleText) {
+                if (!subtitleData) {
                     return;
                 }
 
-                // Get settings
-                const fontSize = this.settings.fontSize || 48;
+                // Get settings and calculate scaling factor (preview canvas vs 1080p)
+                const scale = canvas.width / 1080;
+                const baseFontSize = (this.settings.fontSize || 80) * scale;
                 const fontFamily = this.settings.font_name || 'Arial';
                 const highlightColor = this.settings.textColor || '#ffff00';
                 const pastColor = this.settings.past_color || '#808080';
-                const mode = this.settings.mode || 'normal';
-                const fontWeight = this.settings.font_weight || 'bold';
+                const mode = this.settings.mode || 'standard';
+                const baseFontWeight = this.settings.font_weight || 'bold';
+                const outlineColor = this.settings.outlineColor || '#000000';
+                const primaryColor = this.settings.primaryColor || '#ffffff';
 
-                // Set font
-                ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'bottom';
-
-                // Calculate position (bottom center with margin)
-                const margin = 100;
-                const maxWidth = canvas.width - 80; // 40px padding on each side
-
-                // Get words from subtitle text
-                const words = subtitleText.split(/\s+/).filter(w => w.length > 0);
-
-                if (words.length === 0) {
-                    return;
+                // Parse input into styled words
+                let words = [];
+                if (typeof subtitleData === 'string' && (subtitleData.includes('<') || subtitleData.includes('&'))) {
+                    words = this.parseSubtitleHTML(subtitleData);
+                } else if (typeof subtitleData === 'string') {
+                    words = subtitleData.split(/\s+/).filter(w => w.length > 0).map(w => ({
+                        text: w, bold: false, italic: false, color: null, sizeMultiplier: 1.0
+                    }));
+                } else if (Array.isArray(subtitleData)) {
+                    words = subtitleData;
                 }
 
-                // Word wrapping - break into lines
+                if (words.length === 0) return;
+
+                // Function to set context font for a specific word
+                const setWordFont = (wordObj) => {
+                    const weight = wordObj.bold ? 'bold' : baseFontWeight;
+                    const style = wordObj.italic ? 'italic' : '';
+                    const size = baseFontSize * (wordObj.sizeMultiplier || 1.0);
+                    ctx.font = `${style} ${weight} ${size}px ${fontFamily}`;
+                };
+
+                // Word wrapping
+                const margin = 100 * scale;
+                const maxWidth = canvas.width - (80 * scale);
                 const lines = [];
                 let currentLine = [];
                 let lineWidth = 0;
+                
+                // Default space width for the base font
+                ctx.font = `${baseFontWeight} ${baseFontSize}px ${fontFamily}`;
                 const spaceWidth = ctx.measureText(' ').width;
 
-                for (const word of words) {
-                    const wordWidth = ctx.measureText(word).width;
+                for (const wordObj of words) {
+                    setWordFont(wordObj);
+                    const wordWidth = ctx.measureText(wordObj.text).width;
                     const testWidth = currentLine.length > 0 ? lineWidth + spaceWidth + wordWidth : wordWidth;
 
                     if (testWidth <= maxWidth) {
-                        // Word fits on current line
-                        currentLine.push(word);
+                        currentLine.push({ ...wordObj, width: wordWidth });
                         lineWidth = testWidth;
                     } else {
-                        // Word doesn't fit - start new line
-                        if (currentLine.length > 0) {
-                            lines.push(currentLine);
-                        }
-                        currentLine = [word];
+                        if (currentLine.length > 0) lines.push(currentLine);
+                        currentLine = [{ ...wordObj, width: wordWidth }];
                         lineWidth = wordWidth;
                     }
                 }
+                if (currentLine.length > 0) lines.push(currentLine);
 
-                // Add last line
-                if (currentLine.length > 0) {
-                    lines.push(currentLine);
+                // Calculate vertical position
+                const lineHeight = baseFontSize * 1.3; // Slightly more for varied sizes
+                let startY;
+                
+                if (this.settings.subtitle_position === 'top') {
+                    startY = (100 * scale) + lineHeight;
+                    ctx.textBaseline = 'top';
+                } else if (this.settings.subtitle_position === 'middle') {
+                    startY = (canvas.height - (lines.length * lineHeight)) / 2;
+                    ctx.textBaseline = 'top';
+                } else if (this.settings.subtitle_position === 'custom' && this.settings.subtitle_top) {
+                    startY = this.settings.subtitle_top;
+                    ctx.textBaseline = 'top';
+                } else {
+                    startY = canvas.height - margin - (lines.length - 1) * lineHeight;
+                    ctx.textBaseline = 'bottom';
                 }
 
-                // Calculate total height for all lines
-                const lineHeight = fontSize * 1.2; // 20% line spacing
-                const totalHeight = lines.length * lineHeight;
-                const startY = canvas.height - margin - (lines.length - 1) * lineHeight;
+                ctx.textAlign = 'center';
 
-                // Render each line
+                // Render lines
+                let globalWordCounter = 0;
                 for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
                     const line = lines[lineIndex];
                     const lineY = startY + lineIndex * lineHeight;
-                    const lineX = canvas.width / 2;
-
-                    // Calculate word positions for this line
+                    
+                    // Calculate line width for centering
                     let lineTextWidth = 0;
-                    const wordWidths = [];
-                    for (const word of line) {
-                        const width = ctx.measureText(word).width;
-                        wordWidths.push(width);
-                        lineTextWidth += width;
+                    for (let i = 0; i < line.length; i++) {
+                        lineTextWidth += line[i].width;
+                        if (i < line.length - 1) lineTextWidth += spaceWidth;
                     }
-                    lineTextWidth += spaceWidth * (line.length - 1);
 
-                    let xPos = lineX - lineTextWidth / 2;
+                    let xPos = (canvas.width - lineTextWidth) / 2;
+                    if (this.settings.subtitle_position === 'custom' && this.settings.subtitle_left) {
+                        xPos = this.settings.subtitle_left - (lineTextWidth / 2);
+                    }
 
-                    // Render each word in this line
-                    for (let wordIndex = 0; wordIndex < line.length; wordIndex++) {
-                        const word = line[wordIndex];
-                        const wordWidth = wordWidths[wordIndex];
-                        let color = '#ffffff'; // Default white
+                    // Render words in line
+                    for (let i = 0; i < line.length; i++) {
+                        const wordObj = line[i];
+                        const word = wordObj.text;
+                        const wordWidth = wordObj.width;
+                        
+                        setWordFont(wordObj);
+                        
+                        // Default color - use rich text color if available, otherwise global primary color
+                        let color = wordObj.color || primaryColor;
 
-                        // Find timestamp for this word (using global word index)
-                        const globalWordIndex = words.indexOf(word);
-                        const wordTimestamp = this.findWordTimestamp(word, globalWordIndex);
-
-                        if (wordTimestamp) {
-                            const wordStart = wordTimestamp.start || 0;
-                            const wordEnd = wordTimestamp.end || 0;
-
-                            if (currentTime >= wordStart && currentTime <= wordEnd) {
-                                // Currently being spoken - highlight
-                                color = highlightColor;
-                            } else if (currentTime > wordEnd) {
-                                // Word was spoken
-                                if (mode === 'normal') {
-                                    // Fade back to white
-                                    const timeSinceEnd = currentTime - wordEnd;
-                                    const fadeProgress = Math.min(timeSinceEnd / this.fadeDuration, 1);
-                                    color = this.lerpColor(highlightColor, '#ffffff', fadeProgress);
-                                } else if (mode === 'cumulative') {
-                                    // Stay gray/past color
-                                    color = pastColor;
+                        if (mode !== 'standard') {
+                            // Karaoke mode coloring
+                            if (highlightedWordIndex !== -1) {
+                                if (globalWordCounter < highlightedWordIndex) {
+                                    // Use past color for cumulative, otherwise respect rich text color
+                                    color = (mode === 'cumulative') ? pastColor : (wordObj.color || primaryColor);
+                                } else if (globalWordCounter === highlightedWordIndex) {
+                                    // Current word gets highlight color
+                                    color = highlightColor;
+                                }
+                                // Future words (globalWordCounter > highlightedWordIndex) keep their base color
+                            } else {
+                                // Fallback to time-based coloring
+                                const wordTs = this.wordTimestamps.find(wt => 
+                                    (wt.word || '').toLowerCase().replace(/[.,!?;:"'\s]/g, '') === 
+                                    word.toLowerCase().replace(/[.,!?;:"'\s]/g, '')
+                                );
+                                if (wordTs) {
+                                    if (currentTime >= wordTs.start && currentTime <= wordTs.end) {
+                                        color = highlightColor;
+                                    } else if (currentTime > wordTs.end) {
+                                        color = (mode === 'cumulative') ? pastColor : (wordObj.color || primaryColor);
+                                    }
                                 }
                             }
                         }
 
-                        // Draw the word
+                        // Draw Outline/Shadow
+                        ctx.strokeStyle = outlineColor;
+                        ctx.lineWidth = Math.max(2 * scale, (baseFontSize * (wordObj.sizeMultiplier || 1.0)) / 12);
+                        ctx.lineJoin = 'round';
+                        ctx.strokeText(word, xPos + wordWidth / 2, lineY);
+
+                        // Draw Text
                         ctx.fillStyle = color;
                         ctx.fillText(word, xPos + wordWidth / 2, lineY);
+                        
                         xPos += wordWidth + spaceWidth;
-                    }
-                }
-            }
-
-            // Render a frame using the highlighted word index from the DOM (matches original system exactly)
-            renderFrameWithHighlight(currentTime, subtitleText, highlightedWordIndex) {
-                const ctx = this.ctx;
-                const canvas = this.canvas;
-
-                // Debug: log what we're rendering EVERY TIME to track changes
-
-                // Clear canvas to transparent first
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-                if (!subtitleText) {
-                    return;
-                }
-
-                // Get settings
-                const fontSize = this.settings.fontSize || 48;
-                const fontFamily = this.settings.font_name || 'Arial';
-                const highlightColor = this.settings.textColor || '#ffff00';
-                const pastColor = this.settings.past_color || '#808080';
-                const mode = this.settings.mode || 'normal';
-                const fontWeight = this.settings.font_weight || 'bold';
-
-                // Set font
-                ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'bottom';
-
-                // Calculate position (bottom center with margin)
-                const margin = 100;
-                const maxWidth = canvas.width - 80; // 40px padding on each side
-
-                // Get words from subtitle text
-                const words = subtitleText.split(/\s+/).filter(w => w.length > 0);
-
-                if (words.length === 0) {
-                    return;
-                }
-
-                // Word wrapping - break into lines
-                const lines = [];
-                let currentLine = [];
-                let lineWidth = 0;
-                const spaceWidth = ctx.measureText(' ').width;
-
-                for (const word of words) {
-                    const wordWidth = ctx.measureText(word).width;
-                    const testWidth = currentLine.length > 0 ? lineWidth + spaceWidth + wordWidth : wordWidth;
-
-                    if (testWidth <= maxWidth) {
-                        // Word fits on current line
-                        currentLine.push(word);
-                        lineWidth = testWidth;
-                    } else {
-                        // Word doesn't fit - start new line
-                        if (currentLine.length > 0) {
-                            lines.push(currentLine);
-                        }
-                        currentLine = [word];
-                        lineWidth = wordWidth;
-                    }
-                }
-
-                // Add last line
-                if (currentLine.length > 0) {
-                    lines.push(currentLine);
-                }
-
-                // Calculate total height for all lines
-                const lineHeight = fontSize * 1.2; // 20% line spacing
-                const totalHeight = lines.length * lineHeight;
-                const startY = canvas.height - margin - (lines.length - 1) * lineHeight;
-
-                // Render each line
-                let globalWordIndex = 0; // Track word index across all lines
-                for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-                    const line = lines[lineIndex];
-                    const lineY = startY + lineIndex * lineHeight;
-                    const lineX = canvas.width / 2;
-
-                    // Calculate word positions for this line
-                    let lineTextWidth = 0;
-                    const wordWidths = [];
-                    for (const word of line) {
-                        const width = ctx.measureText(word).width;
-                        wordWidths.push(width);
-                        lineTextWidth += width;
-                    }
-                    lineTextWidth += spaceWidth * (line.length - 1);
-
-                    let xPos = lineX - lineTextWidth / 2;
-
-                    // Render each word in this line
-                    for (let wordIndex = 0; wordIndex < line.length; wordIndex++) {
-                        const word = line[wordIndex];
-                        const wordWidth = wordWidths[wordIndex];
-                        let color = '#ffffff'; // Default white
-
-                        // Use the highlighted word index from DOM to determine color
-                        if (globalWordIndex < highlightedWordIndex) {
-                            // Word was already spoken
-                            if (mode === 'cumulative') {
-                                color = pastColor;
-                            } else {
-                                // Normal mode - white
-                                color = '#ffffff';
-                            }
-                        } else if (globalWordIndex === highlightedWordIndex) {
-                            // Currently being spoken - highlight
-                            color = highlightColor;
-                        }
-
-                        // Draw the word
-                        ctx.fillStyle = color;
-                        ctx.fillText(word, xPos + wordWidth / 2, lineY);
-                        xPos += wordWidth + spaceWidth;
-                        globalWordIndex++;
+                        globalWordCounter++;
                     }
                 }
             }
@@ -2347,7 +2211,7 @@
 
 
             // Calculate correct X position based on alignment
-            // ASS with center alignment uses center point, not left edge
+            // Canvas renderer with center alignment uses center point, not left edge
             let leftToSave = null;
             let topToSave = null;
             if (customPosition) {
@@ -2570,65 +2434,21 @@
                 const data = await response.json();
                 allCueFormatting = data.formatting || {};
 
-                // Helper to parse timestamp to seconds
-                const vttToSeconds = (ts) => {
-                    const [time, millis] = ts.split('.');
-                    const isNeg = time.startsWith('-');
-                    const [h, m, s] = time.replace('-', '').split(':').map(Number);
-                    const result = h * 3600 + m * 60 + s + (millis || 0) / 1000;
-                    return isNeg ? -result : result;
-                };
-
-                // Helper to convert seconds to timestamp (supports negative values)
-                const secondsToVtt = (totalSeconds) => {
-                    const EPSILON = 0.001;
-                    if (Math.abs(totalSeconds) < EPSILON) {
-                        totalSeconds = 0;
-                    }
-
-                    const isNegative = totalSeconds < 0;
-                    const absSeconds = Math.abs(totalSeconds);
-
-                    let h = Math.floor(absSeconds / 3600);
-                    let m = Math.floor((absSeconds % 3600) / 60);
-                    let s = absSeconds % 60;
-                    let sInt = Math.floor(s);
-                    let msInt = Math.round((s - sInt) * 1000);
-
-                    if (msInt >= 1000) {
-                        msInt = 0;
-                        sInt += 1;
-                        if (sInt >= 60) {
-                            sInt = 0;
-                            m += 1;
-                            if (m >= 60) {
-                                m = 0;
-                                h += 1;
-                            }
-                        }
-                    }
-
-                    const sign = isNegative ? '-' : '';
-                    return `${sign}${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${sInt.toString().padStart(2, '0')}.${msInt.toString().padStart(3, '0')}`;
-                };
-
                 // CRITICAL FIX: Convert absolute timestamps to relative timestamps
-                // If the JSON has entries with absolute VTT times (e.g., "00:00:10.000")
+                // If the JSON has entries with absolute timestamps (e.g., "00:00:10.000")
                 // convert them to relative times (e.g., "00:00:00.000") by subtracting themeStart
                 if (startSeconds !== null && startSeconds !== undefined && Object.keys(allCueFormatting).length > 0) {
                     const absoluteKeysToRemove = [];
                     const newEntries = {};
 
                     for (const [timestamp, formatting] of Object.entries(allCueFormatting)) {
-                        const timestampSeconds = vttToSeconds(timestamp);
+                        const timestampSeconds = parseTime(timestamp);
 
                         // Check if this looks like an absolute timestamp (>= theme start)
-                        // Absolute timestamps are typically large (e.g., 10s = theme start, 26s = later in video)
-                        // Relative timestamps should be small (e.g., 0s, 0.754s, etc.)
                         if (timestampSeconds >= startSeconds - 0.5) { // Allow 0.5s tolerance
                             // This looks like an absolute timestamp, convert to relative
                             const relativeSeconds = timestampSeconds - startSeconds;
-                            const relativeTimestamp = secondsToVtt(relativeSeconds);
+                            const relativeTimestamp = formatVttTime(relativeSeconds);
 
                             // Check if a relative version already exists
                             if (allCueFormatting[relativeTimestamp]) {
@@ -2672,11 +2492,11 @@
                 // Find duplicates: positive and negative versions of ~same time
                 for (const key of keys) {
                     if (key.startsWith('-')) {
-                        const absSeconds = Math.abs(vttToSeconds(key));
+                        const absSeconds = Math.abs(parseTime(key));
                         // Check if there's a corresponding positive key
                         for (const otherKey of keys) {
                             if (!otherKey.startsWith('-')) {
-                                const otherSeconds = vttToSeconds(otherKey);
+                                const otherSeconds = parseTime(otherKey);
                                 // If positive key is within 1 second of absolute negative key
                                 if (Math.abs(otherSeconds - absSeconds) < 0.01) {
                                     // Mark positive key for removal (keep negative version)
@@ -2877,39 +2697,8 @@
                         allThemeCues[cueIndex].text = newText;
                     }
 
-                    // Reload the subtitle track to show changes
-                    if (previewVideo) {
-                        // Remove ALL existing tracks
-                        const existingTracks = previewVideo.querySelectorAll('track');
-                        existingTracks.forEach(track => track.remove());
-
-                        // Clear the textTracks list
-                        while (previewVideo.textTracks.length > 0) {
-                            previewVideo.textTracks[0].mode = 'disabled';
-                        }
-
-                        // Create new track
-                        const newTrack = document.createElement('track');
-                        newTrack.id = 'preview-subtitle-track';
-                        newTrack.kind = 'subtitles';
-                        newTrack.srclang = 'en';
-                        newTrack.label = 'English';
-                        newTrack.default = false;
-                        newTrack.src = `/api/subtitles/${folderNumber}/${themeNumber}.vtt?start=${startSeconds}&end=${endSeconds}&t=${Date.now()}`;
-
-                        // Add to DOM
-                        previewVideo.appendChild(newTrack);
-
-                        // Keep mode as 'showing' so cues are loaded and accessible
-                        setTimeout(() => {
-                            if (previewVideo.textTracks.length > 0) {
-                                const textTrack = previewVideo.textTracks[0];
-                                if (textTrack) {
-                                    textTrack.mode = 'showing';
-                                }
-                            }
-                        }, 100);
-                    }
+                    // Update canvas renderer
+                    updateSubtitlePreview();
 
                     indicator.textContent = '✓ Saved';
                     indicator.classList.remove('saving');
@@ -2991,14 +2780,6 @@
 
                 // Load global position from adjust.md
                 await loadGlobalPosition();
-
-                // Load VTT subtitles with theme parameter to get edits
-                const subtitleTrack = document.getElementById('subtitle-track');
-                subtitleTrack.src = `/api/subtitles/${folderNumber}.vtt?theme=${themeNumber}&_=${Date.now()}`;
-                originalVideo.textTracks.addEventListener('addtrack', (event) => {
-                    const track = event.track;
-                    track.mode = 'showing';
-                });
 
                 // Promise wrapper for video loading
                 const loadVideo = (video, src) => {
@@ -3084,58 +2865,18 @@
 
         // Update preview video with clipped range
         function reloadSubtitleTrack() {
-
-            // Reload VTT subtitle track with current time range
+            // VTT track is no longer used, we now render everything on Canvas
             if (!previewVideo || !folderNumber || !themeNumber) return;
 
-
-            // Clear ALL derived state FIRST to prevent stale subtitle display
+            // Clear editor and preview state
             currentCueInfo = null;
-
-            // Clear the subtitle editor
             const subtitleText = document.getElementById('subtitle-text');
-            if (subtitleText) {
-                subtitleText.innerHTML = '';
+            if (subtitleText) subtitleText.innerHTML = '';
+
+            // Renderer will automatically pick up changes on next frame update
+            if (previewVideo.paused) {
+                previewVideo.dispatchEvent(new Event('timeupdate'));
             }
-
-            // Clear the preview overlay
-            const previewOverlay = document.getElementById('subtitle-preview-text');
-            if (previewOverlay) {
-                previewOverlay.textContent = '';
-            }
-
-
-            // Remove ALL existing track elements from the video
-            const existingTracks = previewVideo.querySelectorAll('track');
-            existingTracks.forEach(track => track.remove());
-
-            // Clear the textTracks list (internal browser cache)
-            while (previewVideo.textTracks.length > 0) {
-                previewVideo.textTracks[0].mode = 'disabled';
-            }
-
-            // Create new track with current time range
-            const newSrc = `/api/subtitles/${folderNumber}/${themeNumber}.vtt?start=${startSeconds}&end=${endSeconds}&t=${Date.now()}`;
-
-            const newTrack = document.createElement('track');
-            newTrack.id = 'preview-subtitle-track';
-            newTrack.kind = 'subtitles';
-            newTrack.srclang = 'en';
-            newTrack.label = 'English';
-            newTrack.default = false;
-            newTrack.src = newSrc;
-
-            // Add to DOM
-            previewVideo.appendChild(newTrack);
-
-            // Enable track after it loads - do NOT sync immediately
-            // Let the natural timeupdate event trigger syncSubtitleToTextarea
-            // when cues are actually parsed and ready
-            setTimeout(() => {
-                if (previewVideo.textTracks.length > 0) {
-                    previewVideo.textTracks[0].mode = 'showing';
-                }
-            }, 50);
         }
 
         function updatePreviewBoundaries() {
@@ -3198,222 +2939,66 @@
                 }
             };
 
-            // Sync current subtitle from VTT to textarea
+            // Sync current subtitle from our local cues to textarea based on video time
             const syncSubtitleToTextarea = () => {
-                const textTrack = previewVideo.textTracks[0];
-                if (!textTrack || !textTrack.cues || textTrack.cues.length === 0) return;
+                if (!allThemeCues || allThemeCues.length === 0) return;
 
-                const activeCues = textTrack.activeCues;
-                if (activeCues.length > 0) {
-                    const currentCue = activeCues[0];
-                    const subtitleText = document.getElementById('subtitle-text');
+                const currentTime = previewVideo.currentTime;
+                const subtitleText = document.getElementById('subtitle-text');
 
+                // Find matching cue in our stable list
+                const matchingCue = allThemeCues.find(cue => {
+                    const cueStart = parseTime(cue.start);
+                    const cueEnd = parseTime(cue.end);
+                    return currentTime >= cueStart && currentTime <= cueEnd;
+                });
 
-                    // Convert cue time (seconds) to HH:MM:SS.mmm format for matching with API
-                    // Supports negative values for subtitles before theme start
-                    const vttToTimestamp = (seconds) => {
-                        // Round near-zero values to exactly 0 to avoid floating point precision issues
-                        // This prevents -0.000353 from becoming "-00:00:00.000" which won't match "00:00:00.000"
-                        const EPSILON = 0.001; // 1ms threshold (increased from 0.0005)
-                        if (Math.abs(seconds) < EPSILON) {
-                            seconds = 0;
-                        }
-
-                        const isNegative = seconds < 0;
-                        const absSeconds = Math.abs(seconds);
-
-                        const h = Math.floor(absSeconds / 3600);
-                        const m = Math.floor((absSeconds % 3600) / 60);
-                        let s = absSeconds % 60;
-                        let sInt = Math.floor(s);
-                        let msInt = Math.round((s - sInt) * 1000);
-
-                        // Handle millisecond rollover (e.g., 15.999 → 16.000)
-                        if (msInt >= 1000) {
-                            msInt = 0;
-                            sInt += 1;
-                            if (sInt >= 60) {
-                                sInt = 0;
-                                m += 1;
-                                if (m >= 60) {
-                                    m = 0;
-                                    h += 1;
-                                }
-                            }
-                        }
-
-                        const sign = isNegative ? '-' : '';
-                        return `${sign}${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${sInt.toString().padStart(2, '0')}.${msInt.toString().padStart(3, '0')}`;
-                    };
-
-                    // IMPORTANT: Use themeStart from dataset, not closure variable
-                    // This ensures correct timing when timeline is expanded/contracted
-                    const themeStart = parseFloat(previewVideo.dataset.themeStart);
-
-                    // Track current cue info with matching format
-                    // Convert VTT time (original video time) to trimmed time (relative to theme start)
-                    // This ensures JSON keys match the trimmed SRT timestamps used for export
-                    // Allow negative values to preserve formatting for subtitles before theme start
-                    const trimmedStartTime = currentCue.startTime - themeStart;
-                    const trimmedEndTime = currentCue.endTime - themeStart;
-
-                    // Match VTT cue to allThemeCues to get the sequence number
-                    // The sequence number is the stable SRT sequence (1, 2, 3, ...)
-                    let sequence = null;
-
-                    // IMPORTANT: The API returns absolute timestamps from the SRT file
-                    // But currentCue.startTime/endTime are also absolute (from original video)
-                    // So we should match using absolute timestamps, not relative ones
-                    const absoluteTimestampKey = vttToTimestamp(currentCue.startTime);
-                    const absoluteEndTimeKey = vttToTimestamp(currentCue.endTime);
-
-                    // timestampKey/endKey are relative (for storage in JSON)
-                    const timestampKey = vttToTimestamp(trimmedStartTime);
-                    const endTimeKey = vttToTimestamp(trimmedEndTime);
-
-                    // Find matching cue by timestamp and text
-                    // Use more lenient text matching (normalize whitespace and newlines)
-                    const normalizeText = (text) => text.trim().replace(/[\s\n\r]+/g, ' ');
+                if (matchingCue) {
+                    const currentCueText = subtitleEdits[`${matchingCue.start}_${matchingCue.end}`] || matchingCue.text;
                     
-                    // First try exact timestamp match
-                    let matchingCue = allThemeCues.find(cue => {
-                        return cue.start === absoluteTimestampKey && cue.end === absoluteEndTimeKey;
-                    });
-
-                    // Fallback: match by start time only with tolerance (0.1s)
-                    if (!matchingCue) {
-                        const cueStartTime = currentCue.startTime;
-                        matchingCue = allThemeCues.find(cue => {
-                            const diff = Math.abs(parseTime(cue.start) - cueStartTime);
-                            return diff < 0.1;
-                        });
-                    }
-
-                    if (matchingCue) {
-                        // Apply edited text if it's already in our local state
-                        const cacheKey = `${matchingCue.start}_${matchingCue.end}`;
-                        if (subtitleEdits[cacheKey]) {
-                            matchingCue.text = subtitleEdits[cacheKey];
-                        }
-                    }
-
-                    if (matchingCue && matchingCue.sequence) {
-                        sequence = matchingCue.sequence;
-                    } else {
-                        // Debug: log why matching failed
-
-                        // Find cues with matching timestamp (using absolute)
-                        const timestampMatches = allThemeCues.filter(c => c.start === absoluteTimestampKey);
-
-                        // Find cues with similar text (substring match)
-                        const textMatches = allThemeCues.filter(c => c.text.includes(currentCue.text) || currentCue.text.includes(c.text));
-                    }
-
                     const newCueInfo = {
-                        sequence: sequence,
-                        timestamp: timestampKey,
-                        start: absoluteTimestampKey,
-                        end: absoluteEndTimeKey,
-                        text: currentCue.text
+                        sequence: matchingCue.sequence,
+                        start: matchingCue.start,
+                        end: matchingCue.end,
+                        text: currentCueText
                     };
 
-                    // Only update if we've moved to a different cue (different timestamp OR different text)
-                    if (!currentCueInfo || currentCueInfo.start !== newCueInfo.start || currentCueInfo.text !== newCueInfo.text) {
+                    // Only update if we've moved to a different cue
+                    if (!currentCueInfo || currentCueInfo.start !== newCueInfo.start) {
                         currentCueInfo = newCueInfo;
-
-                        // Set flag to prevent auto-save during programmatic update
                         isProgrammaticUpdate = true;
 
-
-                        // Load saved formatting for this cue using sequence as key
-                        const key = currentCueInfo.sequence;
-                        const formatting = key !== null ? allCueFormatting[key] : null;
-
+                        // Load saved formatting
+                        const formatting = allCueFormatting[matchingCue.sequence];
                         if (formatting && formatting.html) {
-                            // Use the saved HTML which has selective formatting preserved
-
-                            const html = formatting.html;
-
-                            // Apply HTML directly using insertHTML (bypasses contenteditable sanitization)
                             subtitleText.focus();
                             document.execCommand('selectAll', false, null);
-                            document.execCommand('insertHTML', false, html);
-
-
-                            // Set up observer to detect what's modifying the editor
-                            const observer = new MutationObserver((mutations) => {
-                                mutations.forEach((mutation) => {
-                                    if (mutation.type === 'childList' || mutation.type === 'characterData') {
-                                    }
-                                });
-                            });
-
-                            observer.observe(subtitleText, { childList: true, subtree: true, characterData: true });
-
-                            // Stop observing after 2 seconds
-                            setTimeout(() => observer.disconnect(), 2000);
-
-                            // Update subtitleFormatting for preview
-                            subtitleFormatting = {
-                                bold: formatting.bold || false,
-                                italic: formatting.italic || false,
-                                color: formatting.color || null,
-                                size: formatting.size || null,
-                                position: formatting.position || null,  // Load individual position
-                                customPosition: formatting.customPosition || null,
-                                horizontalAlign: formatting.horizontalAlign || 'center',
-                                verticalAlign: formatting.verticalAlign || 'middle'
-                            };
-
-                            // Restore custom position if exists
+                            document.execCommand('insertHTML', false, formatting.html);
+                            
+                            // Update positioning state
                             if (formatting.customPosition) {
-                                // Scale coordinates from output resolution back to preview resolution
-                                const previewVideo = document.getElementById('preview-video');
-                                const scaleX = (previewVideo?.offsetWidth || 281) / 1080;
-                                const scaleY = (previewVideo?.offsetHeight || 500) / 1920;
-
+                                const rect = previewVideo.getBoundingClientRect();
+                                const scaleX = rect.width / 1080;
+                                const scaleY = rect.height / 1920;
                                 customPosition = {
                                     left: formatting.customPosition.left * scaleX,
                                     top: formatting.customPosition.top * scaleY,
-                                    centerX: formatting.customPosition.centerX ? formatting.customPosition.centerX * scaleX : null,
-                                    width: formatting.customPosition.width ? formatting.customPosition.width * scaleX : null
+                                    centerX: (formatting.customPosition.centerX || formatting.customPosition.left) * scaleX
                                 };
-                            } else {
-                                customPosition = null;
                             }
-
-                            // Restore alignment
-                            horizontalAlign = formatting.horizontalAlign || 'center';
-                            verticalAlign = formatting.verticalAlign || 'middle';
-
-                            // Update align button states
-                            updateAlignButtons(horizontalAlign, verticalAlign);
                         } else {
-                            // No saved formatting, use plain text
-                            subtitleText.innerHTML = currentCue.text;
-                            subtitleFormatting = { bold: false, italic: false, color: null, size: null, position: null };
-
-                            // Don't reset customPosition if global mode has custom position
-                            // Keep the global custom position for all cues
-                            if (globalPosition !== 'custom') {
-                                customPosition = null;
-                                hasManualPosition = false;
-                            } else {
-                                // Global mode has custom position - keep it and mark as manual
-                                hasManualPosition = true;
-                            }
-
-                            horizontalAlign = 'center';
-                            verticalAlign = 'middle';
-                            updateAlignButtons(horizontalAlign, verticalAlign);
+                            subtitleText.innerHTML = currentCueText;
                         }
-
-                        // Always update preview after programmatic cue change
-                        // (Don't check focus here since we just focused the editor to apply HTML)
-                        updateSubtitlePreview();
-
-                        // Reset flag after programmatic update is complete
+                        
                         isProgrammaticUpdate = false;
+                        updateSubtitlePreview();
+                    }
+                } else {
+                    // No active cue
+                    if (currentCueInfo !== null) {
+                        currentCueInfo = null;
+                        subtitleText.innerHTML = '';
+                        updateSubtitlePreview();
                     }
                 }
             };
@@ -3482,13 +3067,12 @@
                     updatePreviewWordHighlighting(previewVideo.currentTime);
                 }
 
-                // Canvas rendering handler for canvas mode
-                if (canvasMode && canvasRenderer) {
+                // Canvas rendering handler
+                if (canvasRenderer) {
                     try {
-                        // IMPORTANT: Always find current subtitle from allThemeCues based on video time
-                        // Don't rely on editor element which may be stale
                         let subtitleText = '';
                         let currentCue = null;
+                        const editor = document.getElementById('subtitle-text');
 
                         if (allThemeCues && allThemeCues.length > 0) {
                             const currentTime = previewVideo.currentTime;
@@ -3498,108 +3082,44 @@
                                 return currentTime >= cueStart && currentTime <= cueEnd;
                             });
 
-                            if (currentCue) {
-                                subtitleText = currentCue.text;
+                            if (editor && editor.innerHTML.trim()) {
+                                // Use editor's HTML for rich-text preview if it's not empty
+                                subtitleText = editor.innerHTML.trim();
+                            } else if (currentCue) {
+                                // Use saved HTML if available for this cue
+                                const formatting = allCueFormatting[currentCue.sequence];
+                                subtitleText = (formatting && formatting.html) ? formatting.html : currentCue.text;
                             }
                         }
 
-                        // Debug log when we have subtitles
-                        if (subtitleText && !window.canvasTextLogged) {
-                            window.canvasTextLogged = true;
-                        }
-
-                        // Only render if there's actually text to show
-                        if (!subtitleText) {
-                            // No subtitle active - render transparent frame
-                            const canvas = document.getElementById('karaoke-canvas');
-                            const ctx = canvas?.getContext('2d');
-                            if (ctx && canvas) {
-                                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                            }
-                            return;
-                        }
-
-                        // Get the currently highlighted word index from word timestamps (not DOM)
+                        // Get the currently highlighted word index from word timestamps (if applicable)
                         let highlightedWordIndex = -1;
-                        if (wordTimestamps && wordTimestamps.length > 0 && subtitleText) {
+                        const mode = canvasRenderer.settings.mode || 'standard';
+                        
+                        if (mode !== 'standard' && wordTimestamps && wordTimestamps.length > 0 && subtitleText && currentCue) {
                             const currentTime = previewVideo.currentTime;
+                            const currentCueStart = parseTime(currentCue.start);
+                            const currentCueEnd = parseTime(currentCue.end);
+                            const wordsInCurrentCue = subtitleText.split(/\s+/).filter(w => w.length > 0);
 
-                            // Find the global index of the word being spoken
-                            const globalWordIndex = wordTimestamps.findIndex(w =>
-                                currentTime >= w.start && currentTime < w.end
+                            const EPSILON = 0.05;
+                            const wordsInCueRange = wordTimestamps.filter(wt => 
+                                wt.start >= currentCueStart - EPSILON && wt.start < currentCueEnd - EPSILON
                             );
 
-                            if (globalWordIndex >= 0 && currentCue) {
-                                // We have a cue from allThemeCues - calculate local word index
-                                const currentCueStart = parseTime(currentCue.start);
-                                const currentCueEnd = parseTime(currentCue.end);
-                                const wordsInCurrentCue = subtitleText.split(/\s+/).filter(w => w.length > 0);
-
-                                // Collect all word timestamps that fall within this cue's time range
-                                // Use epsilon for floating point comparison, and exclude words at exact boundaries
-                                const EPSILON = 0.05; // 50ms tolerance
-                                const wordsInCueRange = [];
-                                for (let i = 0; i < wordTimestamps.length; i++) {
-                                    const wt = wordTimestamps[i];
-                                    // Include words that start within the cue (with small buffer at start, strict at end)
-                                    if (wt.start >= currentCueStart - EPSILON && wt.start < currentCueEnd - EPSILON) {
-                                        wordsInCueRange.push({ index: i, word: wt.word, start: wt.start, end: wt.end });
-                                    }
-                                }
-
-                                // Now we need to match wordsInCueRange to wordsInCurrentCue by text
-                                // Note: highlightedWordIndex is declared above, don't redeclare with 'let'
-
-                                if (wordsInCueRange.length > 0) {
-                                    // Find which word is currently being spoken
-                                    const currentlySpoken = wordsInCueRange.find(w =>
-                                        previewVideo.currentTime >= w.start && previewVideo.currentTime < w.end
-                                    );
-
-                                    if (currentlySpoken) {
-                                        // Try to find this word in the subtitle text
-                                        // IMPORTANT: Trim whitespace and normalize
-                                        const spokenWordLower = currentlySpoken.word.trim().toLowerCase().replace(/[.,!?;:"']/g, '');
-
-                                        for (let i = 0; i < wordsInCurrentCue.length; i++) {
-                                            const cueWordLower = wordsInCurrentCue[i].trim().toLowerCase().replace(/[.,!?;:"']/g, '');
-                                            if (cueWordLower === spokenWordLower) {
-                                                highlightedWordIndex = i;
-                                                break;
-                                            }
-                                        }
-                                    }
-                                }
-                            } else if (globalWordIndex >= 0 && !currentCue) {
-                                // Text came from editor, try to match by word text
-                                const wordsInText = subtitleText.split(/\s+/).filter(w => w.length > 0);
-                                const spokenWord = wordTimestamps[globalWordIndex];
-
-                                // Try to find matching word in subtitle text
-                                for (let i = 0; i < wordsInText.length; i++) {
-                                    const cleanWord = wordsInText[i].toLowerCase().replace(/[.,!?;:"']/g, '');
-                                    const cleanSpoken = (spokenWord.word || '').toLowerCase().replace(/[.,!?;:"']/g, '');
-                                    if (cleanWord === cleanSpoken || cleanWord.includes(cleanSpoken) || cleanSpoken.includes(cleanWord)) {
-                                        highlightedWordIndex = i;
-                                        break;
-                                    }
+                            if (wordsInCueRange.length > 0) {
+                                const activeWordTsIndex = wordsInCueRange.findIndex(w => currentTime >= w.start && currentTime < w.end);
+                                if (activeWordTsIndex !== -1) {
+                                    // POSITIONAL matching: highlight the i-th word in the subtitle
+                                    highlightedWordIndex = activeWordTsIndex;
                                 }
                             }
                         }
 
-                        // Check if the method exists
-                        if (typeof canvasRenderer.renderFrameWithHighlight === 'function') {
-                            canvasRenderer.renderFrameWithHighlight(previewVideo.currentTime, subtitleText, highlightedWordIndex);
-
-                            // Debug: confirm render was called
-                            if (!window.canvasRenderCallLogged) {
-                                const canvas = document.getElementById('karaoke-canvas');
-                                window.canvasRenderCallLogged = true;
-                            }
-                        } else {
-                            canvasRenderer.renderFrame(previewVideo.currentTime, subtitleText);
-                        }
+                        // Use unified renderer
+                        canvasRenderer.renderFrame(previewVideo.currentTime, subtitleText, highlightedWordIndex);
                     } catch (error) {
+                        console.error("Canvas render error:", error);
                     }
                 }
             };
@@ -3636,11 +3156,6 @@
                     subtitleText.innerHTML = '';
                 }
 
-                const previewOverlay = document.getElementById('subtitle-preview-text');
-                if (previewOverlay) {
-                    previewOverlay.textContent = '';
-                }
-
                 // Do NOT enable track here - reloadSubtitleTrack() will handle it
                 // Enabling the track here would cause old cues to be displayed before
                 // reloadSubtitleTrack() replaces the track with the updated one
@@ -3656,48 +3171,15 @@
                 }
             }, 500);
 
-            // Load VTT subtitles for preview - use adjusted subtitles if available
-            // Clear current cue info
+            // Reset subtitle state for current theme
             currentCueInfo = null;
-
-            // Don't clear allCueFormatting - we want saved styles to persist
 
             const subtitleTextClear = document.getElementById('subtitle-text');
             if (subtitleTextClear) {
                 subtitleTextClear.innerHTML = '';
             }
 
-            // Remove ALL existing tracks first
-            const existingTracks = previewVideo.querySelectorAll('track');
-            existingTracks.forEach(track => track.remove());
-
-            // Clear the textTracks list
-            while (previewVideo.textTracks.length > 0) {
-                previewVideo.textTracks[0].mode = 'disabled';
-            }
-
             if (folderNumber && themeNumber) {
-                // Create new track
-                const newTrack = document.createElement('track');
-                newTrack.id = 'preview-subtitle-track';
-                newTrack.kind = 'subtitles';
-                newTrack.srclang = 'en';
-                newTrack.label = 'English';
-                newTrack.default = false;
-                newTrack.src = `/api/subtitles/${folderNumber}/${themeNumber}.vtt?start=${startSeconds}&end=${endSeconds}&t=${Date.now()}`;
-
-                // Add to DOM
-                previewVideo.appendChild(newTrack);
-
-                // Keep mode as 'showing' so cues are loaded and accessible
-                setTimeout(() => {
-                    if (previewVideo.textTracks.length > 0) {
-                        const textTrack = previewVideo.textTracks[0];
-                        if (textTrack) {
-                            textTrack.mode = 'showing';
-                        }
-                    }
-                }, 100);
             }
 
 
@@ -3836,47 +3318,11 @@
 
                         // CRITICAL: Update timestamps only, don't regenerate keys
                         // Sequence keys are stable and don't change
-                        const vttToSeconds = (vttTimestamp) => {
-                            const [time, millis] = vttTimestamp.split('.');
-                            const isNegative = time.startsWith('-');
-                            const [h, m, s] = time.replace('-', '').split(':').map(Number);
-                            const result = h * 3600 + m * 60 + s + (millis || 0) / 1000;
-                            return isNegative ? -result : result;
-                        };
-
-                        const secondsToVtt = (totalSeconds) => {
-                            const EPSILON = 0.001;
-                            if (Math.abs(totalSeconds) < EPSILON) {
-                                totalSeconds = 0;
-                            }
-                            const isNegative = totalSeconds < 0;
-                            const absSeconds = Math.abs(totalSeconds);
-                            let h = Math.floor(absSeconds / 3600);
-                            let m = Math.floor((absSeconds % 3600) / 60);
-                            let s = absSeconds % 60;
-                            let sInt = Math.floor(s);
-                            let msInt = Math.round((s - sInt) * 1000);
-                            if (msInt >= 1000) {
-                                msInt = 0;
-                                sInt += 1;
-                                if (sInt >= 60) {
-                                    sInt = 0;
-                                    m += 1;
-                                    if (m >= 60) {
-                                        m = 0;
-                                        h += 1;
-                                    }
-                                }
-                            }
-                            const sign = isNegative ? '-' : '';
-                            return `${sign}${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${sInt.toString().padStart(2, '0')}.${msInt.toString().padStart(3, '0')}`;
-                        };
-
                         // Update timestamp field for each sequence key
                         for (const [seqKey, formatting] of Object.entries(allCueFormatting)) {
-                            const oldSeconds = vttToSeconds(formatting.timestamp);
+                            const oldSeconds = parseTime(formatting.timestamp);
                             const newSeconds = oldSeconds - timeOffset;  // Subtract offset
-                            allCueFormatting[seqKey].timestamp = secondsToVtt(newSeconds);
+                            allCueFormatting[seqKey].timestamp = formatVttTime(newSeconds);
                         }
 
 
@@ -3923,11 +3369,6 @@
                         subtitleText.innerHTML = '';
                     }
 
-                    const previewOverlay = document.getElementById('subtitle-preview-text');
-                    if (previewOverlay) {
-                        previewOverlay.textContent = '';
-                    }
-
                     // Seek original video to new theme start position
                     originalVideo.currentTime = startSeconds;
 
@@ -3937,40 +3378,7 @@
                     // Reload subtitle track with new time range
                     reloadSubtitleTrack();
 
-                    // Regenerate the adjust.srt file with new theme boundaries
-                    // This converts absolute timestamps to relative timestamps
-
-                    // Helper to parse VTT timestamp string to seconds
-                    const vttToSeconds = (vttTimestamp) => {
-                        const [time, millis] = vttTimestamp.split('.');
-                        const [h, m, s] = time.split(':').map(Number);
-                        return h * 3600 + m * 60 + s + (millis || 0) / 1000;
-                    };
-
-                    // Helper to convert seconds to VTT timestamp string
-                    const secondsToVtt = (totalSeconds) => {
-                        const h = Math.floor(totalSeconds / 3600);
-                        const m = Math.floor((totalSeconds % 3600) / 60);
-                        const s = totalSeconds % 60;
-                        const sInt = Math.floor(s);
-                        const ms = Math.round((s - sInt) * 1000);
-                        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${sInt.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
-                    };
-
-                    const adjustedCues = allThemeCues.map((cue, index) => {
-                        const cueStartSec = vttToSeconds(cue.start);
-                        const cueEndSec = vttToSeconds(cue.end);
-
-                        return {
-                            sequence: index + 1,
-                            start: secondsToVtt(Math.max(0, cueStartSec - startSeconds)),
-                            end: secondsToVtt(Math.max(0, cueEndSec - startSeconds)),
-                            text: cue.text
-                        };
-                    });
-
-                    // Note: adjustedCues are no longer saved to adjust.srt
-                    // The shorts_creator will create its own trimmed SRT from original source
+                    // Note: adjustedCues logic removed, shorts_creator handles trimming
 
                     // Auto-save theme adjustment
                     autoSaveTheme();
@@ -4047,47 +3455,11 @@
                         const timeOffset = newStartSeconds - startSeconds;
 
                         if (Object.keys(allCueFormatting).length > 0 && timeOffset !== 0) {
-                            const vttToSeconds = (vttTimestamp) => {
-                                const [time, millis] = vttTimestamp.split('.');
-                                const isNegative = time.startsWith('-');
-                                const [h, m, s] = time.replace('-', '').split(':').map(Number);
-                                const result = h * 3600 + m * 60 + s + (millis || 0) / 1000;
-                                return isNegative ? -result : result;
-                            };
-
-                            const secondsToVtt = (totalSeconds) => {
-                                const EPSILON = 0.001;
-                                if (Math.abs(totalSeconds) < EPSILON) {
-                                    totalSeconds = 0;
-                                }
-                                const isNegative = totalSeconds < 0;
-                                const absSeconds = Math.abs(totalSeconds);
-                                let h = Math.floor(absSeconds / 3600);
-                                let m = Math.floor((absSeconds % 3600) / 60);
-                                let s = absSeconds % 60;
-                                let sInt = Math.floor(s);
-                                let msInt = Math.round((s - sInt) * 1000);
-                                if (msInt >= 1000) {
-                                    msInt = 0;
-                                    sInt += 1;
-                                    if (sInt >= 60) {
-                                        sInt = 0;
-                                        m += 1;
-                                        if (m >= 60) {
-                                            m = 0;
-                                            h += 1;
-                                        }
-                                    }
-                                }
-                                const sign = isNegative ? '-' : '';
-                                return `${sign}${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${sInt.toString().padStart(2, '0')}.${msInt.toString().padStart(3, '0')}`;
-                            };
-
                             // Update timestamps for each sequence key
                             for (const [seqKey, formatting] of Object.entries(allCueFormatting)) {
-                                const oldSeconds = vttToSeconds(formatting.timestamp);
+                                const oldSeconds = parseTime(formatting.timestamp);
                                 const newSeconds = oldSeconds - timeOffset;
-                                allCueFormatting[seqKey].timestamp = secondsToVtt(newSeconds);
+                                allCueFormatting[seqKey].timestamp = formatVttTime(newSeconds);
                             }
 
                             // Save formatting to server
@@ -4155,47 +3527,11 @@
                     // CRITICAL: Update timestamps only, don't regenerate keys
                     // Sequence keys are stable and don't change
                     if (Object.keys(allCueFormatting).length > 0 && timeOffset !== 0) {
-                        const vttToSeconds = (vttTimestamp) => {
-                            const [time, millis] = vttTimestamp.split('.');
-                            const isNegative = time.startsWith('-');
-                            const [h, m, s] = time.replace('-', '').split(':').map(Number);
-                            const result = h * 3600 + m * 60 + s + (millis || 0) / 1000;
-                            return isNegative ? -result : result;
-                        };
-
-                        const secondsToVtt = (totalSeconds) => {
-                            const EPSILON = 0.001;
-                            if (Math.abs(totalSeconds) < EPSILON) {
-                                totalSeconds = 0;
-                            }
-                            const isNegative = totalSeconds < 0;
-                            const absSeconds = Math.abs(totalSeconds);
-                            let h = Math.floor(absSeconds / 3600);
-                            let m = Math.floor((absSeconds % 3600) / 60);
-                            let s = absSeconds % 60;
-                            let sInt = Math.floor(s);
-                            let msInt = Math.round((s - sInt) * 1000);
-                            if (msInt >= 1000) {
-                                msInt = 0;
-                                sInt += 1;
-                                if (sInt >= 60) {
-                                    sInt = 0;
-                                    m += 1;
-                                    if (m >= 60) {
-                                        m = 0;
-                                        h += 1;
-                                    }
-                                }
-                            }
-                            const sign = isNegative ? '-' : '';
-                            return `${sign}${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${sInt.toString().padStart(2, '0')}.${msInt.toString().padStart(3, '0')}`;
-                        };
-
                         // Update timestamp field for each sequence key
                         for (const [seqKey, formatting] of Object.entries(allCueFormatting)) {
-                            const oldSeconds = vttToSeconds(formatting.timestamp);
+                            const oldSeconds = parseTime(formatting.timestamp);
                             const newSeconds = oldSeconds - timeOffset;  // Subtract offset
-                            allCueFormatting[seqKey].timestamp = secondsToVtt(newSeconds);
+                            allCueFormatting[seqKey].timestamp = formatVttTime(newSeconds);
                         }
 
                     }
@@ -4313,6 +3649,34 @@
 
                 // Update time display (showing time relative to buffer start)
                 timeDisplay.textContent = `${formatTime(positionInBuffer)} / ${formatTime(bufferedDuration)}`;
+
+                // Render subtitles on original video side if enabled
+                const subsEnabled = document.getElementById('subtitles-toggle')?.checked;
+                if (subsEnabled && originalCanvasRenderer) {
+                    try {
+                        let subtitleText = '';
+                        if (allThemeCues && allThemeCues.length > 0) {
+                            const currentTime = originalVideo.currentTime;
+                            const currentCue = allThemeCues.find(cue => {
+                                const cueStart = parseTime(cue.start);
+                                const cueEnd = parseTime(cue.end);
+                                return currentTime >= cueStart && currentTime <= cueEnd;
+                            });
+                            if (currentCue) {
+                                subtitleText = currentCue.text;
+                            }
+                        }
+                        
+                        // We don't do real-time editor preview on original side, just show stable cues
+                        originalCanvasRenderer.renderFrame(originalVideo.currentTime, subtitleText);
+                    } catch (error) {
+                        console.error("Original canvas render error:", error);
+                    }
+                } else if (originalCanvas) {
+                    // Clear canvas if subtitles disabled
+                    const ctx = originalCanvas.getContext('2d');
+                    ctx.clearRect(0, 0, originalCanvas.width, originalCanvas.height);
+                }
             });
 
             // Seek when user drags seekbar
@@ -4396,80 +3760,38 @@
         // Update subtitle preview
         function updateSubtitlePreview() {
             const editor = document.getElementById('subtitle-text');
-            let text = editor.innerText; // Get plain text for saving
-            const html = editor.innerHTML; // Get HTML for display
+            const previewVideo = document.getElementById('preview-video');
+            
+            if (!canvasRenderer) return;
 
+            // Get current styling settings
+            const settings = {
+                mode: document.getElementById('karaoke-toggle')?.checked ? 
+                      (document.getElementById('karaoke-mode')?.value || 'normal') : 'standard',
+                fontSize: parseInt(document.getElementById('subtitle-size')?.value || '48'),
+                primaryColor: document.getElementById('subtitle-color')?.value || '#ffffff',
+                textColor: document.getElementById('highlight-text-color')?.value || '#ffff00',
+                past_color: document.getElementById('past-color')?.value || '#808080',
+                font_name: document.getElementById('subtitle-font')?.value || 'Arial',
+                font_weight: document.getElementById('highlight-font-weight')?.value || 'bold',
+                outlineColor: '#000000',
+                subtitle_position: globalPosition,
+                subtitle_top: customPosition ? customPosition.top : null,
+                subtitle_left: customPosition ? (horizontalAlign === 'center' ? customPosition.centerX : customPosition.left) : null
+            };
 
-            const fontSize = document.getElementById('subtitle-size').value;
-            const fontFamily = document.getElementById('subtitle-font').value;
-            const color = document.getElementById('subtitle-color').value;
-            const bgColor = document.getElementById('subtitle-bg').value;
-            const bgOpacity = document.getElementById('subtitle-bg-opacity').value / 100;
-
-            // Check individual position first, then use dropdown/global
-            let effectivePosition = document.getElementById('subtitle-position').value;
-            if (subtitleFormatting.position) {
-                effectivePosition = subtitleFormatting.position;
-            } else if (globalPosition) {
-                effectivePosition = globalPosition;
+            // Update both renderer settings
+            canvasRenderer.settings = settings;
+            if (originalCanvasRenderer) {
+                originalCanvasRenderer.settings = settings;
             }
 
-            const overlay = document.getElementById('subtitle-overlay');
-            const textEl = document.getElementById('subtitle-preview-text');
-
-            // For preview, use the innerHTML directly to show formatting
-            let displayText = html;
-
-            // Only show overlay if there's text
-            if (displayText.trim()) {
-                textEl.innerHTML = displayText;
-                textEl.style.fontSize = `${fontSize}px`;
-                textEl.style.fontFamily = fontFamily;
-                // Don't set global color - let HTML inline styles handle individual word/phrase colors
-                // Only set background color
-                textEl.style.backgroundColor = `rgba(${hexToRgb(bgColor)}, ${bgOpacity})`;
-                overlay.style.display = 'block';
-                overlay.style.left = '50%';
-
-                // Check if custom position exists (from drag or align buttons)
-                if (customPosition && hasManualPosition) {
-                    // Apply exact custom position with proper alignment
-                    // For center alignment, use centerX with translateX(-50%)
-                    // For left/right alignment, use left edge directly
-                    const hAlign = horizontalAlign || 'center';
-                    if (hAlign === 'center' && customPosition.centerX !== null) {
-                        overlay.style.left = `${customPosition.centerX}px`;
-                        overlay.style.transform = 'translateX(-50%)';
-                    } else if (hAlign === 'right') {
-                        // For right align, position from right edge
-                        overlay.style.right = `${customPosition.left}px`;  // saved as right edge
-                        overlay.style.left = 'auto';
-                        overlay.style.transform = 'none';
-                    } else {
-                        // For left align, use left edge directly
-                        overlay.style.left = `${customPosition.left}px`;
-                        overlay.style.transform = 'none';
-                    }
-                    overlay.style.top = `${customPosition.top}px`;
-                    overlay.style.bottom = 'auto';
-                } else if (!hasManualPosition) {
-                    // Position overlay using effective position (individual > global > dropdown)
-                    if (effectivePosition === 'bottom') {
-                        overlay.style.bottom = '40px';
-                        overlay.style.top = 'auto';
-                        overlay.style.transform = 'translateX(-50%)';
-                    } else if (effectivePosition === 'top') {
-                        overlay.style.top = '20px';
-                        overlay.style.bottom = 'auto';
-                        overlay.style.transform = 'translateX(-50%)';
-                    } else {
-                        overlay.style.top = '50%';
-                        overlay.style.bottom = 'auto';
-                        overlay.style.transform = 'translate(-50%, -50%)';
-                    }
-                }
-            } else {
-                overlay.style.display = 'none';
+            // Trigger a re-render if videos are paused
+            if (previewVideo && previewVideo.paused) {
+                previewVideo.dispatchEvent(new Event('timeupdate'));
+            }
+            if (originalVideo && originalVideo.paused) {
+                originalVideo.dispatchEvent(new Event('timeupdate'));
             }
         }
 
@@ -4769,7 +4091,7 @@
                 const align = btn.dataset.align;
                 horizontalAlign = align;
                 updateAlignButtons(align, verticalAlign);
-                await applyAlignment();
+                updateSubtitlePreview();
             });
         });
 
@@ -4779,7 +4101,7 @@
                 const valign = btn.dataset.valign;
                 verticalAlign = valign;
                 updateAlignButtons(horizontalAlign, valign);
-                await applyAlignment();
+                updateSubtitlePreview();
             });
         });
 
@@ -4819,63 +4141,6 @@
                     btn.classList.remove('active');
                 }
             });
-        }
-
-        // Apply alignment to subtitle
-        async function applyAlignment() {
-            const overlay = document.getElementById('subtitle-overlay');
-            const parentRect = overlay.parentElement.getBoundingClientRect();
-
-            // Calculate position based on alignment
-            let newLeft, newTop;
-
-            // Horizontal alignment
-            if (customPosition && customPosition.width) {
-                // Use custom width if available
-                if (horizontalAlign === 'left') {
-                    newLeft = customPosition.width / 2;
-                } else if (horizontalAlign === 'right') {
-                    newLeft = parentRect.width - customPosition.width / 2;
-                } else {
-                    newLeft = parentRect.width / 2;
-                }
-            } else {
-                // Default to center
-                newLeft = parentRect.width / 2;
-            }
-
-            // Vertical alignment
-            if (verticalAlign === 'top') {
-                newTop = 20;
-            } else if (verticalAlign === 'bottom') {
-                newTop = parentRect.height - 60;
-            } else {
-                newTop = parentRect.height / 2;
-            }
-
-            // Apply position
-            overlay.style.left = `${newLeft}px`;
-            overlay.style.top = `${newTop}px`;
-            overlay.style.bottom = 'auto';
-            overlay.style.transform = 'translate(-50%, -50%)';
-
-            // Update custom position
-            customPosition = {
-                left: newLeft - (customPosition?.width || overlay.offsetWidth) / 2,
-                top: newTop,
-                width: customPosition?.width || overlay.offsetWidth,
-                centerX: newLeft
-            };
-
-            // Clear manual position flag so preset positioning doesn't override
-            hasManualPosition = true;
-
-            // Save the formatting
-            if (positionMode === 'global') {
-                await saveGlobalPosition('custom');
-            } else {
-                await saveCurrentCueFormatting();
-            }
         }
 
         // Theme name editing
@@ -4931,11 +4196,11 @@
         // Karaoke highlighting toggle
         async function toggleKaraoke(enabled) {
             // Show/hide style controls based on karaoke state
-            const styleControls = document.getElementById('karaoke-style-controls');
+            const karaokeControlsDiv = document.getElementById('karaoke-style-controls');
             if (enabled) {
-                styleControls.style.display = 'flex';
+                karaokeControlsDiv.style.display = 'flex';
             } else {
-                styleControls.style.display = 'none';
+                karaokeControlsDiv.style.display = 'none';
             }
 
             // If enabling karaoke, check if word timestamps exist
@@ -5000,9 +4265,18 @@
 
             karaokeEnabled = enabled;
 
+            // Show/hide style controls based on karaoke state
+            if (karaokeEnabled) {
+                karaokeControlsDiv.style.display = 'flex';
+                // Load the saved highlight style
+                await loadHighlightStyle();
+            } else {
+                karaokeControlsDiv.style.display = 'none';
+            }
+
             // Save karaoke setting to server
             try {
-                const response = await fetch('/api/save-karaoke-setting', {
+                await fetch('/api/save-karaoke-setting', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -5011,74 +4285,12 @@
                         enabled: enabled
                     })
                 });
-
-                if (!response.ok) {
-                }
-            } catch (error) {
-            }
-
-            // Show toast and regenerate ASS files with new karaoke setting
-            showToast(`🎤 Regenerating subtitles with karaoke ${enabled ? 'enabled' : 'disabled'}...`, 'info');
-
-            // Regenerate ASS files with new karaoke setting
-            try {
-                const response = await fetch('/api/regenerate-ass', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        folder: folderNumber,
-                        theme: themeNumber,
-                        karaoke: enabled
-                    })
-                });
-
-                if (!response.ok) {
-                    throw new Error('Failed to regenerate ASS');
-                }
-
-                // Show success message
+                
+                // Re-render preview
+                updateSubtitlePreview();
                 showToast(`✅ Karaoke ${enabled ? 'enabled' : 'disabled'} successfully!`, 'success');
             } catch (error) {
                 showToast('❌ Failed to update karaoke setting', 'error');
-                // Reset toggle on error
-                document.getElementById('karaoke-toggle').checked = !enabled;
-            }
-        }
-
-        // Regenerate ASS file with current karaoke settings (for mode/font size changes)
-        async function regenerateAssWithCurrentSettings() {
-
-            // Only regenerate if karaoke is enabled
-            if (!karaokeEnabled) {
-                return;
-            }
-
-            // Show toast message
-            showToast('🎤 Regenerating subtitles with new karaoke settings...', 'info');
-
-
-            try {
-                const response = await fetch('/api/regenerate-ass', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        folder: folderNumber,
-                        theme: themeNumber,
-                        karaoke: true
-                    })
-                });
-
-
-                if (!response.ok) {
-                    throw new Error('Failed to regenerate ASS');
-                }
-
-                const result = await response.json();
-
-                // Show success message
-                showToast('✅ Subtitles regenerated successfully!', 'success');
-            } catch (error) {
-                showToast('❌ Failed to update karaoke settings', 'error');
             }
         }
 
@@ -5086,306 +4298,122 @@
         // Canvas + FFmpeg Karaoke Export Functions
         // ============================================
 
-        let ffmpegLoaded = false;
-        let ffmpegInstance = null;
-
-        // Load ffmpeg.wasm library
-        async function loadFFmpeg() {
-            if (ffmpegLoaded && ffmpegInstance) {
-                return ffmpegInstance;
-            }
-
-            // Check for SharedArrayBuffer support
-            if (typeof SharedArrayBuffer === 'undefined') {
-                throw new Error('SharedArrayBuffer is not available. Please ensure the server has COOP/COEP headers set.');
-            }
-
-            showToast('Loading ffmpeg.wasm... (~25MB one-time download)', 'info');
-
-            try {
-                // FFmpeg and fetchFile are globals from the UMD builds
-                const { FFmpeg } = window.FFmpegWASM || { FFmpeg: window.FFmpeg };
-                const FFmpegClass = typeof FFmpeg !== 'undefined' ? FFmpeg : window.FFmpeg;
-                const fetchFileFunc = window.fetchFile;
-
-                ffmpegInstance = new FFmpegClass();
-
-                // Set up logging
-                ffmpegInstance.on('log', ({ message }) => {
-                });
-
-                ffmpegInstance.on('progress', ({ progress, time }) => {
-                    const percent = Math.round(progress * 100) || Math.round((time / 1000000) * 100);
-                    // Only show progress occasionally to avoid spam
-                    if (percent % 10 === 0 || percent > 95) {
-                        showToast(`FFmpeg encoding: ${percent}%`, 'info');
-                    }
-                });
-
-                // Load ffmpeg.wasm core
-                await ffmpegInstance.load({
-                    coreURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js',
-                });
-
-                ffmpegLoaded = true;
-                showToast('ffmpeg.wasm loaded successfully!', 'success');
-                return ffmpegInstance;
-
-            } catch (error) {
-                showToast('Failed to load ffmpeg.wasm: ' + error.message, 'error');
-                throw error;
-            }
-        }
-
-        // Generate frames from canvas
-        async function generateCanvasFrames(canvas, themeStart, themeEnd) {
-            const frames = [];
-            const fps = 30;
-            const duration = themeEnd - themeStart;
-            const totalFrames = Math.floor(duration * fps);
-
-            const previewVideo = document.getElementById('preview-video');
-
-            // Fetch subtitle cues for this theme to get proper text at each time point
-            let subtitleCues = [];
-            try {
-                const response = await fetch(`/api/theme-subtitles/${folderNumber}/${themeNumber}`);
-                if (response.ok) {
-                    const data = await response.json();
-                    subtitleCues = data.cues || [];
-                }
-            } catch (error) {
-            }
-
-            // Helper function to get subtitle text at a given time
-            function getSubtitleTextAtTime(time) {
-                for (const cue of subtitleCues) {
-                    if (time >= cue.start && time <= cue.end) {
-                        return cue.text;
-                    }
-                }
-                return '';
-            }
-
-            // Helper function to seek video and wait for frame to be ready
-            function seekVideoAndWait(time) {
-                return new Promise((resolve) => {
-                    const onSeeked = () => {
-                        previewVideo.removeEventListener('seeked', onSeeked);
-                        // Small delay to ensure frame is rendered
-                        setTimeout(resolve, 50);
-                    };
-                    previewVideo.addEventListener('seeked', onSeeked);
-                    previewVideo.currentTime = time;
-                });
-            }
-
-            // Ensure canvas renderer is initialized
-            if (!canvasRenderer) {
-                const settings = {
-                    mode: document.getElementById('karaoke-mode')?.value || 'normal',
-                    fontSize: parseInt(document.getElementById('subtitle-size')?.value || '48'),
-                    textColor: document.getElementById('highlight-text-color')?.value || '#ffff00',
-                    past_color: document.getElementById('past-color')?.value || '#808080',
-                    font_name: document.getElementById('subtitle-font')?.value || 'Arial',
-                    font_weight: document.getElementById('highlight-font-weight')?.value || 'bold'
-                };
-                canvasRenderer = new KaraokeCanvasRenderer(canvas, previewVideo, wordTimestamps, settings);
-            }
-
-            // Store current video time to restore later
-            const originalTime = previewVideo.currentTime;
-            const wasPaused = previewVideo.paused;
-
-            // Pause video for frame generation
-            previewVideo.pause();
-
-            for (let frame = 0; frame < totalFrames; frame++) {
-                const currentTime = themeStart + (frame / fps);
-
-                // Seek video to this time
-                await seekVideoAndWait(currentTime);
-
-                // Get subtitle text for this specific time
-                const subtitleText = getSubtitleTextAtTime(currentTime);
-
-                // Render frame (video is now at correct time)
-                canvasRenderer.renderFrame(currentTime, subtitleText);
-
-                // Capture frame as ArrayBuffer
-                const blob = await new Promise(resolve => {
-                    canvas.toBlob(resolve, 'image/png');
-                });
-
-                frames.push(await blob.arrayBuffer());
-
-                // Show progress every 30 frames
-                if (frame % 30 === 0) {
-                    const progress = ((frame + 1) / totalFrames) * 100;
-                    showToast(`Generating frames: ${progress.toFixed(0)}%`, 'info');
-
-                    // Allow UI to update
-                    await new Promise(resolve => setTimeout(resolve, 0));
-                }
-            }
-
-            // Restore video state
-            await seekVideoAndWait(originalTime);
-            if (!wasPaused) {
-                previewVideo.play();
-            }
-
-            return frames;
-        }
-
-        // Export canvas karaoke video - generate frames client-side, encode server-side
+        // Export video using server-side Flask mode
         async function exportCanvasKaraokeVideo() {
-            const previewVideo = document.getElementById('preview-video');
-
-            if (!previewVideo) {
-                showToast('Preview video not found', 'error');
-                return;
-            }
-
-            // Check if word timestamps exist
-            if (!wordTimestamps || wordTimestamps.length === 0) {
-                showToast('No word timestamps available. Please enable karaoke first.', 'error');
-                return;
-            }
-
-            // Get theme timing
-            const themeStart = parseFloat(previewVideo.dataset.themeStart);
-            const themeEnd = parseFloat(previewVideo.dataset.themeEnd);
-            const duration = themeEnd - themeStart;
-
-            if (!duration || duration <= 0) {
-                showToast('Invalid theme duration', 'error');
+            if (!folderNumber || !themeNumber) {
+                showToast('Missing folder or theme info', 'error');
                 return;
             }
 
             try {
-                // Get settings
+                // Show progress toast
+                const progressToast = document.createElement('div');
+                progressToast.className = 'karaoke-toast';
+                progressToast.id = 'export-progress-toast';
+                progressToast.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #333; color: white; padding: 15px 20px; border-radius: 8px; z-index: 10000; max-width: 400px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); border-left: 4px solid #4CAF50;';
+                progressToast.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div class="spinner" style="width: 20px; height: 20px; border: 2px solid #ffffff33; border-top-color: #4CAF50; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                        <div style="flex: 1;">
+                            <div style="font-weight: 600; margin-bottom: 4px;">🎬 Server-Side Export</div>
+                            <div id="export-stage" style="font-size: 12px; opacity: 0.8;">Starting export on server...</div>
+                            <div style="background: rgba(255,255,255,0.1); height: 4px; border-radius: 2px; margin-top: 8px; overflow: hidden;">
+                                <div id="export-progress-bar" style="background: #4CAF50; height: 100%; width: 0%; transition: width 0.3s;"></div>
+                            </div>
+                            <div id="export-progress-text" style="font-size: 11px; opacity: 0.6; margin-top: 4px;">Connecting...</div>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(progressToast);
+
+                const stageEl = document.getElementById('export-stage');
+                const progressTextEl = document.getElementById('export-progress-text');
+                const progressBarEl = document.getElementById('export-progress-bar');
+
+                const updateProgress = (stage, percent, text) => {
+                    if (stageEl) stageEl.textContent = stage;
+                    if (progressTextEl) progressTextEl.textContent = text || `${Math.round(percent)}%`;
+                    if (progressBarEl) progressBarEl.style.width = `${percent}%`;
+                };
+
+                // Get current styling settings
                 const settings = {
-                    mode: document.getElementById('karaoke-mode')?.value || 'normal',
+                    mode: document.getElementById('karaoke-toggle')?.checked ? 
+                          (document.getElementById('karaoke-mode')?.value || 'normal') : 'standard',
                     fontSize: parseInt(document.getElementById('subtitle-size')?.value || '48'),
+                    primaryColor: document.getElementById('subtitle-color')?.value || '#ffffff',
                     textColor: document.getElementById('highlight-text-color')?.value || '#ffff00',
                     pastColor: document.getElementById('past-color')?.value || '#808080',
                     fontName: document.getElementById('subtitle-font')?.value || 'Arial',
-                    fontWeight: document.getElementById('highlight-font-weight')?.value || 'bold'
+                    font_weight: document.getElementById('highlight-font-weight')?.value || 'bold',
+                    outlineColor: '#000000',
+                    subtitle_position: globalPosition,
+                    subtitle_top: customPosition ? customPosition.top : null,
+                    subtitle_left: customPosition ? (horizontalAlign === 'center' ? customPosition.centerX : customPosition.left) : null,
+                    subtitle_h_align: horizontalAlign,
+                    subtitle_v_align: verticalAlign
                 };
 
-                // Start export (returns immediately with job_id)
-                const startResponse = await fetch('/api/encode-canvas-karaoke', {
+                // Request export
+                const response = await fetch('/api/export-canvas-karaoke', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         folder: folderNumber,
                         theme: themeNumber,
-                        themeStart: themeStart,
-                        themeEnd: themeEnd,
                         settings: settings
                     })
                 });
 
-                if (!startResponse.ok) {
-                    const error = await startResponse.json();
-                    throw new Error(error.error || 'Failed to start export');
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Export failed');
                 }
 
-                const startResult = await startResponse.json();
-                const jobId = startResult.job_id;
-
-                // Show progress toast
-                const progressToast = document.createElement('div');
-                progressToast.className = 'karaoke-toast';
-                progressToast.id = 'export-progress-toast';
-                progressToast.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #333; color: white; padding: 15px 20px; border-radius: 8px; z-index: 10000; max-width: 400px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); border-left: 4px solid #2196F3;';
-                progressToast.innerHTML = `
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <div class="spinner" style="width: 20px; height: 20px; border: 2px solid #ffffff33; border-top-color: #2196F3; border-radius: 50%; animation: spin 1s linear infinite;"></div>
-                        <div style="flex: 1;">
-                            <div style="font-weight: 600; margin-bottom: 4px;">🎬 Rendering Canvas Karaoke</div>
-                            <div id="export-stage" style="font-size: 12px; opacity: 0.8;">Starting...</div>
-                            <div style="background: rgba(255,255,255,0.1); height: 4px; border-radius: 2px; margin-top: 8px; overflow: hidden;">
-                                <div id="export-progress-bar" style="background: #2196F3; height: 100%; width: 0%; transition: width 0.3s;"></div>
-                            </div>
-                            <div id="export-progress-text" style="font-size: 11px; opacity: 0.6; margin-top: 4px;">0%</div>
-                        </div>
-                    </div>
-                    <style>
-                        @keyframes spin { to { transform: rotate(360deg); } }
-                    </style>
-                `;
-                document.body.appendChild(progressToast);
-
-                // Poll for progress
-                const pollInterval = setInterval(async () => {
-                    try {
-                        const progressResponse = await fetch(`/api/canvas-karaoke-progress/${jobId}`);
-                        if (!progressResponse.ok) {
-                            clearInterval(pollInterval);
-                            throw new Error('Failed to get progress');
-                        }
-
-                        const progressData = await progressResponse.json();
-
-                        // Update progress display
-                        const stageEl = document.getElementById('export-stage');
-                        const progressTextEl = document.getElementById('export-progress-text');
-                        const progressBarEl = document.getElementById('export-progress-bar');
-
-                        if (stageEl) {
-                            stageEl.textContent = progressData.message || progressData.stage;
-                        }
-                        if (progressTextEl) {
-                            progressTextEl.textContent = `${Math.round(progressData.progress)}%`;
-                        }
-                        if (progressBarEl) {
-                            progressBarEl.style.width = `${Math.max(0, Math.min(100, progressData.progress))}%`;
-                        }
-
-                        // Check if complete or error
-                        if (progressData.complete) {
-                            clearInterval(pollInterval);
-                            if (progressToast) progressToast.remove();
-
-                            showToast(`✅ Export complete!`, 'success');
-                            showToast(`📁 Saved to: ${progressData.output_path}`, 'success');
-
-                            // Provide download link
-                            setTimeout(() => {
-                                const link = document.createElement('a');
-                                link.href = `/api/download-canvas-karaoke/${folderNumber}/${themeNumber}`;
-                                link.download = `theme_${themeNumber}_canvas_karaoke.mp4`;
-                                link.textContent = '⬇️ Click here to download';
-                                link.style.display = 'block';
-                                link.style.textAlign = 'center';
-                                link.style.marginTop = '10px';
-                                link.style.color = '#4CAF50';
-                                link.style.textDecoration = 'none';
-                                link.style.padding = '10px';
-                                link.style.background = 'rgba(76, 175, 80, 0.1)';
-                                link.style.borderRadius = '4px';
-
-                                const container = document.querySelector('.karaoke-toast:last-child');
-                                if (container) {
-                                    container.appendChild(link);
+                const result = await response.json();
+                
+                // If the server returns a job_id, we should poll for progress
+                if (result.job_id) {
+                    const pollProgress = async () => {
+                        try {
+                            const progRes = await fetch(`/api/canvas-karaoke-progress/${result.job_id}`);
+                            if (progRes.ok) {
+                                const progData = await progRes.json();
+                                updateProgress(progData.message || 'Processing...', progData.progress, `${progData.progress}%`);
+                                
+                                if (progData.status === 'complete') {
+                                    finalizeExport(progData.output_path || 'the shorts folder');
+                                } else if (progData.status === 'error') {
+                                    throw new Error(progData.error || 'Server processing error');
+                                } else {
+                                    setTimeout(pollProgress, 1000);
                                 }
-                            }, 1000);
-                        } else if (progressData.error) {
-                            clearInterval(pollInterval);
+                            }
+                        } catch (err) {
                             if (progressToast) progressToast.remove();
-                            throw new Error(progressData.error);
+                            showToast('Export failed: ' + err.message, 'error');
                         }
+                    };
+                    pollProgress();
+                } else if (result.success) {
+                    // Immediate success
+                    finalizeExport(result.output_path || 'the shorts folder');
+                }
 
-                    } catch (error) {
-                        clearInterval(pollInterval);
+                function finalizeExport(savedPath) {
+                    updateProgress('Done!', 100, 'Video saved to server');
+                    showToast(`✅ Export complete! Saved to: ${savedPath}`, 'success');
+                    setTimeout(() => {
                         if (progressToast) progressToast.remove();
-                    }
-                }, 500);  // Poll every 500ms
+                    }, 5000);
+                }
 
             } catch (error) {
-                showToast('Export failed: ' + error.message, 'error');
+                if (document.getElementById('export-progress-toast')) {
+                    document.getElementById('export-progress-toast').remove();
+                }
+                console.error("Export error:", error);
+                showToast('Export error: ' + error.message, 'error');
             }
         }
 
@@ -5489,13 +4517,13 @@
                     document.getElementById('karaoke-toggle').checked = karaokeEnabled;
 
                     // Show/hide style controls based on karaoke state
-                    const styleControls = document.getElementById('karaoke-style-controls');
+                    const karaokeControlsDiv = document.getElementById('karaoke-style-controls');
                     if (karaokeEnabled) {
-                        styleControls.style.display = 'flex';
+                        karaokeControlsDiv.style.display = 'flex';
                         // Load the saved highlight style
                         await loadHighlightStyle();
                     } else {
-                        styleControls.style.display = 'none';
+                        karaokeControlsDiv.style.display = 'none';
                     }
                 }
             } catch (error) {
@@ -5533,72 +4561,10 @@
         let subtitleWordCount = 0; // How many words have been spoken during current subtitle
         let lastProcessedWordIndex = -1; // Last word timestamp index we processed
 
+        // Update word highlighting state
         async function updatePreviewWordHighlighting(currentTime) {
-            // Only highlight if karaoke is enabled and word timestamps exist
-            if (!karaokeEnabled || !wordTimestamps || wordTimestamps.length === 0) {
-                return;
-            }
-
-            // Get current subtitle text from the text element
-            const textEl = document.getElementById('subtitle-preview-text');
-            if (!textEl || !textEl.textContent.trim()) {
-                return;
-            }
-
-            const subtitleText = textEl.textContent.trim();
-
-            // Reset counter when subtitle changes
-            if (lastSubtitleText !== subtitleText) {
-                lastSubtitleText = subtitleText;
-                subtitleWordCount = 0;
-                lastProcessedWordIndex = -1;
-                // Remove all highlights when subtitle changes
-                document.querySelectorAll('.word-highlight').forEach(el => {
-                    el.classList.remove('word-highlight');
-                });
-            }
-
-            // Find the word currently being spoken based on time
-            const currentSpokenWordIndex = wordTimestamps.findIndex(w =>
-                currentTime >= w.start && currentTime < w.end
-            );
-
-            // No word being spoken right now
-            if (currentSpokenWordIndex === -1) {
-                return;
-            }
-
-            // Only process if this is a new word we haven't processed yet
-            if (currentSpokenWordIndex > lastProcessedWordIndex) {
-                // Count how many words have been spoken during this subtitle
-                // Find the first word timestamp that occurred during this subtitle
-                // For simplicity: we just increment our counter each time we get a new word
-                subtitleWordCount++;
-                lastProcessedWordIndex = currentSpokenWordIndex;
-
-                // Remove previous highlight
-                document.querySelectorAll('.word-highlight').forEach(el => {
-                    el.classList.remove('word-highlight');
-                });
-
-                // Wrap words in spans if not already done
-                if (!textEl.innerHTML.includes('data-word-index')) {
-                    const words = subtitleText.split(/\s+/);
-                    const wrappedHTML = words.map((w, i) => {
-                        return `<span class="word-span" data-word-index="${i}">${w}</span>`;
-                    }).join(' ');
-                    textEl.innerHTML = wrappedHTML;
-                }
-
-                // Get all word elements
-                const wordElements = textEl.querySelectorAll('.word-span');
-
-                // Highlight the word at position = subtitleWordCount (1-based to 0-based)
-                const targetIndex = subtitleWordCount - 1;
-                if (targetIndex >= 0 && targetIndex < wordElements.length) {
-                    wordElements[targetIndex].classList.add('word-highlight');
-                }
-            }
+            // State is now handled within wordHighlightHandler and renderFrame
+            return;
         }
 
         // Add CSS for word highlighting (using CSS variables for dynamic updates)
@@ -5781,20 +4747,19 @@
         }
 
         // Add event listeners for new karaoke controls
-        // These controls affect ASS generation, so they need to regenerate the ASS file
         document.getElementById('karaoke-mode').addEventListener('change', async (e) => {
             await saveHighlightStyle();
-            await regenerateAssWithCurrentSettings();
+            updateSubtitlePreview();
         });
         document.getElementById('font-size-scale').addEventListener('change', async (e) => {
             const percent = e.target.value;
             document.getElementById('font-scale-value').textContent = percent + '%';
             await saveHighlightStyle();
-            await regenerateAssWithCurrentSettings();
+            updateSubtitlePreview();
         });
         document.getElementById('past-color').addEventListener('change', async (e) => {
             await saveHighlightStyle();
-            await regenerateAssWithCurrentSettings();
+            updateSubtitlePreview();
         });
 
         // Add event listeners for style controls
@@ -5806,202 +4771,89 @@
             document.getElementById('highlight-preset').value = 'custom';
             updateHighlightStyle();
             saveHighlightStyle();
+            updateSubtitlePreview();
         });
         document.getElementById('highlight-glow-color').addEventListener('input', () => {
             document.getElementById('highlight-preset').value = 'custom';
             updateHighlightStyle();
             saveHighlightStyle();
+            updateSubtitlePreview();
         });
         document.getElementById('highlight-glow-blur').addEventListener('input', () => {
             document.getElementById('highlight-preset').value = 'custom';
             updateHighlightStyle();
             saveHighlightStyle();
+            updateSubtitlePreview();
         });
         document.getElementById('highlight-font-weight').addEventListener('change', () => {
             document.getElementById('highlight-preset').value = 'custom';
             updateHighlightStyle();
             saveHighlightStyle();
+            updateSubtitlePreview();
         });
-        document.getElementById('reset-highlight-style').addEventListener('click', resetHighlightStyle);
-
-        // Canvas mode LED toggle
-        document.getElementById('canvas-mode-led').addEventListener('click', async () => {
-            // Trigger the existing canvas mode toggle
-            document.getElementById('toggle-canvas-mode').click();
+        document.getElementById('reset-highlight-style').addEventListener('click', () => {
+            resetHighlightStyle();
+            updateSubtitlePreview();
         });
 
-        // LED hover effect
-        const ledContainer = document.getElementById('canvas-mode-led');
-        ledContainer.addEventListener('mouseenter', () => {
-            ledContainer.style.background = canvasMode ? 'rgba(0, 255, 0, 0.25)' : 'rgba(255, 255, 255, 0.1)';
-        });
-        ledContainer.addEventListener('mouseleave', () => {
-            updateCanvasLED(); // Reset to proper state
-        });
+        // Initialize renderer on load
+        async function initializeUniversalRenderer() {
+            if (!canvas || !previewVideo || !originalCanvas || !originalVideo) return;
 
-        // Canvas mode toggle button
-        document.getElementById('toggle-canvas-mode').addEventListener('click', async () => {
-            canvasMode = !canvasMode;
-            const btn = document.getElementById('toggle-canvas-mode');
-            const canvas = document.getElementById('karaoke-canvas');
-            const canvasIndicator = document.getElementById('canvas-mode-indicator');
-            const previewVideo = document.getElementById('preview-video');
-            const subtitleOverlay = document.getElementById('subtitle-overlay');
+            // Ensure word timestamps are loaded
+            await loadWordTimestamps();
 
-            if (canvasMode) {
-                // Enable canvas mode
-                btn.textContent = 'Canvas Preview: ON';
-                btn.style.background = '#4CAF50';
-                updateCanvasLED(); // Update LED state
+            // Setup preview canvas size
+            const wrapper = canvas.parentElement;
+            const rect = wrapper.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
 
-                // Set canvas to match the video wrapper's actual pixel size
-                const wrapper = canvas.parentElement;
-                const rect = wrapper.getBoundingClientRect();
-                canvas.width = rect.width;
-                canvas.height = rect.height;
+            // Setup original canvas size
+            const originalWrapper = originalCanvas.parentElement;
+            const originalRect = originalWrapper.getBoundingClientRect();
+            originalCanvas.width = originalRect.width;
+            originalCanvas.height = originalRect.height;
 
+            // Get settings
+            const settings = {
+                mode: document.getElementById('karaoke-toggle')?.checked ? 
+                      (document.getElementById('karaoke-mode')?.value || 'normal') : 'standard',
+                fontSize: parseInt(document.getElementById('subtitle-size')?.value || '48'),
+                primaryColor: document.getElementById('subtitle-color')?.value || '#ffffff',
+                textColor: document.getElementById('highlight-text-color')?.value || '#ffff00',
+                past_color: document.getElementById('past-color')?.value || '#808080',
+                font_name: document.getElementById('subtitle-font')?.value || 'Arial',
+                font_weight: document.getElementById('highlight-font-weight')?.value || 'bold',
+                outlineColor: '#000000',
+                subtitle_position: globalPosition
+            };
 
-                // Show canvas overlay (video remains visible underneath)
-                canvas.style.display = 'block';
-                canvasIndicator.style.display = 'block';
-                subtitleOverlay.style.display = 'none';
+            // Initialize both renderers
+            canvasRenderer = new UniversalSubtitleRenderer(canvas, previewVideo, wordTimestamps, settings);
+            originalCanvasRenderer = new UniversalSubtitleRenderer(originalCanvas, originalVideo, wordTimestamps, settings);
 
-                // Hide Subtitle Text section and Global Settings (keep Karaoke visible)
-                const hideSection = (id) => {
-                    const el = document.getElementById(id);
-                    el.style.visibility = 'hidden';
-                    el.style.pointerEvents = 'none';
-                    el.style.height = '0';
-                    el.style.overflow = 'hidden';
-                    el.style.margin = '0';
-                    el.style.padding = '0';
-                };
-                hideSection('subtitle-text-section');
-                hideSection('global-settings-section');
+            // Initial preview update to apply correct scaling
+            updateSubtitlePreview();
+        }
 
-                // Disable ALL VTT subtitles tracks (don't remove, just disable)
-                if (previewVideo.textTracks) {
-                    for (let i = 0; i < previewVideo.textTracks.length; i++) {
-                        const track = previewVideo.textTracks[i];
-                        track.mode = 'disabled';
-                    }
-                }
-
-                // Also add a class to the video to hide VTT cues via CSS
-                previewVideo.classList.add('canvas-mode-active');
-
-                // Initialize canvas renderer
-                if (!canvasRenderer) {
-                    // Make sure word timestamps are loaded
-                    await loadWordTimestamps();
-
-                    const canvasEl = document.getElementById('karaoke-canvas');
-                    const settings = {
-                        mode: document.getElementById('karaoke-mode')?.value || 'normal',
-                        fontSize: parseInt(document.getElementById('subtitle-size')?.value || '48'),
-                        textColor: document.getElementById('highlight-text-color')?.value || '#ffff00',
-                        past_color: document.getElementById('past-color')?.value || '#808080',
-                        font_name: document.getElementById('subtitle-font')?.value || 'Arial',
-                        font_weight: document.getElementById('highlight-font-weight')?.value || 'bold'
-                    };
-
-                    canvasRenderer = new KaraokeCanvasRenderer(canvasEl, previewVideo, wordTimestamps, settings);
-                }
-
-                // Render initial frame - get text from editor and highlighted word index
-                if (canvasRenderer && previewVideo) {
-                    const editorEl = document.getElementById('subtitle-text');
-
-                    // Try to get text from editor first, if empty, find current cue from allThemeCues
-                    let subtitleText = editorEl?.innerText?.trim() || '';
-
-                    if (!subtitleText && allThemeCues && allThemeCues.length > 0) {
-                        const currentTime = previewVideo.currentTime;
-
-                        // Find the current subtitle cue based on video time
-                        const currentCue = allThemeCues.find(cue => {
-                            const cueStart = parseTime(cue.start);
-                            const cueEnd = parseTime(cue.end);
-                            const match = currentTime >= cueStart && currentTime <= cueEnd;
-                            if (match) {
-                            }
-                            return match;
-                        });
-
-                        if (currentCue) {
-                            subtitleText = currentCue.text;
-                        } else {
-                            // Find the nearest cue for debugging
-                            const nearestCue = allThemeCues.find(cue => {
-                                const cueStart = parseTime(cue.start);
-                                return cueStart > currentTime - 5 && cueStart < currentTime + 5;
-                            });
-                        }
-                    }
-
-
-                    // Get highlighted word index from DOM (if any)
-                    const previewEl = document.getElementById('subtitle-preview-text');
-                    let highlightedWordIndex = -1;
-                    const highlightedSpans = previewEl?.querySelectorAll('.word-highlight');
-                    if (highlightedSpans && highlightedSpans.length > 0) {
-                        highlightedWordIndex = parseInt(highlightedSpans[0].dataset.wordIndex || '-1');
-                    }
-
-
-                    // Use renderFrameWithHighlight for preview (transparent canvas)
-                    canvasRenderer.renderFrameWithHighlight(previewVideo.currentTime, subtitleText, highlightedWordIndex);
-                }
-
-                showToast('Canvas mode enabled', 'success');
-            } else {
-                // Disable canvas mode
-                btn.textContent = 'Canvas Preview: OFF';
-                btn.style.background = '#2196F3';
-                updateCanvasLED(); // Update LED state
-
-                // Show video, hide canvas
-                canvas.style.display = 'none';
-                canvasIndicator.style.display = 'none';
-                previewVideo.style.opacity = '1';
-                subtitleOverlay.style.display = 'block';
-
-                // Show Subtitle Text section and Global Settings when canvas mode is off
-                const showSection = (id) => {
-                    const el = document.getElementById(id);
-                    el.style.visibility = 'visible';
-                    el.style.pointerEvents = 'auto';
-                    el.style.height = '';
-                    el.style.overflow = '';
-                    el.style.margin = '';
-                    el.style.padding = '';
-                };
-                showSection('subtitle-text-section');
-                showSection('global-settings-section');
-
-                // Remove canvas mode class to show VTT again
-                previewVideo.classList.remove('canvas-mode-active');
-
-                // Re-enable VTT subtitles tracks
-                if (previewVideo.textTracks) {
-                    for (let i = 0; i < previewVideo.textTracks.length; i++) {
-                        previewVideo.textTracks[i].mode = 'showing';
-                    }
-                }
-
-                showToast('Canvas mode disabled', 'info');
-            }
-        });
+        // Add initialization call to existing load sequence
+        const oldLoadTheme = loadTheme;
+        loadTheme = async function() {
+            await oldLoadTheme();
+            await initializeUniversalRenderer();
+        };
 
         // Lock video controls button
         document.getElementById('lock-video-btn').addEventListener('click', () => {
             videoControlsLocked = !videoControlsLocked;
             const lockBtn = document.getElementById('lock-video-btn');
             const lockIcon = document.getElementById('lock-icon');
-            const subtitleOverlay = document.getElementById('subtitle-overlay');
+            const previewWrapper = document.querySelector('.preview-wrapper');
 
             if (videoControlsLocked) {
                 lockBtn.classList.add('locked');
+                if (previewWrapper) previewWrapper.classList.add('controls-locked');
                 lockIcon.textContent = '🔒';
                 // Update button text
                 lockBtn.innerHTML = '<span id="lock-icon">🔒</span> Unlock';
@@ -6011,33 +4863,23 @@
                 if (!previewVideo.paused) {
                     previewVideo.pause();
                 }
-
-                // Enable subtitle dragging when locked
-                if (subtitleOverlay) {
-                    subtitleOverlay.classList.add('draggable');
-                }
             } else {
                 lockBtn.classList.remove('locked');
+                if (previewWrapper) previewWrapper.classList.remove('controls-locked');
                 lockIcon.textContent = '🔓';
                 // Update button text
                 lockBtn.innerHTML = '<span id="lock-icon">🔓</span> Lock';
                 lockBtn.title = 'Lock video controls to enable dragging';
-
-                // Disable subtitle dragging when unlocked
-                if (subtitleOverlay) {
-                    subtitleOverlay.classList.remove('draggable');
-                }
             }
         });
 
         // Subtitle dragging functionality
-        const subtitleOverlay = document.getElementById('subtitle-overlay');
         let isDraggingSubtitle = false;
         let subtitleDragStart = { x: 0, y: 0 };
         let subtitleStartPos = { left: 0, top: 0 };
         let hasManualPosition = false; // Flag to indicate manual positioning
 
-        subtitleOverlay.addEventListener('mousedown', (e) => {
+        canvas.addEventListener('mousedown', (e) => {
             if (!videoControlsLocked) return;
 
             isDraggingSubtitle = true;
@@ -6045,16 +4887,21 @@
 
             subtitleDragStart = { x: e.clientX, y: e.clientY };
 
-            // Get current position from computed style
-            const computedStyle = window.getComputedStyle(subtitleOverlay);
-            const rect = subtitleOverlay.getBoundingClientRect();
-            const parentRect = subtitleOverlay.parentElement.getBoundingClientRect();
-
-            // Store initial position relative to parent
-            subtitleStartPos = {
-                left: rect.left - parentRect.left,
-                top: rect.top - parentRect.top
-            };
+            const wrapper = canvas.parentElement;
+            const rect = canvas.getBoundingClientRect();
+            
+            if (customPosition) {
+                subtitleStartPos = {
+                    left: customPosition.left,
+                    top: customPosition.top
+                };
+            } else {
+                // Initialize from bottom center (relative to canvas pixels)
+                subtitleStartPos = {
+                    left: canvas.width / 2,
+                    top: canvas.height - 100
+                };
+            }
 
             e.preventDefault();
             e.stopPropagation();
@@ -6066,94 +4913,26 @@
             const deltaX = e.clientX - subtitleDragStart.x;
             const deltaY = e.clientY - subtitleDragStart.y;
 
-            const parentRect = subtitleOverlay.parentElement.getBoundingClientRect();
+            // Update position (state-driven)
+            customPosition = {
+                left: subtitleStartPos.left + deltaX,
+                top: subtitleStartPos.top + deltaY,
+                centerX: subtitleStartPos.left + deltaX,
+                width: 0 
+            };
 
-            // Calculate new position
-            let newX = subtitleStartPos.left + deltaX;
-            let newY = subtitleStartPos.top + deltaY;
-
-            // Constrain within parent bounds with some padding
-            const padding = 10;
-            const maxX = parentRect.width - subtitleOverlay.offsetWidth - padding;
-            const maxY = parentRect.height - subtitleOverlay.offsetHeight - padding;
-
-            newX = Math.max(padding, Math.min(newX, maxX));
-            newY = Math.max(padding, Math.min(newY, maxY));
-
-            // Update position
-            subtitleOverlay.style.left = `${newX + subtitleOverlay.offsetWidth / 2}px`;
-            subtitleOverlay.style.top = `${newY}px`;
-            subtitleOverlay.style.bottom = 'auto';
-            subtitleOverlay.style.transform = 'translateX(-50%)';
-
-            // Add visual border during drag to see position clearly
-            subtitleOverlay.style.border = '2px solid yellow';
+            // Re-render immediately
+            updateSubtitlePreview();
         });
 
         document.addEventListener('mouseup', async () => {
             if (isDraggingSubtitle) {
                 isDraggingSubtitle = false;
 
-                // Remove drag border
-                subtitleOverlay.style.border = '';
-
-                // Get exact position relative to parent
-                const rect = subtitleOverlay.getBoundingClientRect();
-                const parentRect = subtitleOverlay.parentElement.getBoundingClientRect();
-
-                const relativeLeft = rect.left - parentRect.left;
-                const relativeTop = rect.top - parentRect.top;
-                const centerX = relativeLeft + rect.width / 2;
-
-                // Store exact custom position
-                customPosition = {
-                    left: relativeLeft,
-                    top: relativeTop,
-                    width: rect.width,
-                    centerX: centerX
-                };
-
-                // Determine nearest preset for dropdown
-                const positionSelect = document.getElementById('subtitle-position');
-                const third = parentRect.height / 3;
-                if (relativeTop < third) {
-                    positionSelect.value = 'top';
-                } else if (relativeTop > 2 * third) {
-                    positionSelect.value = 'bottom';
-                } else {
-                    positionSelect.value = 'middle';
-                }
-
-                // Determine horizontal alignment based on center position
-                const hThird = parentRect.width / 3;
-                let hAlign = 'center';
-                if (centerX < hThird) {
-                    hAlign = 'left';
-                } else if (centerX > 2 * hThird) {
-                    hAlign = 'right';
-                }
-
-                // Determine vertical alignment
-                const vThird = parentRect.height / 3;
-                let vAlign = 'middle';
-                if (relativeTop < vThird) {
-                    vAlign = 'top';
-                } else if (relativeTop > 2 * vThird) {
-                    vAlign = 'bottom';
-                }
-
-                // Update align button states
-                updateAlignButtons(hAlign, vAlign);
-
-                updateSubtitlePreview();
-
                 // Save based on current position mode
-
                 if (positionMode === 'global') {
-                    // Save custom position for global mode
                     await saveGlobalPosition('custom');
                 } else {
-                    // For current mode, save exact custom position
                     await saveCurrentCueFormatting();
                 }
             }
@@ -6261,7 +5040,7 @@
         }
 
         // Central sync function - ensures all subtitle sources stay in sync
-        // Updates: text area, preview (via VTT reload), canvas (via allThemeCues)
+        // Updates: text area, canvas (via allThemeCues)
         function syncAllSubtitleSources(start, end, newText) {
             const textArea = document.getElementById('subtitle-text');
             if (!textArea) return;
@@ -6290,7 +5069,6 @@
             }
 
             // Note: Canvas updates automatically from allThemeCues
-            // Preview updates automatically from VTT reload
         }
 
         // Save subtitles
@@ -6354,45 +5132,8 @@
                         });
                     }
 
-                    // Reload VTT track to show changes
-                    if (previewVideo) {
-                        const existingTracks = previewVideo.querySelectorAll('track');
-                        existingTracks.forEach(track => track.remove());
-
-                        while (previewVideo.textTracks.length > 0) {
-                            previewVideo.textTracks[0].mode = 'disabled';
-                        }
-
-                        const newTrack = document.createElement('track');
-                        newTrack.id = 'preview-subtitle-track';
-                        newTrack.kind = 'subtitles';
-                        newTrack.srclang = 'en';
-                        newTrack.label = 'English';
-                        newTrack.default = false;
-                        newTrack.src = `/api/subtitles/${folderNumber}/${themeNumber}.vtt?start=${startSeconds}&end=${endSeconds}&t=${Date.now()}`;
-
-                        // Add load event listener before appending
-                        newTrack.addEventListener('load', () => {
-                            // Track loaded, now enable it
-                            if (previewVideo.textTracks.length > 0) {
-                                previewVideo.textTracks[0].mode = 'showing';
-                            }
-                        });
-
-                        // Also set a timeout fallback
-                        setTimeout(() => {
-                            if (previewVideo.textTracks.length > 0 && previewVideo.textTracks[0].mode !== 'showing') {
-                                previewVideo.textTracks[0].mode = 'showing';
-                            }
-                        }, 500);
-
-                        previewVideo.appendChild(newTrack);
-
-                        // Sync all subtitle sources to ensure consistency
-                        edits.forEach(edit => {
-                            syncAllSubtitleSources(edit.start, edit.end, edit.newText);
-                        });
-                    }
+                    // Re-initialize renderer settings to pick up potential changes
+                    updateSubtitlePreview();
 
                     const messageDiv = document.getElementById('message');
                     messageDiv.textContent = `Saved ${edits.length} subtitle edit(s)`;

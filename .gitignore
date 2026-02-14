@@ -17,5 +17,6 @@ playwright/.cache/
 
 # Project-specific
 videos/
+*.log
 TODO.txt
 .DS_Store
