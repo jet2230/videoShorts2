@@ -1428,7 +1428,10 @@
             <div class="timeline-container">
                 <div class="timeline-header">
                     <span class="buffer-label" id="buffer-display">L: ±5min | R: ±5min</span>
-                    <button id="reset-timeline-btn" class="reset-timeline-btn" title="Reset to original theme time range">↺ Reset to Original</button>
+                    <div style="display: flex; gap: 8px;">
+                        <button id="toggle-zoom-btn" class="reset-timeline-btn" style="border-color: rgba(0, 255, 157, 0.5); background: rgba(0, 255, 157, 0.1); color: #00ff9d;" title="Zoom timeline to fill with buffer range">🔍 Zoom to Buffer</button>
+                        <button id="reset-timeline-btn" class="reset-timeline-btn" title="Reset to original theme time range">↺ Reset to Original</button>
+                    </div>
                 </div>
                 <div class="timeline-track" id="timeline-track">
                     <div class="buffer-range" id="buffer-range">
@@ -1815,6 +1818,7 @@
         let dragStartValue = 0;
         let dragStartValueEnd = 0;
         let videoControlsLocked = false; // Video controls lock state
+        let timelineZoomed = false; // Timeline zoom state (zoom to buffer)
 
         // DOM Elements
         const originalVideo = document.getElementById('original-video');
@@ -3503,17 +3507,42 @@
             const bufferEnd = Math.min(fullVideoDuration, originalEndSeconds + bufferRightSeconds);
             bufferedDuration = bufferEnd - bufferStart;
 
-            // Position buffer range on full video timeline
-            const bufferLeftPercent = (bufferStart / fullVideoDuration) * 100;
-            const bufferWidthPercent = (bufferedDuration / fullVideoDuration) * 100;
-            bufferRange.style.left = `${bufferLeftPercent}%`;
-            bufferRange.style.width = `${bufferWidthPercent}%`;
+            if (timelineZoomed) {
+                // ZOOMED MODE: Track width = bufferedDuration
+                bufferRange.style.left = '0%';
+                bufferRange.style.width = '100%';
 
-            // Position theme box within buffer range
-            const themeLeftPercent = ((startSeconds - bufferStart) / bufferedDuration) * 100;
-            const themeWidthPercent = (clipDuration / bufferedDuration) * 100;
-            themeBox.style.left = `${themeLeftPercent}%`;
-            themeBox.style.width = `${themeWidthPercent}%`;
+                const themeLeftPercent = ((startSeconds - bufferStart) / bufferedDuration) * 100;
+                const themeWidthPercent = (clipDuration / bufferedDuration) * 100;
+                themeBox.style.left = `${themeLeftPercent}%`;
+                themeBox.style.width = `${themeWidthPercent}%`;
+
+                document.getElementById('time-start-marker').textContent = formatTime(bufferStart);
+                document.getElementById('time-end-marker').textContent = formatTime(bufferEnd);
+                
+                // Update button text
+                const zoomBtn = document.getElementById('toggle-zoom-btn');
+                if (zoomBtn) zoomBtn.textContent = '🔍 Full View';
+            } else {
+                // FULL VIEW: Track width = fullVideoDuration
+                const bufferLeftPercent = (bufferStart / fullVideoDuration) * 100;
+                const bufferWidthPercent = (bufferedDuration / fullVideoDuration) * 100;
+                bufferRange.style.left = `${bufferLeftPercent}%`;
+                bufferRange.style.width = `${bufferWidthPercent}%`;
+
+                const themeLeftPercent = ((startSeconds - bufferStart) / bufferedDuration) * 100;
+                const themeWidthPercent = (clipDuration / bufferedDuration) * 100;
+                themeBox.style.left = `${themeLeftPercent}%`;
+                themeBox.style.width = `${themeWidthPercent}%`;
+
+                document.getElementById('time-start-marker').textContent = '00:00:00';
+                document.getElementById('time-end-marker').textContent = formatTime(fullVideoDuration);
+                
+                // Update button text
+                const zoomBtn = document.getElementById('toggle-zoom-btn');
+                if (zoomBtn) zoomBtn.textContent = '🔍 Zoom to Buffer';
+            }
+
             themeBoxContent.textContent = `${formatTime(startSeconds)} - ${formatTime(endSeconds)}`;
 
             // Position midpoint marker
@@ -3526,10 +3555,6 @@
                 // Show only if within buffer range
                 midPointMarker.style.display = (midPoint >= bufferStart && midPoint <= bufferEnd) ? 'block' : 'none';
             }
-
-            // Update timeline markers to show full video range
-            document.getElementById('time-start-marker').textContent = '00:00:00';
-            document.getElementById('time-end-marker').textContent = formatTime(fullVideoDuration);
 
             // Update info display
             document.getElementById('display-start').textContent = formatTime(startSeconds);
@@ -3610,8 +3635,10 @@
                 if (!isDragging) return;
 
                 const deltaX = e.clientX - dragStartX;
-                // Use full video duration for drag calculations
-                const deltaTime = (deltaX / timelineTrack.offsetWidth) * fullVideoDuration;
+                // Scale movement based on zoom level
+                const timeScale = timelineZoomed ? bufferedDuration : fullVideoDuration;
+                const deltaTime = (deltaX / timelineTrack.offsetWidth) * timeScale;
+                
                 const midPoint = (originalStartSeconds + originalEndSeconds) / 2;
                 
                 // Current buffer boundaries
@@ -3750,6 +3777,17 @@
                 bufferRightSeconds += 60;
                 updateUI();
             });
+
+            // Toggle timeline zoom
+            const toggleZoomBtn = document.getElementById('toggle-zoom-btn');
+            if (toggleZoomBtn) {
+                toggleZoomBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    timelineZoomed = !timelineZoomed;
+                    updateUI();
+                });
+            }
 
             // Helper function to convert time input (HH:MM:SS) to seconds
             const timeInputToSeconds = (timeInput) => {
