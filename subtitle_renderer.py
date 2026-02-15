@@ -109,7 +109,9 @@ class UniversalSubtitleRenderer:
         self.words_by_time = sorted(self.word_timestamps, key=lambda w: w['start'])
         
         # Pre-calculate title properties to save CPU every frame
-        self._precalculate_title_properties()
+        self._title_pre_rendered = False  # Track if title has been pre-rendered
+        # Note: We don't call _precalculate_title_properties() here to avoid overhead
+        # It will be called lazily on first frame that needs it
 
     def _precalculate_title_properties(self):
         """Pre-calculate title font size and pre-render title layer to avoid doing it every frame."""
@@ -144,6 +146,7 @@ class UniversalSubtitleRenderer:
 
         self.resolved_title_text = title
         self.resolved_title_font = title_font
+        self.resolved_font_size = curr_size  # Store the actual font size used
         
         # Get bounding box for the background relative to center top (y=80)
         bbox = draw.textbbox((self.output_width / 2, 80), title, font=title_font, anchor="mt")
@@ -162,29 +165,34 @@ class UniversalSubtitleRenderer:
         elif self.title_bg_type == 'solid':
             s_draw.rounded_rectangle(bg_bbox, radius=8, fill=(0, 0, 0, 230), outline=(50, 50, 50, 255), width=2)
             
-        # Draw text with stroke on surface
-        stroke_width = int(round(self.title_outline_width))
-        stroke_fill = self.title_outline_color + (255,) if stroke_width > 0 else None
-        
-        try:
-            s_draw.text(
-                (self.output_width / 2, 80), 
-                title, 
-                fill=self.title_text_color + (255,), 
-                font=title_font, 
-                anchor="mt",
-                stroke_width=stroke_width,
-                stroke_fill=stroke_fill
-            )
-        except TypeError:
-            if stroke_width > 0:
-                offsets = [(-1,-1), (1,-1), (-1,1), (1,1), (0,-1), (0,1), (-1,0), (1,0)]
-                for dx, dy in offsets:
-                    s_draw.text(
-                        (self.output_width / 2 + dx*stroke_width, 80 + dy*stroke_width), 
-                        title, fill=stroke_fill, font=title_font, anchor="mt"
-                    )
-            s_draw.text((self.output_width / 2, 80), title, fill=self.title_text_color + (255,), font=title_font, anchor="mt")
+        # Draw outline manually (more reliable than PIL's stroke_width)
+        if self.title_outline_width > 0:
+            outline_color = self.title_outline_color + (255,)
+
+            # Scale outline width proportionally to font size scaling
+            # This matches the preview behavior where both scale together
+            font_scale_ratio = self.resolved_font_size / self.title_font_size_pref
+            scaled_outline_width = self.title_outline_width * font_scale_ratio
+            stroke_pixels = int(round(scaled_outline_width))
+
+            # Draw outline in 8 directions around text
+            for dx, dy in [(-1,-1), (0,-1), (1,-1), (-1,0), (1,0), (-1,1), (0,1), (1,1)]:
+                s_draw.text(
+                    (self.output_width / 2 + dx * stroke_pixels, 80 + dy * stroke_pixels),
+                    title,
+                    fill=outline_color,
+                    font=title_font,
+                    anchor="mt"
+                )
+
+        # Draw main text on top
+        s_draw.text(
+            (self.output_width / 2, 80),
+            title,
+            fill=self.title_text_color + (255,),
+            font=title_font,
+            anchor="mt"
+        )
         
     def _hex_to_rgb(self, hex_color: str) -> Tuple[int, int, int]:
         """Convert #RRGGBB to (R, G, B)."""
@@ -408,9 +416,9 @@ class UniversalSubtitleRenderer:
         pil_image = Image.fromarray(cv2.cvtColor(frame_cropped, cv2.COLOR_BGR2RGB))
         
         # Prepare overlay layers only if there is something to draw
-        has_title = self.show_title and self.settings.get('title')
+        has_title = self.show_title and self.title_text
         has_subs = subtitle_text and subtitle_text.strip()
-        
+
         if not (has_title or has_subs):
             # Just return the original frame if nothing to draw
             return frame_cropped
@@ -418,16 +426,21 @@ class UniversalSubtitleRenderer:
         pil_image = pil_image.convert("RGBA")
         overlay_layer = Image.new("RGBA", pil_image.size, (0, 0, 0, 0))
         overlay_draw = ImageDraw.Draw(overlay_layer)
-        
+
         # Glow layer only if blur > 0
         glow_layer = None
         if self.glow_blur > 0:
             glow_layer = Image.new("RGBA", pil_image.size, (0, 0, 0, 0))
             glow_draw = ImageDraw.Draw(glow_layer)
 
-        # 1. Render title if enabled
-        if has_title:
-            self._render_title(overlay_layer, self.settings.get('title'))
+        # 1. Pre-render title once (not every frame)
+        if has_title and not self._title_pre_rendered:
+            self._precalculate_title_properties()
+            self._title_pre_rendered = True
+
+        # 2. Render pre-rendered title surface
+        if has_title and hasattr(self, 'title_surface'):
+            overlay_layer.paste(self.title_surface, (0, 0), self.title_surface)
 
         # 2. Render subtitles if they exist
         if has_subs:
@@ -615,6 +628,12 @@ class UniversalSubtitleRenderer:
         if hasattr(self, 'title_surface'):
             overlay_layer.paste(self.title_surface, (0, 0), self.title_surface)
 
+    def reset_title_cache(self):
+        """Reset title cache when title settings change."""
+        self._title_pre_rendered = False
+        if hasattr(self, 'title_surface'):
+            del self.title_surface
+
     def _get_word_font(self, word_info: Dict) -> ImageFont.FreeTypeFont:
         """Get the font for a specific word based on its style."""
         size = int(self.font_size * word_info.get('sizeMultiplier', 1.0))
@@ -769,31 +788,53 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
     ]
     
     process = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-    
+
+    # Pre-compute outside the loop for performance
+    import re
+    is_theme_srt = bool(re.search(r'theme_\d{3}\.srt$', Path(subtitle_srt_path).name.lower()))
+
+    # Build a time-indexed subtitle lookup for O(1) lookup instead of O(n)
+    subtitle_index = {}  # Maps frame index to subtitle
+    subtitles_by_start = sorted(subtitles, key=lambda s: s['start'])
+
     try:
         for frame_idx in range(total_frames):
             current_time = start_time + (frame_idx / fps)
-            
+
             ret, frame = segment_renderer.cap.read()
             if not ret: break
 
+            # Fast subtitle lookup using cache
             subtitle_text, subtitle_start, subtitle_end, subtitle_seq = "", None, None, None
-            import re
-            is_theme_srt = bool(re.search(r'theme_\d{3}\.srt$', Path(subtitle_srt_path).name.lower()))
-            
-            for sub in subtitles:
+
+            if frame_idx in subtitle_index:
+                # Cached subtitle for this frame
+                sub = subtitle_index[frame_idx]
+                subtitle_text = sub['text']
+                subtitle_seq = sub.get('sequence')
                 s_start = sub['start'] + (start_time if is_theme_srt else 0)
                 s_end = sub['end'] + (start_time if is_theme_srt else 0)
-                
-                if s_start <= current_time <= s_end:
-                    subtitle_text, subtitle_seq = sub['text'], sub.get('sequence')
-                    subtitle_start, subtitle_end = s_start, s_end
-                    break
+                subtitle_start, subtitle_end = s_start, s_end
+            else:
+                # Search for subtitle and cache it
+                for sub in subtitles_by_start:
+                    s_start = sub['start'] + (start_time if is_theme_srt else 0)
+                    s_end = sub['end'] + (start_time if is_theme_srt else 0)
+
+                    if s_start <= current_time <= s_end:
+                        subtitle_text, subtitle_seq = sub['text'], sub.get('sequence')
+                        subtitle_start, subtitle_end = s_start, s_end
+
+                        # Cache for nearby frames (subtitle spans multiple frames)
+                        frames_in_sub = int((s_end - s_start) * fps)
+                        for i in range(max(0, frame_idx - 2), min(total_frames, frame_idx + frames_in_sub + 2)):
+                            subtitle_index[i] = sub
+                        break
 
             rendered_frame = segment_renderer.render_frame(frame, current_time, subtitle_text, subtitle_start, subtitle_end, subtitle_seq)
             process.stdin.write(rendered_frame.tobytes())
             
-            if progress_callback and frame_idx % 10 == 0:
+            if progress_callback and frame_idx % 30 == 0:
                 progress_callback((frame_idx / total_frames) * 95, "rendering", f"Frame {frame_idx}/{total_frames}")
 
         process.stdin.close()
