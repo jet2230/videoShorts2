@@ -89,6 +89,31 @@ class VideoProcessor:
                 vf_filters.append(f"colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131:enable='{enable}'")
             elif etype == 'blur':
                 vf_filters.append(f"gblur=sigma=5:enable='{enable}'")
+            elif etype == 'glitch':
+                # RGB Shift + jitter
+                vf_filters.append(f"rgbashift=rh=4:gh=-4:enable='{enable}'")
+            elif etype == 'vhs':
+                # Noise + Color bleed + subtle blur
+                vf_filters.append(f"noise=alls=15:allf=t+u,hue=s=0.4,gblur=sigma=1:enable='{enable}'")
+            elif etype == 'neon':
+                # Edge detect + neon colors
+                vf_filters.append(f"edgedetect=low=0.1:high=0.4,hue=h=120:s=2:enable='{enable}'")
+            elif etype == 'vignette':
+                vf_filters.append(f"vignette='PI/4':enable='{enable}'")
+            elif etype == 'cinematic':
+                # Add black bars top and bottom
+                vf_filters.append(f"drawbox=y=0:h=ih*0.1:t=fill:c=black:enable='{enable}'")
+                vf_filters.append(f"drawbox=y=ih*0.9:h=ih*0.1:t=fill:c=black:enable='{enable}'")
+            elif etype == 'vibrance':
+                vf_filters.append(f"vibrance=intensity=0.8:enable='{enable}'")
+            elif etype == 'shake':
+                # Random crop/pan for shake effect
+                vf_filters.append(f"crop=w=iw-40:h=ih-40:x='20+20*sin(2*PI*t*10)':y='20+20*cos(2*PI*t*13)':enable='{enable}',scale={self.width}:{self.height}")
+            elif etype == 'pixelate':
+                # Pixelate using scale down and scale up with neighbor flags
+                # This is tricky with 'enable' in a single filter string, so we use a sub-filter or boxblur as fallback
+                # For single pass with 'enable', boxblur is safer
+                vf_filters.append(f"boxblur=20:enable='{enable}'")
             elif etype == 'zoom':
                 # Zoom is tricky with 'enable'. We use a scale/crop chain.
                 # Since scale doesn't support 'enable', we use the 'zoompan' filter if possible, 

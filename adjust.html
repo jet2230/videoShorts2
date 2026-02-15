@@ -1481,8 +1481,12 @@
                     </div>
                     <div class="controls-row">
                         <button id="play-pause-btn" class="control-icon">▶</button>
+                        <button id="jump-prev-cue-btn" class="control-jump" title="Jump to previous subtitle segment">⏮ Prev Seg</button>
                         <button id="jump-start-btn" class="control-jump" title="Jump to theme start">⏮ Start</button>
+                        <button id="set-start-btn" class="control-jump" style="background: rgba(0, 255, 157, 0.1); border-color: rgba(0, 255, 157, 0.3);" title="Set current time as theme start">📍 Set Start</button>
+                        <button id="set-end-btn" class="control-jump" style="background: rgba(244, 67, 54, 0.1); border-color: rgba(244, 67, 54, 0.3);" title="Set current time as theme end">Set End 📍</button>
                         <button id="jump-end-btn" class="control-jump" title="Jump to theme end">End ⏭</button>
+                        <button id="jump-next-cue-btn" class="control-jump" title="Jump to next subtitle segment">Next Seg ⏭</button>
                         <span id="time-display" class="time-display">00:00 / 00:00</span>
                         <input type="range" id="volume-slider" class="volume-slider" min="0" max="1" value="1" step="0.1">
                     </div>
@@ -1503,8 +1507,8 @@
                 <div class="timeline-header">
                     <span class="buffer-label" id="buffer-display">L: ±5min | R: ±5min</span>
                     <div style="display: flex; gap: 8px;">
-                        <button id="toggle-zoom-btn" class="reset-timeline-btn" style="border-color: rgba(0, 255, 157, 0.5); background: rgba(0, 255, 157, 0.1); color: #00ff9d;" title="Zoom timeline to fill with buffer range">🔍 Zoom to Buffer</button>
-                        <button id="reset-timeline-btn" class="reset-timeline-btn" title="Reset to original theme time range">↺ Reset to Original</button>
+                        <button id="toggle-zoom-btn" class="reset-timeline-btn" style="border-color: rgba(0, 255, 157, 0.5); background: rgba(0, 255, 157, 0.1); color: #00ff9d;" title="Zoom timeline to fill with buffer range" onmousedown="event.preventDefault()">🔍 Zoom to Buffer</button>
+                        <button id="reset-timeline-btn" class="reset-timeline-btn" title="Reset to original theme time range" onmousedown="event.preventDefault()">↺ Reset to Original</button>
                     </div>
                 </div>
                 <div class="timeline-track" id="timeline-track">
@@ -1644,7 +1648,9 @@
                                         <button class="toolbar-btn" onmousedown="event.preventDefault(); joinWithPrevious()" title="Join with previous subtitle">🔗 Join Prev</button>
                                         <button class="toolbar-btn" onmousedown="event.preventDefault(); joinWithNext()" title="Join with next subtitle">🔗 Join Next</button>
                                     </div>
+                                    <div id="prev-cue-display" style="font-size: 11px; color: #888; margin-bottom: 6px; font-style: italic; min-height: 1.2em; border-left: 2px solid #444; padding-left: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></div>
                                     <div class="subtitle-text-area" id="subtitle-text" contenteditable="true" data-placeholder="Edit subtitle text here..."></div>
+                                    <div id="next-cue-display" style="font-size: 11px; color: #888; margin-top: 6px; font-style: italic; min-height: 1.2em; border-left: 2px solid #444; padding-left: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></div>
                                     <div id="subtitle-duration-info" style="margin-top: 8px; font-size: 12px; color: #00ff9d; font-weight: 500; display: flex; justify-content: flex-start; align-items: center; gap: 12px;">
                                         <div class="nudge-group" style="gap: 4px;">
                                             <span style="color: #aaa; margin-right: 4px;">Start:</span>
@@ -3783,85 +3789,96 @@
                 }
             };
 
-            // Sync current subtitle from our local cues to textarea based on video time
-            const syncSubtitleToTextarea = () => {
-                if (!allThemeCues || allThemeCues.length === 0) return;
-
-                const currentTime = previewVideo.currentTime;
-                const subtitleText = document.getElementById('subtitle-text');
-                const durationValueEl = document.getElementById('subtitle-duration-value');
-
-                // Find matching cue in our stable list
-                const matchingCue = allThemeCues.find(cue => {
-                    const cueStart = parseTime(cue.start);
-                    const cueEnd = parseTime(cue.end);
-                    return currentTime >= cueStart && currentTime <= cueEnd;
-                });
-
-                if (matchingCue) {
-                    const currentCueText = subtitleEdits[`${matchingCue.start}_${matchingCue.end}`] || matchingCue.text;
-                    
-                    // Update duration display
-                    if (durationValueEl) {
-                        const cueStart = parseTime(matchingCue.start);
-                        const cueEnd = parseTime(matchingCue.end);
-                        const duration = cueEnd - cueStart;
-                        durationValueEl.textContent = `${duration.toFixed(2)}s`;
-                        // Highlight short durations (less than 0.8s) in orange/red
-                        durationValueEl.style.color = duration < 0.8 ? '#ff9800' : '#00ff9d';
-                    }
-
-                    const newCueInfo = {
-                        sequence: matchingCue.sequence,
-                        start: matchingCue.start,
-                        end: matchingCue.end,
-                        text: currentCueText
-                    };
-
-                    // Only update if we've moved to a different cue
-                    if (!currentCueInfo || currentCueInfo.start !== newCueInfo.start) {
-                        currentCueInfo = newCueInfo;
-                        isProgrammaticUpdate = true;
-
-                        // Load saved formatting
-                        const formatting = allCueFormatting[matchingCue.sequence];
-                        if (formatting && formatting.html) {
-                            subtitleText.focus();
-                            document.execCommand('selectAll', false, null);
-                            document.execCommand('insertHTML', false, formatting.html);
-                            
-                            // Update positioning state
-                            if (formatting.customPosition) {
-                                const rect = previewVideo.getBoundingClientRect();
-                                const scaleX = rect.width / 1080;
-                                const scaleY = rect.height / 1920;
-                                customPosition = {
-                                    left: formatting.customPosition.left * scaleX,
-                                    top: formatting.customPosition.top * scaleY,
-                                    centerX: (formatting.customPosition.centerX || formatting.customPosition.left) * scaleX
-                                };
-                            }
-                        } else {
-                            subtitleText.innerHTML = currentCueText;
-                        }
-                        
-                        isProgrammaticUpdate = false;
-                        updateSubtitlePreview();
-                    }
-                } else {
-                    // No active cue
-                    if (currentCueInfo !== null) {
-                        currentCueInfo = null;
-                        subtitleText.innerHTML = '';
-                        if (durationValueEl) {
-                            durationValueEl.textContent = '0.00s';
-                            durationValueEl.style.color = '#00ff9d';
-                        }
-                        updateSubtitlePreview();
-                    }
-                }
-            };
-
+                                      // Sync current subtitle from our local cues to textarea based on video time
+                                      const syncSubtitleToTextarea = () => {
+                                          if (!allThemeCues || allThemeCues.length === 0) return;
+                          
+                                          const currentTime = previewVideo.currentTime;
+                                          const subtitleText = document.getElementById('subtitle-text');
+                                          const durationValueEl = document.getElementById('subtitle-duration-value');
+                                          const prevCueEl = document.getElementById('prev-cue-display');
+                                          const nextCueEl = document.getElementById('next-cue-display');
+                          
+                                          // Find matching cue in our stable list
+                                          const matchingIndex = allThemeCues.findIndex(cue => {
+                                              const cueStart = parseTime(cue.start);
+                                              const cueEnd = parseTime(cue.end);
+                                              return currentTime >= cueStart && currentTime <= cueEnd;
+                                          });
+                          
+                                          if (matchingIndex !== -1) {
+                                              const matchingCue = allThemeCues[matchingIndex];
+                                              const currentCueText = subtitleEdits[`${matchingCue.start}_${matchingCue.end}`] || matchingCue.text;
+                                              
+                                              // Update context displays
+                                              if (prevCueEl) {
+                                                  const prevCue = matchingIndex > 0 ? allThemeCues[matchingIndex - 1] : null;
+                                                  prevCueEl.textContent = prevCue ? `PREV: ${prevCue.text.replace(/\n/g, ' ')}` : '';
+                                              }
+                                              if (nextCueEl) {
+                                                  const nextCue = matchingIndex < allThemeCues.length - 1 ? allThemeCues[matchingIndex + 1] : null;
+                                                  nextCueEl.textContent = nextCue ? `NEXT: ${nextCue.text.replace(/\n/g, ' ')}` : '';
+                                              }
+                          
+                                              // Update duration display
+                                              if (durationValueEl) {
+                                                  const cueStart = parseTime(matchingCue.start);
+                                                  const cueEnd = parseTime(matchingCue.end);
+                                                  const duration = cueEnd - cueStart;
+                                                  durationValueEl.textContent = `${duration.toFixed(2)}s`;
+                                                  // Highlight short durations (less than 0.8s) in orange/red
+                                                  durationValueEl.style.color = duration < 0.8 ? '#ff9800' : '#00ff9d';
+                                              }
+                          
+                                              const newCueInfo = {
+                                                  sequence: matchingCue.sequence,
+                                                  start: matchingCue.start,
+                                                  end: matchingCue.end,
+                                                  text: currentCueText
+                                              };
+                          
+                                              // Only update if we've moved to a different cue
+                                              if (!currentCueInfo || currentCueInfo.start !== newCueInfo.start) {
+                                                  currentCueInfo = newCueInfo;
+                                                  isProgrammaticUpdate = true;
+                          
+                                                                          // Load saved formatting
+                                                                          const formatting = allCueFormatting[matchingCue.sequence];
+                                                                          if (formatting && formatting.html) {
+                                                                              subtitleText.focus({ preventScroll: true });
+                                                                              document.execCommand('selectAll', false, null);
+                                                                              document.execCommand('insertHTML', false, formatting.html);                                                      
+                                                      // Update positioning state
+                                                      if (formatting.customPosition) {
+                                                          const rect = previewVideo.getBoundingClientRect();
+                                                          const scaleX = rect.width / 1080;
+                                                          const scaleY = rect.height / 1920;
+                                                          customPosition = {
+                                                              left: formatting.customPosition.left * scaleX,
+                                                              top: formatting.customPosition.top * scaleY,
+                                                              centerX: (formatting.customPosition.centerX || formatting.customPosition.left) * scaleX
+                                                          };
+                                                      }
+                                                  } else {
+                                                      subtitleText.innerHTML = currentCueText;
+                                                  }
+                                                  
+                                                  isProgrammaticUpdate = false;
+                                                  updateSubtitlePreview();
+                                              }
+                                          } else {
+                                              // No active cue
+                                              if (currentCueInfo !== null) {
+                                                  currentCueInfo = null;
+                                                  subtitleText.innerHTML = '';
+                                                  if (durationValueEl) {
+                                                      durationValueEl.textContent = '0.00s';
+                                                      durationValueEl.style.color = '#00ff9d';
+                                                  }
+                                                  updateSubtitlePreview();
+                                              }
+                                          }
+                                      };
             // Update time display and seekbar
             const updateTimeDisplay = () => {
                 const themeStart = parseFloat(previewVideo.dataset.themeStart);
@@ -4686,6 +4703,85 @@
                 originalVideo.currentTime = endSeconds;
             });
 
+                        // Jump to previous subtitle segment
+                        document.getElementById('jump-prev-cue-btn').addEventListener('click', () => {
+                            if (!allThemeCues || allThemeCues.length === 0) return;
+                            const currentTime = originalVideo.currentTime;
+                            // Find current cue index
+                            const currentIndex = allThemeCues.findIndex(c => {
+                                const s = parseTime(c.start);
+                                const e = parseTime(c.end);
+                                return currentTime >= s - 0.05 && currentTime <= e + 0.05;
+                            });
+                            
+                            if (currentIndex > 0) {
+                                const prevCue = allThemeCues[currentIndex - 1];
+                                originalVideo.currentTime = parseTime(prevCue.start);
+                            } else if (currentIndex === -1) {
+                                // If not in a cue, find the one that just finished
+                                const prevCue = [...allThemeCues].reverse().find(c => parseTime(c.end) < currentTime);
+                                if (prevCue) originalVideo.currentTime = parseTime(prevCue.start);
+                            }
+                        });
+            
+                        // Jump to next subtitle segment
+                        document.getElementById('jump-next-cue-btn').addEventListener('click', () => {
+                            if (!allThemeCues || allThemeCues.length === 0) return;
+                            const currentTime = originalVideo.currentTime;
+                            // Find current cue index
+                            const currentIndex = allThemeCues.findIndex(c => {
+                                const s = parseTime(c.start);
+                                const e = parseTime(c.end);
+                                return currentTime >= s - 0.05 && currentTime <= e + 0.05;
+                            });
+                            
+                            if (currentIndex !== -1 && currentIndex < allThemeCues.length - 1) {
+                                const nextCue = allThemeCues[currentIndex + 1];
+                                originalVideo.currentTime = parseTime(nextCue.start);
+                            } else if (currentIndex === -1) {
+                                // If not in a cue, find the next one starting
+                                const nextCue = allThemeCues.find(c => parseTime(c.start) > currentTime);
+                                if (nextCue) originalVideo.currentTime = parseTime(nextCue.start);
+                            }
+                        });
+            // Set current time as theme start
+            document.getElementById('set-start-btn').addEventListener('click', () => {
+                const currentTime = originalVideo.currentTime;
+                const midPoint = (originalStartSeconds + originalEndSeconds) / 2;
+                
+                if (currentTime >= midPoint) {
+                    showNotification(`theme start time must be before the mid point ${formatTime(midPoint)}`, 'error');
+                    return;
+                }
+                
+                startSeconds = currentTime;
+                updateUI();
+                updatePreviewVideo();
+                reloadSubtitleTrack();
+                autoSaveTheme();
+                updateTimeExtensionInputs();
+                showNotification('Theme start set to current position', 'success');
+            });
+
+            // Set current time as theme end
+            document.getElementById('set-end-btn').addEventListener('click', () => {
+                const currentTime = originalVideo.currentTime;
+                const midPoint = (originalStartSeconds + originalEndSeconds) / 2;
+                
+                if (currentTime <= midPoint) {
+                    showNotification(`theme end time must be after the theme mid point ${formatTime(midPoint)}`, 'error');
+                    return;
+                }
+                
+                endSeconds = currentTime;
+                updateUI();
+                updatePreviewVideo();
+                reloadSubtitleTrack();
+                autoSaveTheme();
+                updateTimeExtensionInputs();
+                showNotification('Theme end set to current position', 'success');
+            });
+
             // Volume control
             volumeSlider.addEventListener('input', () => {
                 originalVideo.volume = volumeSlider.value;
@@ -4785,7 +4881,7 @@
         // Rich text toolbar functions
         function toggleStyle(style) {
             const editor = document.getElementById('subtitle-text');
-            editor.focus();
+            editor.focus({ preventScroll: true });
 
             // Use execCommand which properly handles overlapping selections
             // and preserves existing formatting better than manual DOM manipulation
@@ -4800,7 +4896,7 @@
 
         function applyColor(color) {
             const editor = document.getElementById('subtitle-text');
-            editor.focus();
+            editor.focus({ preventScroll: true });
 
             // Use execCommand which properly handles overlapping selections
             // styleWithCSS=false gives us <b> tags instead of <span style="font-weight: bold;">
@@ -4814,12 +4910,12 @@
             saveCurrentCueFormatting();
             
             // Ensure focus is restored
-            editor.focus();
+            editor.focus({ preventScroll: true });
         }
 
         function applySize(multiplier) {
             const editor = document.getElementById('subtitle-text');
-            editor.focus();
+            editor.focus({ preventScroll: true });
 
             const selection = window.getSelection();
             if (selection.rangeCount === 0) return;
@@ -4908,14 +5004,14 @@
                 }
             }
 
-            editor.focus();
+            editor.focus({ preventScroll: true });
             updateSubtitlePreview();
             saveCurrentCueFormatting();
         }
 
         function removeFormatting() {
             const editor = document.getElementById('subtitle-text');
-            editor.focus();
+            editor.focus({ preventScroll: true });
 
             const selection = window.getSelection();
             if (selection.rangeCount > 0) {
@@ -5150,7 +5246,7 @@
             document.querySelector('.color-picker-wrapper').style.setProperty('--current-color', color);
             
             // Restore editor focus
-            document.getElementById('subtitle-text').focus();
+            document.getElementById('subtitle-text').focus({ preventScroll: true });
         });
 
         customColorPicker.addEventListener('change', (e) => {

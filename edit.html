@@ -533,6 +533,24 @@
             }
         }
 
+        .shake-animation {
+            animation: shake 0.2s infinite;
+        }
+
+        @keyframes shake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            70% { transform: translate(3px, 1px) rotate(-1deg); }
+            80% { transform: translate(-1px, -1px) rotate(1deg); }
+            90% { transform: translate(1px, 2px) rotate(0deg); }
+            100% { transform: translate(1px, -2px) rotate(-1deg); }
+        }
+
         .timeline-container {
             display: flex;
             align-items: center;
@@ -1370,10 +1388,10 @@
     </div>
 
     <!-- Effects Panel -->
-    <div class="tool-panel left" id="panel-effects" style="max-height: 400px;">
+    <div class="tool-panel left" id="panel-effects" style="max-height: 600px;">
         <button class="close-panel" onclick="closePanel('effects')">×</button>
         <h3><span class="icon">✨</span> Effects</h3>
-        <div class="checkbox-group">
+        <div class="checkbox-group" style="overflow-y: auto; max-height: 500px; padding-right: 5px;">
             <div class="effect-item-wrapper">
                 <label class="checkbox-item effect-with-preview" title="Make sure placement on timeline is chosen for this effect">
                     <input type="checkbox" id="effectMirror" data-effect="mirror" onchange="toggleEffectPreview(this, 'mirror')">
@@ -1385,7 +1403,6 @@
                         <option value="10">10 seconds</option>
                         <option value="30">30 seconds</option>
                         <option value="60">1 minute</option>
-                        <option value="120">2 minutes</option>
                         <option value="all">Full Video</option>
                         <option value="custom">Custom...</option>
                     </select>
@@ -1403,7 +1420,6 @@
                         <option value="10">10 seconds</option>
                         <option value="30">30 seconds</option>
                         <option value="60">1 minute</option>
-                        <option value="120">2 minutes</option>
                         <option value="all">Full Video</option>
                         <option value="custom">Custom...</option>
                     </select>
@@ -1421,7 +1437,6 @@
                         <option value="10">10 seconds</option>
                         <option value="30">30 seconds</option>
                         <option value="60">1 minute</option>
-                        <option value="120">2 minutes</option>
                         <option value="all">Full Video</option>
                         <option value="custom">Custom...</option>
                     </select>
@@ -1439,7 +1454,6 @@
                         <option value="10">10 seconds</option>
                         <option value="30">30 seconds</option>
                         <option value="60">1 minute</option>
-                        <option value="120">2 minutes</option>
                         <option value="all">Full Video</option>
                         <option value="custom">Custom...</option>
                     </select>
@@ -1457,11 +1471,155 @@
                         <option value="10">10 seconds</option>
                         <option value="30">30 seconds</option>
                         <option value="60">1 minute</option>
-                        <option value="120">2 minutes</option>
                         <option value="all">Full Video</option>
                         <option value="custom">Custom...</option>
                     </select>
                     <input type="number" class="custom-duration-input" id="customZoom" placeholder="Seconds" min="1" style="display: none;" onchange="updateEffectDuration('zoom', this.value)">
+                </div>
+            </div>
+            <!-- New Trendy & Stylistic Effects -->
+            <div class="effect-item-wrapper">
+                <label class="checkbox-item effect-with-preview">
+                    <input type="checkbox" id="effectGlitch" data-effect="glitch" onchange="toggleEffectPreview(this, 'glitch')">
+                    <span>RGB Split (Glitch)</span>
+                    <button class="effect-preview-btn" onclick="previewVideoEffect('glitch')" style="display: none;">👁️</button>
+                </label>
+                <div class="effect-duration-options" id="durationGlitch" style="display: none;">
+                    <select class="duration-select" onchange="updateEffectDuration('glitch', this.value)">
+                        <option value="2">2 seconds</option>
+                        <option value="5">5 seconds</option>
+                        <option value="10">10 seconds</option>
+                        <option value="custom">Custom...</option>
+                    </select>
+                </div>
+            </div>
+            <div class="effect-item-wrapper">
+                <label class="checkbox-item effect-with-preview">
+                    <input type="checkbox" id="effectVhs" data-effect="vhs" onchange="toggleEffectPreview(this, 'vhs')">
+                    <span>VHS / Film Grain</span>
+                    <button class="effect-preview-btn" onclick="previewVideoEffect('vhs')" style="display: none;">👁️</button>
+                </label>
+                <div class="effect-duration-options" id="durationVhs" style="display: none;">
+                    <select class="duration-select" onchange="updateEffectDuration('vhs', this.value)">
+                        <option value="30">30 seconds</option>
+                        <option value="60">1 minute</option>
+                        <option value="all">Full Video</option>
+                        <option value="custom">Custom...</option>
+                    </select>
+                </div>
+            </div>
+            <div class="effect-item-wrapper">
+                <label class="checkbox-item effect-with-preview">
+                    <input type="checkbox" id="effectNeon" data-effect="neon" onchange="toggleEffectPreview(this, 'neon')">
+                    <span>Neon Edges</span>
+                    <button class="effect-preview-btn" onclick="previewVideoEffect('neon')" style="display: none;">👁️</button>
+                </label>
+                <div class="effect-duration-options" id="durationNeon" style="display: none;">
+                    <select class="duration-select" onchange="updateEffectDuration('neon', this.value)">
+                        <option value="5">5 seconds</option>
+                        <option value="10">10 seconds</option>
+                        <option value="custom">Custom...</option>
+                    </select>
+                </div>
+            </div>
+            <!-- Cinematic & Professional -->
+            <div class="effect-item-wrapper">
+                <label class="checkbox-item effect-with-preview">
+                    <input type="checkbox" id="effectVignette" data-effect="vignette" onchange="toggleEffectPreview(this, 'vignette')">
+                    <span>Vignette (Focus)</span>
+                    <button class="effect-preview-btn" onclick="previewVideoEffect('vignette')" style="display: none;">👁️</button>
+                </label>
+                <div class="effect-duration-options" id="durationVignette" style="display: none;">
+                    <select class="duration-select" onchange="updateEffectDuration('vignette', this.value)">
+                        <option value="all">Full Video</option>
+                        <option value="30">30 seconds</option>
+                        <option value="custom">Custom...</option>
+                    </select>
+                </div>
+            </div>
+            <div class="effect-item-wrapper">
+                <label class="checkbox-item effect-with-preview">
+                    <input type="checkbox" id="effectCinematic" data-effect="cinematic" onchange="toggleEffectPreview(this, 'cinematic')">
+                    <span>Cinematic Bars</span>
+                    <button class="effect-preview-btn" onclick="previewVideoEffect('cinematic')" style="display: none;">👁️</button>
+                </label>
+                <div class="effect-duration-options" id="durationCinematic" style="display: none;">
+                    <select class="duration-select" onchange="updateEffectDuration('cinematic', this.value)">
+                        <option value="all">Full Video</option>
+                        <option value="custom">Custom...</option>
+                    </select>
+                </div>
+            </div>
+            <div class="effect-item-wrapper">
+                <label class="checkbox-item effect-with-preview">
+                    <input type="checkbox" id="effectVibrance" data-effect="vibrance" onchange="toggleEffectPreview(this, 'vibrance')">
+                    <span>Vibrance Boost</span>
+                    <button class="effect-preview-btn" onclick="previewVideoEffect('vibrance')" style="display: none;">👁️</button>
+                </label>
+                <div class="effect-duration-options" id="durationVibrance" style="display: none;">
+                    <select class="duration-select" onchange="updateEffectDuration('vibrance', this.value)">
+                        <option value="all">Full Video</option>
+                        <option value="30">30 seconds</option>
+                        <option value="custom">Custom...</option>
+                    </select>
+                </div>
+            </div>
+            <!-- Motion & Timing -->
+            <div class="effect-item-wrapper">
+                <label class="checkbox-item effect-with-preview">
+                    <input type="checkbox" id="effectSlowMo" data-effect="slowmo" onchange="toggleEffectPreview(this, 'slowmo')">
+                    <span>Slow Motion (0.5x)</span>
+                    <button class="effect-preview-btn" onclick="previewVideoEffect('slowmo')" style="display: none;">👁️</button>
+                </label>
+                <div class="effect-duration-options" id="durationSlowmo" style="display: none;">
+                    <select class="duration-select" onchange="updateEffectDuration('slowmo', this.value)">
+                        <option value="2">2 seconds</option>
+                        <option value="5">5 seconds</option>
+                        <option value="custom">Custom...</option>
+                    </select>
+                </div>
+            </div>
+            <div class="effect-item-wrapper">
+                <label class="checkbox-item effect-with-preview">
+                    <input type="checkbox" id="effectFastMo" data-effect="fastmo" onchange="toggleEffectPreview(this, 'fastmo')">
+                    <span>Fast Motion (2x)</span>
+                    <button class="effect-preview-btn" onclick="previewVideoEffect('fastmo')" style="display: none;">👁️</button>
+                </label>
+                <div class="effect-duration-options" id="durationFastmo" style="display: none;">
+                    <select class="duration-select" onchange="updateEffectDuration('fastmo', this.value)">
+                        <option value="5">5 seconds</option>
+                        <option value="10">10 seconds</option>
+                        <option value="custom">Custom...</option>
+                    </select>
+                </div>
+            </div>
+            <div class="effect-item-wrapper">
+                <label class="checkbox-item effect-with-preview">
+                    <input type="checkbox" id="effectShake" data-effect="shake" onchange="toggleEffectPreview(this, 'shake')">
+                    <span>Camera Shake</span>
+                    <button class="effect-preview-btn" onclick="previewVideoEffect('shake')" style="display: none;">👁️</button>
+                </label>
+                <div class="effect-duration-options" id="durationShake" style="display: none;">
+                    <select class="duration-select" onchange="updateEffectDuration('shake', this.value)">
+                        <option value="1">1 second</option>
+                        <option value="3">3 seconds</option>
+                        <option value="custom">Custom...</option>
+                    </select>
+                </div>
+            </div>
+            <!-- Smart -->
+            <div class="effect-item-wrapper">
+                <label class="checkbox-item effect-with-preview">
+                    <input type="checkbox" id="effectPixelate" data-effect="pixelate" onchange="toggleEffectPreview(this, 'pixelate')">
+                    <span>Pixelate (Censor)</span>
+                    <button class="effect-preview-btn" onclick="previewVideoEffect('pixelate')" style="display: none;">👁️</button>
+                </label>
+                <div class="effect-duration-options" id="durationPixelate" style="display: none;">
+                    <select class="duration-select" onchange="updateEffectDuration('pixelate', this.value)">
+                        <option value="5">5 seconds</option>
+                        <option value="10">10 seconds</option>
+                        <option value="custom">Custom...</option>
+                    </select>
                 </div>
             </div>
         </div>
@@ -2565,6 +2723,7 @@
             video.style.transition = 'none';
             video.style.objectFit = 'contain';
             video.style.transformOrigin = 'center center';
+            video.classList.remove('shake-animation');
             
             let transforms = [];
             let filters = [];
@@ -2586,6 +2745,34 @@
                         break;
                     case 'zoom':
                         transforms.push('scale(1.2)');
+                        break;
+                    case 'glitch':
+                        filters.push('hue-rotate(90deg) contrast(1.5)');
+                        transforms.push('skewX(2deg)');
+                        break;
+                    case 'vhs':
+                        filters.push('sepia(0.2) brightness(1.1) contrast(1.2) saturate(1.2)');
+                        break;
+                    case 'neon':
+                        filters.push('invert(1) hue-rotate(180deg) brightness(1.5) contrast(2)');
+                        break;
+                    case 'vignette':
+                        // CSS Vignette approximation
+                        filters.push('brightness(0.8) contrast(1.2)');
+                        break;
+                    case 'cinematic':
+                        // Handled via CSS on wrapper or just zoom slightly
+                        transforms.push('scale(1.1)');
+                        break;
+                    case 'vibrance':
+                        filters.push('saturate(1.8) contrast(1.1)');
+                        break;
+                    case 'shake':
+                        video.classList.add('shake-animation');
+                        break;
+                    case 'pixelate':
+                        // Closest CSS filter without complex shaders
+                        filters.push('blur(4px) contrast(2) brightness(1.1)');
                         break;
                 }
             }
@@ -2707,44 +2894,58 @@
                 switch (effectType) {
                     case 'mirror':
                         video.style.transform = 'scaleX(-1)';
-                        video.style.transition = 'transform 0.3s ease';
-                        setTimeout(() => {
-                            video.style.transform = 'scaleX(1)';
-                        }, 300);
                         break;
                     case 'grayscale':
                         video.style.filter = 'grayscale(100%)';
-                        video.style.transition = 'filter 0.5s ease';
-                        setTimeout(() => {
-                            video.style.filter = 'none';
-                        }, duration * 500);
                         break;
                     case 'sepia':
                         video.style.filter = 'sepia(100%)';
-                        video.style.transition = 'filter 0.5s ease';
-                        setTimeout(() => {
-                            video.style.filter = 'none';
-                        }, duration * 500);
                         break;
                     case 'blur':
                         video.style.filter = 'blur(5px)';
-                        video.style.transition = 'filter 0.5s ease';
-                        setTimeout(() => {
-                            video.style.filter = 'none';
-                        }, duration * 500);
                         break;
                     case 'zoom':
-                        video.style.transform = 'scale(1)';
+                        video.style.transform = 'scale(1.3)';
                         video.style.transition = 'transform 2s ease-out';
-                        setTimeout(() => {
-                            video.style.transform = 'scale(1.3)';
-                        }, 100);
+                        break;
+                    case 'glitch':
+                        video.style.filter = 'hue-rotate(90deg) contrast(1.5)';
+                        video.style.transform = 'skewX(5deg)';
+                        break;
+                    case 'vhs':
+                        video.style.filter = 'sepia(0.3) brightness(1.2) contrast(1.2)';
+                        break;
+                    case 'neon':
+                        video.style.filter = 'invert(1) hue-rotate(180deg) contrast(2)';
+                        break;
+                    case 'vignette':
+                        video.style.filter = 'brightness(0.7) contrast(1.3)';
+                        break;
+                    case 'cinematic':
+                        video.style.transform = 'scale(1.1)';
+                        break;
+                    case 'vibrance':
+                        video.style.filter = 'saturate(2)';
+                        break;
+                    case 'shake':
+                        video.classList.add('shake-animation');
+                        break;
+                    case 'pixelate':
+                        video.style.filter = 'blur(8px) contrast(1.5)';
+                        break;
+                    case 'slowmo':
+                        video.playbackRate = 0.5;
+                        break;
+                    case 'fastmo':
+                        video.playbackRate = 2.0;
                         break;
                 }
 
                 // Stop after preview duration
                 setTimeout(() => {
                     video.pause();
+                    video.playbackRate = 1.0;
+                    video.classList.remove('shake-animation');
                     // After preview, re-apply persistent effects
                     applyVideoEffects();
                     video.currentTime = currentTime;
@@ -3029,6 +3230,14 @@
                     sepia: document.getElementById('effectSepia').checked,
                     blur: document.getElementById('effectBlur').checked,
                     zoom: document.getElementById('effectZoom').checked,
+                    glitch: document.getElementById('effectGlitch').checked,
+                    vhs: document.getElementById('effectVhs').checked,
+                    neon: document.getElementById('effectNeon').checked,
+                    vignette: document.getElementById('effectVignette').checked,
+                    cinematic: document.getElementById('effectCinematic').checked,
+                    vibrance: document.getElementById('effectVibrance').checked,
+                    shake: document.getElementById('effectShake').checked,
+                    pixelate: document.getElementById('effectPixelate').checked,
                     faceTracking: document.getElementById('faceTracking').checked,
                     faceZoomLevel: document.getElementById('faceZoomLevel').value,
                     faceSmoothing: document.getElementById('faceSmoothing').value
@@ -3396,6 +3605,14 @@
                     sepia: document.getElementById('effectSepia').checked,
                     blur: document.getElementById('effectBlur').checked,
                     zoom: document.getElementById('effectZoom').checked,
+                    glitch: document.getElementById('effectGlitch').checked,
+                    vhs: document.getElementById('effectVhs').checked,
+                    neon: document.getElementById('effectNeon').checked,
+                    vignette: document.getElementById('effectVignette').checked,
+                    cinematic: document.getElementById('effectCinematic').checked,
+                    vibrance: document.getElementById('effectVibrance').checked,
+                    shake: document.getElementById('effectShake').checked,
+                    pixelate: document.getElementById('effectPixelate').checked,
                     faceTracking: document.getElementById('faceTracking').checked,
                     faceZoomLevel: document.getElementById('faceZoomLevel').value,
                     faceSmoothing: document.getElementById('faceSmoothing').value
@@ -3462,9 +3679,17 @@
                 document.getElementById('effectSepia').checked = settings.effects.sepia || false;
                 document.getElementById('effectBlur').checked = settings.effects.blur || false;
                 document.getElementById('effectZoom').checked = settings.effects.zoom || false;
+                document.getElementById('effectGlitch').checked = settings.effects.glitch || false;
+                document.getElementById('effectVhs').checked = settings.effects.vhs || false;
+                document.getElementById('effectNeon').checked = settings.effects.neon || false;
+                document.getElementById('effectVignette').checked = settings.effects.vignette || false;
+                document.getElementById('effectCinematic').checked = settings.effects.cinematic || false;
+                document.getElementById('effectVibrance').checked = settings.effects.vibrance || false;
+                document.getElementById('effectShake').checked = settings.effects.shake || false;
+                document.getElementById('effectPixelate').checked = settings.effects.pixelate || false;
                 document.getElementById('faceTracking').checked = settings.effects.faceTracking || false;
                 document.getElementById('faceZoomLevel').value = settings.effects.faceZoomLevel || 1.5;
-                document.getElementById('faceZoomValue').textContent = settings.effects.faceZoomLevel + 'x';
+                document.getElementById('faceZoomValue').textContent = (settings.effects.faceZoomLevel || 1.5) + 'x';
                 document.getElementById('faceSmoothing').value = settings.effects.faceSmoothing || 'medium';
 
                 // Toggle face tracking options to properly initialize UI and state
