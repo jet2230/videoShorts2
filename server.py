@@ -1030,39 +1030,40 @@ def get_all_subtitles(folder_number: str):
                 shorts_dir = folder / 'shorts'
                 shorts_dir.mkdir(exist_ok=True)
                 
-                # Create theme SRT
+                # Create theme SRT only if it doesn't exist to preserve user splits/joins
                 theme_srt_path = shorts_dir / f"theme_{int(theme_number):03d}.srt"
-                creator.create_trimmed_srt(srt_file, theme_start_sec, theme_end_sec, theme_srt_path)
+                if not theme_srt_path.exists():
+                    creator.create_trimmed_srt(srt_file, theme_start_sec, theme_end_sec, theme_srt_path)
                 
                 # Create theme JSON
                 theme_json_path = shorts_dir / f"theme_{int(theme_number):03d}.json"
-                
-                # Find word timestamps
-                word_timestamps_file = None
-                for file in folder.glob('*_word_timestamps.json'):
-                    word_timestamps_file = file
-                    break
-                    
-                if word_timestamps_file:
-                    with open(word_timestamps_file, 'r', encoding='utf-8') as f:
-                        wt_data = json.load(f)
-                        all_words = wt_data.get('words', [])
-                    
-                    theme_words = [w.copy() for w in all_words 
-                                   if w['start'] >= theme_start_sec - 1.0 and w['end'] <= theme_end_sec + 1.0]
-                    for w in theme_words:
-                        w['start'] = max(0, w['start'] - theme_start_sec)
-                        w['end'] = max(0, w['end'] - theme_start_sec)
+                if not theme_json_path.exists():
+                    # Find word timestamps
+                    word_timestamps_file = None
+                    for file in folder.glob('*_word_timestamps.json'):
+                        word_timestamps_file = file
+                        break
                         
-                    with open(theme_json_path, 'w', encoding='utf-8') as f:
-                        json.dump({
-                            'theme': theme_number,
-                            'start_time': theme_start_sec,
-                            'end_time': theme_end_sec,
-                            'words': theme_words
-                        }, f, indent=2)
-                
-                app_logger.info(f"Auto-generated metadata for theme {theme_number} in get_all_subtitles")
+                    if word_timestamps_file:
+                        with open(word_timestamps_file, 'r', encoding='utf-8') as f:
+                            wt_data = json.load(f)
+                            all_words = wt_data.get('words', [])
+                        
+                        theme_words = [w.copy() for w in all_words 
+                                       if w['start'] >= theme_start_sec - 1.0 and w['end'] <= theme_end_sec + 1.0]
+                        for w in theme_words:
+                            w['start'] = max(0, w['start'] - theme_start_sec)
+                            w['end'] = max(0, w['end'] - theme_start_sec)
+                            
+                        with open(theme_json_path, 'w', encoding='utf-8') as f:
+                            json.dump({
+                                'theme': theme_number,
+                                'start_time': theme_start_sec,
+                                'end_time': theme_end_sec,
+                                'words': theme_words
+                            }, f, indent=2)
+                    
+                    app_logger.info(f"Auto-generated metadata for theme {theme_number} in get_all_subtitles")
         except Exception as e:
             app_logger.warning(f"Failed to auto-generate theme metadata in get_all_subtitles: {e}")
 
@@ -1455,6 +1456,79 @@ def save_cue_timing():
         return jsonify({'success': True})
     except Exception as e:
         app_logger.error(f"save_cue_timing error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/save-subtitle-restructure', methods=['POST'])
+def save_subtitle_restructure():
+    """Overwrite the entire theme SRT with a new set of cues (Split/Join)."""
+    try:
+        data = request.json
+        folder_number = data.get('folder')
+        theme_number = data.get('theme')
+        theme_start = float(data.get('theme_start', 0))
+        theme_end = float(data.get('theme_end', 0))
+        cues = data.get('cues', [])
+
+        if not folder_number or not theme_number or not cues:
+            return jsonify({'error': 'Missing required fields'}), 400
+
+        base_dir = Path(settings.get('video', 'output_dir'))
+        folder = next((f for f in base_dir.iterdir() if f.is_dir() and f.name.startswith(f"{folder_number}_")), None)
+        if not folder: return jsonify({'error': 'Folder not found'}), 404
+
+        # Update Theme SRT
+        theme_srt = folder / 'shorts' / f'theme_{int(theme_number):03d}.srt'
+        
+        # Also update the Main SRT to make splits/joins permanent and global
+        srt_files = [f for f in folder.glob('*.srt') if 'theme_' not in f.name and 'adjust' not in f.name]
+        if not srt_files: srt_files = list(folder.glob('*.srt'))
+        main_srt = srt_files[0] if srt_files else None
+
+        # Write to both files
+        for target_file in [theme_srt, main_srt]:
+            if not target_file: continue
+            is_trimmed = 'theme_' in target_file.name
+            
+            with open(target_file, 'w', encoding='utf-8') as f:
+                write_seq = 1
+                for cue in cues:
+                    # UI cues are absolute. Theme SRT needs relative.
+                    try:
+                        abs_start = parse_srt_time(cue['start'].replace(',', '.'))
+                        abs_end = parse_srt_time(cue['end'].replace(',', '.'))
+                        
+                        if is_trimmed:
+                            # Filter: only include cues that overlap with theme time range
+                            if abs_end <= theme_start or (theme_end > 0 and abs_start >= theme_end):
+                                continue
+                            
+                            start_to_write = max(0, abs_start - theme_start)
+                            end_to_write = max(0, abs_end - theme_start)
+                        else:
+                            start_to_write = abs_start
+                            end_to_write = abs_end
+                        
+                        f.write(f"{write_seq}\n")
+                        f.write(f"{format_srt_time(start_to_write)} --> {format_srt_time(end_to_write)}\n")
+                        f.write(f"{cue['text']}\n\n")
+                        write_seq += 1
+                    except Exception as cue_err:
+                        app_logger.warning(f"Error processing cue for {target_file.name}: {cue_err}")
+                        continue
+
+        # Clear persistent edits JSON for this theme since the SRT now contains the source of truth
+        # and old keys will be invalid/stale
+        edits_file = folder / 'shorts' / f'theme_{int(theme_number):03d}_edits.json'
+        if edits_file.exists():
+            try:
+                edits_file.unlink()
+                app_logger.info(f"Cleared stale edits file: {edits_file.name}")
+            except Exception as e:
+                app_logger.warning(f"Failed to clear edits file: {e}")
+
+        return jsonify({'success': True})
+    except Exception as e:
+        app_logger.error(f"save_subtitle_restructure error: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/save-global-position', methods=['POST'])

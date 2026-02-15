@@ -117,6 +117,44 @@
             left: auto;
         }
 
+        .notification {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 24px;
+            border-radius: 8px;
+            z-index: 9999;
+            display: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            font-size: 14px;
+            font-weight: 500;
+            min-width: 300px;
+            text-align: center;
+        }
+
+        .notification.show {
+            display: block;
+            animation: slideDown 0.3s ease-out;
+        }
+
+        @keyframes slideDown {
+            from { transform: translate(-50%, -40px); opacity: 0; }
+            to { transform: translate(-50%, 0); opacity: 1; }
+        }
+
+        .notification.success {
+            background: rgba(43, 166, 64, 0.95);
+            border: 1px solid #28a745;
+            color: white;
+        }
+
+        .notification.error {
+            background: rgba(220, 53, 69, 0.95);
+            border: 1px solid #dc3545;
+            color: white;
+        }
+
         /* Custom Video Controls */
         .video-controls-overlay {
             position: absolute;
@@ -1389,6 +1427,7 @@
     </style>
 </head>
 <body>
+    <div id="notification" class="notification"></div>
     <div class="header">
         <a href="index.html" class="back-link">
             <span>←</span> Back to Main
@@ -1600,6 +1639,10 @@
                                         <div class="toolbar-divider"></div>
                                         <button class="toolbar-btn" data-style="size" onmousedown="event.preventDefault(); applySize(1.2)">A+</button>
                                         <button class="toolbar-btn" data-style="size" onmousedown="event.preventDefault(); applySize(0.8)">a-</button>
+                                        <div class="toolbar-divider"></div>
+                                        <button class="toolbar-btn" onmousedown="event.preventDefault(); splitSubtitleAtCursor()" title="Split current subtitle at cursor position">✂️ Split</button>
+                                        <button class="toolbar-btn" onmousedown="event.preventDefault(); joinWithPrevious()" title="Join with previous subtitle">🔗 Join Prev</button>
+                                        <button class="toolbar-btn" onmousedown="event.preventDefault(); joinWithNext()" title="Join with next subtitle">🔗 Join Next</button>
                                     </div>
                                     <div class="subtitle-text-area" id="subtitle-text" contenteditable="true" data-placeholder="Edit subtitle text here..."></div>
                                     <div id="subtitle-duration-info" style="margin-top: 8px; font-size: 12px; color: #00ff9d; font-weight: 500; display: flex; justify-content: flex-start; align-items: center; gap: 12px;">
@@ -1988,6 +2031,29 @@
         
         console.log('🏁 adjust.html script loaded', {folderNumber, themeNumber});
 
+        // Global notification function - defined early and attached to window
+        window.showNotification = function(message, type = 'success', customTimeout = null) {
+            const notification = document.getElementById('notification');
+            if (!notification) {
+                console.warn("Notification element not found:", message);
+                return;
+            }
+            
+            notification.textContent = message;
+            notification.className = `notification ${type} show`;
+
+            // For error notifications, keep visible longer or add click to dismiss
+            if (type === 'error') {
+                notification.style.cursor = 'pointer';
+                notification.onclick = () => notification.classList.remove('show');
+            } else {
+                // Hide after 3 seconds (or custom timeout) for non-error notifications
+                setTimeout(() => {
+                    notification.classList.remove('show');
+                }, customTimeout || 3000);
+            }
+        };
+
         // Format time
         function formatTime(seconds) {
             const h = Math.floor(seconds / 3600);
@@ -2009,26 +2075,29 @@
 
         // Helper to convert seconds to timestamp string (supports negative values)
         function formatVttTime(totalSeconds) {
-            const EPSILON = 0.001;
+            const EPSILON = 0.0001;
             if (Math.abs(totalSeconds) < EPSILON) totalSeconds = 0;
 
             const isNegative = totalSeconds < 0;
             const absSeconds = Math.abs(totalSeconds);
 
-            const h = Math.floor(absSeconds / 3600);
-            const m = Math.floor((absSeconds % 3600) / 60);
-            const s = absSeconds % 60;
-            const sInt = Math.floor(s);
-            const msInt = Math.round((s - sInt) * 1000);
+            // Correctly handle millisecond rounding to avoid 1000ms overflow
+            const roundedTotalMs = Math.round(absSeconds * 1000);
+            const ms = roundedTotalMs % 1000;
+            const totalS = Math.floor(roundedTotalMs / 1000);
+            const sec = totalS % 60;
+            const min = Math.floor(totalS / 60) % 60;
+            const hour = Math.floor(totalS / 3600);
 
             const sign = isNegative ? '-' : '';
-            return `${sign}${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${sInt.toString().padStart(2, '0')}.${msInt.toString().padStart(3, '0')}`;
+            return `${sign}${hour.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
         }
 
         // Auto-save theme adjustment
         let autoSaveTimeout = null;
         let subtitleAutoSaveTimeout = null;
         let currentCueInfo = null; // Track current cue: sequence, timestamp, start, end, text
+        let allThemeCues = []; // Full list of cues for the theme
         let subtitleEdits = {}; // Cache subtitle text edits: "start_end": "edited text"
         let allCueFormatting = {}; // Store formatting for all cues: sequence: [sequence, timestamp, html, _text]
         let isProgrammaticUpdate = false; // Flag to prevent auto-save during programmatic updates
@@ -2583,6 +2652,243 @@
             }
         }
 
+        // Subtitle Split & Join functionality
+        function resequenceCues() {
+            const newFormatting = {};
+            allThemeCues.forEach((c, i) => {
+                const oldSeq = c.sequence;
+                const newSeq = i + 1;
+                // If this cue already had a sequence and it's in our formatting map, move it
+                if (oldSeq && allCueFormatting[oldSeq]) {
+                    newFormatting[newSeq] = allCueFormatting[oldSeq];
+                    newFormatting[newSeq].sequence = newSeq;
+                }
+                c.sequence = newSeq;
+            });
+            allCueFormatting = newFormatting;
+        }
+
+        async function saveSubtitleRestructure() {
+            console.log("💾 Saving restructured subtitles to server...", allThemeCues.length, "cues");
+            try {
+                const themeStart = parseFloat(previewVideo.dataset.themeStart) || 0;
+                const themeEnd = parseFloat(previewVideo.dataset.themeEnd) || 0;
+                const response = await fetch('/api/save-subtitle-restructure', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        folder: folderNumber,
+                        theme: themeNumber,
+                        theme_start: themeStart,
+                        theme_end: themeEnd,
+                        cues: allThemeCues
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.error || 'Failed to save restructure');
+                }
+
+                // Also save the updated/shifted formatting map to server
+                await fetch('/api/save-subtitle-formatting', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        folder: folderNumber,
+                        theme: themeNumber,
+                        formatting: allCueFormatting
+                    })
+                });
+                
+                showNotification("Subtitles restructured successfully", "success");
+                console.log("✅ Restructure saved successfully");
+            } catch (error) {
+                console.error("❌ Failed to save restructure:", error);
+                showNotification("Restructure failed: " + error.message, "error");
+            }
+        }
+
+        async function splitSubtitleAtCursor() {
+            console.log("✂️ Split requested");
+            const editor = document.getElementById('subtitle-text');
+            if (!editor) { console.error("Editor not found"); return; }
+            
+            const selection = window.getSelection();
+            if (!selection.rangeCount) {
+                console.warn("No selection range found");
+                showNotification("Place cursor inside text area to split", "error");
+                return;
+            }
+            
+            const range = selection.getRangeAt(0);
+            if (!editor.contains(range.startContainer)) {
+                console.warn("Selection is outside editor");
+                showNotification("Place cursor inside text area to split", "error");
+                return;
+            }
+
+            const currentTime = previewVideo.currentTime;
+            const cueIndex = allThemeCues.findIndex(c => {
+                const s = parseTime(c.start);
+                const e = parseTime(c.end);
+                return currentTime >= s - 0.05 && currentTime <= e + 0.05;
+            });
+            
+            console.log("Current Time:", currentTime, "Found Cue Index:", cueIndex);
+
+            if (cueIndex === -1) {
+                showNotification("No active subtitle to split at this time", "error");
+                return;
+            }
+            
+            const cue = allThemeCues[cueIndex];
+            
+            // Get content before and after cursor, preserving HTML
+            const preRange = range.cloneRange();
+            preRange.selectNodeContents(editor);
+            preRange.setEnd(range.startContainer, range.startOffset);
+            const part1Html = document.createElement('div');
+            part1Html.appendChild(preRange.cloneContents());
+            
+            const postRange = range.cloneRange();
+            postRange.selectNodeContents(editor);
+            postRange.setStart(range.startContainer, range.startOffset);
+            const part2Html = document.createElement('div');
+            part2Html.appendChild(postRange.cloneContents());
+
+            const part1 = part1Html.innerHTML.trim();
+            const part2 = part2Html.innerHTML.trim();
+            
+            console.log("Split parts:", { part1, part2 });
+
+            if (!part1 || !part2) {
+                showNotification("Place cursor inside text to split (not at ends)", "error");
+                return;
+            }
+            
+            // Use text length for timing ratio
+            const fullText = editor.innerText;
+            const cursorOffset = preRange.toString().length;
+            const ratio = cursorOffset / Math.max(1, fullText.length);
+            
+            const startSec = parseTime(cue.start);
+            const endSec = parseTime(cue.end);
+            const midSec = startSec + (endSec - startSec) * ratio;
+            
+            console.log("Splitting cue at:", midSec, "Ratio:", ratio);
+
+            const newCue1 = {
+                ...cue,
+                text: part1,
+                end: formatVttTime(midSec).replace('.', ',')
+            };
+            
+            const newCue2 = {
+                ...cue,
+                start: formatVttTime(midSec).replace('.', ','),
+                text: part2
+            };
+            
+            allThemeCues.splice(cueIndex, 1, newCue1, newCue2);
+            
+            // Clear formatting for the original cue since it's now two separate parts
+            delete allCueFormatting[cue.sequence];
+            
+            resequenceCues();
+            
+            // Clean up cached edits for the old cue
+            delete subtitleEdits[`${cue.start}_${cue.end}`];
+            
+            await saveSubtitleRestructure();
+            currentCueInfo = null; // Force UI refresh
+            updateSubtitlePreview();
+        }
+
+        async function joinWithPrevious() {
+            console.log("🔗 Join Prev requested");
+            const currentTime = previewVideo.currentTime;
+            const cueIndex = allThemeCues.findIndex(c => {
+                const s = parseTime(c.start);
+                const e = parseTime(c.end);
+                return currentTime >= s - 0.05 && currentTime <= e + 0.05;
+            });
+            
+            console.log("Current Time:", currentTime, "Cue Index:", cueIndex);
+
+            if (cueIndex <= 0) {
+                showNotification("No previous subtitle to join with", "error");
+                return;
+            }
+            
+            const currentCue = allThemeCues[cueIndex];
+            const prevCue = allThemeCues[cueIndex - 1];
+            
+            const oldKeyCurrent = `${currentCue.start}_${currentCue.end}`;
+            const oldKeyPrev = `${prevCue.start}_${prevCue.end}`;
+            
+            prevCue.text = (prevCue.text + " " + currentCue.text).trim();
+            prevCue.end = currentCue.end;
+            
+            allThemeCues.splice(cueIndex, 1);
+            
+            // Clear formatting for both original cues
+            delete allCueFormatting[currentCue.sequence];
+            delete allCueFormatting[prevCue.sequence];
+            
+            resequenceCues();
+            
+            // Clean up cached edits
+            delete subtitleEdits[oldKeyCurrent];
+            delete subtitleEdits[oldKeyPrev];
+            
+            await saveSubtitleRestructure();
+            currentCueInfo = null; // Force UI refresh
+            updateSubtitlePreview();
+        }
+
+        async function joinWithNext() {
+            console.log("🔗 Join Next requested");
+            const currentTime = previewVideo.currentTime;
+            const cueIndex = allThemeCues.findIndex(c => {
+                const s = parseTime(c.start);
+                const e = parseTime(c.end);
+                return currentTime >= s - 0.05 && currentTime <= e + 0.05;
+            });
+            
+            console.log("Current Time:", currentTime, "Cue Index:", cueIndex);
+
+            if (cueIndex === -1 || cueIndex >= allThemeCues.length - 1) {
+                showNotification("No next subtitle to join with", "error");
+                return;
+            }
+            
+            const currentCue = allThemeCues[cueIndex];
+            const nextCue = allThemeCues[cueIndex + 1];
+            
+            const oldKeyCurrent = `${currentCue.start}_${currentCue.end}`;
+            const oldKeyNext = `${nextCue.start}_${nextCue.end}`;
+            
+            currentCue.text = (currentCue.text + " " + nextCue.text).trim();
+            currentCue.end = nextCue.end;
+            
+            allThemeCues.splice(cueIndex + 1, 1);
+            
+            // Clear formatting for both original cues
+            delete allCueFormatting[currentCue.sequence];
+            delete allCueFormatting[nextCue.sequence];
+            
+            resequenceCues();
+            
+            // Clean up cached edits
+            delete subtitleEdits[oldKeyCurrent];
+            delete subtitleEdits[oldKeyNext];
+            
+            await saveSubtitleRestructure();
+            currentCueInfo = null; // Force UI refresh
+            updateSubtitlePreview();
+        }
+
         // Helper function to convert seconds to time input format (HH:MM:SS)
         function secondsToTimeInput(totalSeconds) {
             if (totalSeconds === null || totalSeconds === undefined || isNaN(totalSeconds)) {
@@ -2886,6 +3192,7 @@
 
         // Load all theme cues for editing
         async function loadThemeCues() {
+            console.log("📥 Loading theme cues...");
             try {
 
                 // Load ALL cues from original SRT (not filtered by theme range)
@@ -2896,11 +3203,13 @@
 
 
                 if (!response.ok) {
+                    console.warn("⚠️ API all-subtitles failed, using fallback");
                     // Fallback to theme-filtered API
                     const fallbackResponse = await fetch(`/api/theme-subtitles/${folderNumber}/${themeNumber}`);
                     if (!fallbackResponse.ok) return [];
                     const data = await fallbackResponse.json();
                     allThemeCues = data.cues;
+                    console.log("✅ Loaded", allThemeCues.length, "cues from fallback");
 
                     // Load subtitle edits from server into cache
                     if (data.edits && Object.keys(data.edits).length > 0) {
@@ -2915,6 +3224,7 @@
 
                 const data = await response.json();
                 allThemeCues = data.cues;
+                console.log("✅ Loaded", allThemeCues.length, "cues from primary API");
 
                 // Load subtitle edits from server into cache
                 // This ensures edits persist across page refreshes
@@ -2933,10 +3243,14 @@
                     // First try exact match
                     let cueIndex = allThemeCues.findIndex(cue => cue.start === startKey && cue.end === endKey);
                     
-                    // Fallback: match by start time with tolerance
+                    // Fallback: match by start and end time with tolerance
                     if (cueIndex === -1) {
                         const targetStart = parseTime(startKey);
-                        cueIndex = allThemeCues.findIndex(cue => Math.abs(parseTime(cue.start) - targetStart) < 0.1);
+                        const targetEnd = parseTime(endKey);
+                        cueIndex = allThemeCues.findIndex(cue => 
+                            Math.abs(parseTime(cue.start) - targetStart) < 0.1 &&
+                            Math.abs(parseTime(cue.end) - targetEnd) < 0.1
+                        );
                     }
 
                     if (cueIndex !== -1) {
@@ -5914,10 +6228,13 @@
 
             subtitleModal.style.display = 'none';
 
-            setTimeout(() => {
-                messageDiv.textContent = '';
-                messageDiv.className = '';
-            }, 3000);
+            const messageDiv = document.getElementById('message');
+            if (messageDiv) {
+                setTimeout(() => {
+                    messageDiv.textContent = '';
+                    messageDiv.className = '';
+                }, 3000);
+            }
         });
 
         // Initialize
