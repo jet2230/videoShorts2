@@ -1480,7 +1480,7 @@
             <div class="control-group">
                 <label>Zoom Level</label>
                 <div class="range-wrapper">
-                    <input type="range" id="faceZoomLevel" min="1.2" max="2.5" step="0.1" value="1.5" oninput="updateFaceTrackingPreview(); document.getElementById('faceZoomValue').textContent = this.value + 'x'">
+                    <input type="range" id="faceZoomLevel" min="1.0" max="2.5" step="0.1" value="1.5" oninput="updateFaceTrackingPreview(); document.getElementById('faceZoomValue').textContent = this.value + 'x'">
                     <span class="value" id="faceZoomValue">1.5x</span>
                 </div>
             </div>
@@ -2561,39 +2561,50 @@
             const faceTrackingEnabled = document.getElementById('faceTracking').checked;
             const faceTrackingZoom = faceTrackingEnabled ? parseFloat(document.getElementById('faceZoomLevel').value) : null;
 
-            // Reset video styles
-            video.style.transform = '';
-            video.style.filter = '';
-            video.style.transformOrigin = '';
+            // Reset video styles to base state
+            video.style.transition = 'none';
+            video.style.objectFit = 'contain';
+            video.style.transformOrigin = 'center center';
+            
+            let transforms = [];
+            let filters = [];
 
-            // Apply each active effect
+            // Apply each active timeline effect
             for (const effectType of activeEffects) {
                 switch (effectType) {
                     case 'mirror':
-                        video.style.transform = (video.style.transform || '') + ' scaleX(-1)';
+                        transforms.push('scaleX(-1)');
                         break;
                     case 'grayscale':
-                        video.style.filter = (video.style.filter || '') + ' grayscale(100%)';
+                        filters.push('grayscale(100%)');
                         break;
                     case 'sepia':
-                        video.style.filter = (video.style.filter || '') + ' sepia(100%)';
+                        filters.push('sepia(100%)');
                         break;
                     case 'blur':
-                        video.style.filter = (video.style.filter || '') + ' blur(5px)';
+                        filters.push('blur(5px)');
                         break;
                     case 'zoom':
-                        video.style.transform = (video.style.transform || '') + ' scale(1.2)';
-                        video.style.transformOrigin = 'center center';
+                        transforms.push('scale(1.2)');
                         break;
                 }
             }
 
             // Re-apply face tracking transform on top of timeline effects
             if (faceTrackingEnabled && faceTrackingZoom) {
-                video.style.transform = (video.style.transform || '') + ` scale(${faceTrackingZoom})`;
-                video.style.transformOrigin = 'center center';
+                transforms.push(`scale(${faceTrackingZoom})`);
+                
+                // Smart origin: if video is landscape, zoom towards top-center where faces usually are
+                // If it's already vertical, keep it more centered
+                const isLandscape = video.videoWidth > video.videoHeight;
+                video.style.transformOrigin = isLandscape ? 'center 35%' : 'center 45%';
+                
                 video.style.objectFit = 'cover';
             }
+
+            // Apply combined styles
+            video.style.transform = transforms.join(' ');
+            video.style.filter = filters.join(' ');
         }
 
         // Toggle face tracking options visibility
@@ -2652,10 +2663,8 @@
             // Enable/disable face tracking preview mode
             if (enabled) {
                 video.dataset.faceTracking = 'true';
-                updateFaceTrackingPreview();
             } else {
                 video.dataset.faceTracking = 'false';
-                resetVideoTransform();
             }
 
             // Re-apply all video effects to include/exclude face tracking
@@ -2664,20 +2673,13 @@
 
         // Preview face tracking effect on the video
         function updateFaceTrackingPreview() {
-            const enabled = document.getElementById('faceTracking').checked;
-            if (!enabled) return;
-
-            const zoomLevel = parseFloat(document.getElementById('faceZoomLevel').value);
-            applyFaceTrackingTransform(zoomLevel);
+            applyVideoEffects();
         }
 
         // Apply face tracking transform to video
         function applyFaceTrackingTransform(zoomLevel = 1.5) {
-            // Simulate face tracking by zooming into center
-            const scale = zoomLevel;
-            video.style.transform = `scale(${scale})`;
-            video.style.transformOrigin = 'center center';
-            video.style.objectFit = 'cover';
+            // Deprecated: use applyVideoEffects instead
+            applyVideoEffects();
         }
 
         // Reset video transform
@@ -2687,6 +2689,7 @@
             video.style.opacity = '1';
             video.style.filter = 'none';
             video.style.transition = 'none';
+            video.style.transformOrigin = 'center center';
         }
 
         // Preview video effects (mirror, grayscale, etc.)
@@ -2742,7 +2745,8 @@
                 // Stop after preview duration
                 setTimeout(() => {
                     video.pause();
-                    resetVideoTransform();
+                    // After preview, re-apply persistent effects
+                    applyVideoEffects();
                     video.currentTime = currentTime;
                     showNotification('Preview complete', 'success');
                 }, duration * 1000);
@@ -2766,8 +2770,8 @@
             // Save current time
             const currentTime = video.currentTime;
 
-            // Apply face tracking effect
-            applyFaceTrackingTransform(zoomLevel);
+            // Apply face tracking effect via central function
+            applyVideoEffects();
 
             // Play from current position for 3 seconds
             video.currentTime = currentTime;
