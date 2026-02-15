@@ -583,7 +583,7 @@ def get_themes(folder_number: str):
                     # Parse adjusted values from the file
 
                     title_match = re.search(r'\*\*Title:\*\*\s*(.+?)(?:\n\n|\n\*)', content)
-                    time_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})', content)
+                    time_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)\s*-\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)', content)
 
                     # Add adjusted values as separate fields, don't override original
                     if title_match:
@@ -687,26 +687,11 @@ def update_theme():
     seconds = int(duration_secs % 60)
     duration_str = f"{minutes}m {seconds}s"
 
-    # Read existing adjust.md file if it exists (to preserve Position field)
-    existing_position = None
-    if adjust_file.exists():
-        with open(adjust_file, 'r', encoding='utf-8') as f:
-            content = f.read()
-            # Extract existing subtitle_position line
+    # Preserve existing styling if it exists
+    existing_settings = get_theme_adjust_settings(folder, theme_number)
 
-            position_match = re.search(r'\*\*subtitle_position:\*\*\s*(top|middle|bottom)', content)
-            if position_match:
-                existing_position = position_match.group(1)
-
-    # Write adjust file with all fields including position
-    with open(adjust_file, 'w', encoding='utf-8') as f:
-        f.write(f"# Theme {theme_number}\n\n")
-        f.write(f"**Title:** {new_title}\n\n")
-        f.write(f"**Time Range:** {new_start} - {new_end} ({duration_str})\n")
-        if existing_position:
-            f.write(f"**subtitle_position:** {existing_position}\n")
-        f.write(f"\n**Folder:** {folder.name}\n")
-        f.write(f"**Last Modified:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+    # Write adjust file with all fields including position and styling
+    write_theme_adjust_settings(adjust_file, theme_number, new_title, f"{new_start} - {new_end} ({duration_str})", folder.name, existing_settings)
 
     return jsonify({'success': True, 'message': 'Theme updated successfully'})
 
@@ -733,42 +718,10 @@ def reset_theme():
     if not folder:
         return jsonify({'error': 'Folder not found'}), 404
 
-    # Check adjust file and preserve Position
-    shorts_dir = folder / 'shorts'
-    adjust_file = shorts_dir / f'theme_{theme_number:03d}_adjust.md'
+    # Preserve existing styling if it exists
+    existing_settings = get_theme_adjust_settings(folder, theme_number)
 
-    existing_position = None
-    if adjust_file.exists():
-        with open(adjust_file, 'r', encoding='utf-8') as f:
-            content = f.read()
-            # Extract existing subtitle_position line
-            position_match = re.search(r'\*\*subtitle_position:\*\*\s*(top|middle|bottom)', content)
-            if position_match:
-                existing_position = position_match.group(1)
-
-    # Get original theme data from themes.md
-    themes_file = folder / 'themes.md'
-    if not themes_file.exists():
-        return jsonify({'error': 'Themes file not found'}), 404
-
-    themes = creator.parse_themes_file(themes_file)
-    theme_found = False
-    theme_title = None
-    theme_start = None
-    theme_end = None
-
-    for theme in themes:
-        if theme['number'] == theme_number:
-            theme_title = theme.get('title', '')
-            theme_start = theme['start']
-            theme_end = theme['end']
-            theme_found = True
-            break
-
-    if not theme_found:
-        return jsonify({'error': 'Theme not found'}), 404
-
-    # Rebuild adjust.md with original time range but preserve Position
+    # Rebuild adjust.md with original time range but preserve Position and styling
     start_secs = creator.parse_timestamp_to_seconds(theme_start)
     end_secs = creator.parse_timestamp_to_seconds(theme_end)
     duration_secs = end_secs - start_secs
@@ -776,14 +729,7 @@ def reset_theme():
     seconds = int(duration_secs % 60)
     duration_str = f"{minutes}m {seconds}s"
 
-    with open(adjust_file, 'w', encoding='utf-8') as f:
-        f.write(f"# Theme {theme_number}\n\n")
-        f.write(f"**Title:** {theme_title}\n\n")
-        f.write(f"**Time Range:** {theme_start} - {theme_end} ({duration_str})\n")
-        if existing_position:
-            f.write(f"**subtitle_position:** {existing_position}\n")
-        f.write(f"\n**Folder:** {folder.name}\n")
-        f.write(f"**Last Modified:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+    write_theme_adjust_settings(adjust_file, theme_number, theme_title, f"{theme_start} - {theme_end} ({duration_str})", folder.name, existing_settings)
 
     return jsonify({'success': True, 'message': 'Theme reset successfully'})
 
@@ -814,7 +760,7 @@ def get_theme_subtitles(folder_number: str, theme_number: str):
     if adjust_file.exists():
         with open(adjust_file, 'r', encoding='utf-8') as f:
             content = f.read()
-            time_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})', content)
+            time_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)\s*-\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)', content)
             if time_match:
                 theme_start_sec = creator.parse_timestamp_to_seconds(time_match.group(1))
                 theme_end_sec = creator.parse_timestamp_to_seconds(time_match.group(2))
@@ -923,7 +869,7 @@ def get_theme_subtitles(folder_number: str, theme_number: str):
             if i < len(lines) and '-->' in lines[i]:
                 timestamp_line = lines[i].strip()
                 # Parse timestamps: 00:00:00,000 --> 00:00:05,000
-                match = re.match(r'(\d{2}:\d{2}:\d{2}),(\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}),(\d{3})', timestamp_line)
+                match = re.match(r'(\d{2}:\d{2}:\d{2})[.,](\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2})[.,](\d{3})', timestamp_line)
                 if match:
                     # Convert to seconds for filtering
                     start_h, start_m, start_s = map(int, match.group(1).split(':'))
@@ -1013,7 +959,7 @@ def get_all_subtitles(folder_number: str):
             if adjust_file.exists():
                 with open(adjust_file, 'r', encoding='utf-8') as f:
                     content = f.read()
-                    time_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})', content)
+                    time_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)\s*-\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)', content)
                     if time_match:
                         theme_start_sec = creator.parse_timestamp_to_seconds(time_match.group(1))
                         theme_end_sec = creator.parse_timestamp_to_seconds(time_match.group(2))
@@ -1092,7 +1038,7 @@ def get_all_subtitles(folder_number: str):
             if i < len(lines) and '-->' in lines[i]:
                 timestamp_line = lines[i].strip()
                 # Parse timestamps: 00:00:00,000 --> 00:00:05,000
-                match = re.match(r'(\d{2}:\d{2}:\d{2}),(\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}),(\d{3})', timestamp_line)
+                match = re.match(r'(\d{2}:\d{2}:\d{2})[.,](\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2})[.,](\d{3})', timestamp_line)
                 if match:
                     # Use period for fractional seconds (standard timestamp format)
                     start_ts = f"{match.group(1)}.{match.group(2)}"
@@ -1256,7 +1202,7 @@ def save_cue_text():
             if adjust_file.exists():
                 with open(adjust_file, 'r', encoding='utf-8') as f:
                     c = f.read()
-                    tm = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})', c)
+                    tm = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)\s*-\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)', c)
                     if tm: theme_start_sec = creator.parse_timestamp_to_seconds(tm.group(1))
             
             if theme_start_sec is None:
@@ -1476,45 +1422,66 @@ def save_subtitle_restructure():
         folder = next((f for f in base_dir.iterdir() if f.is_dir() and f.name.startswith(f"{folder_number}_")), None)
         if not folder: return jsonify({'error': 'Folder not found'}), 404
 
-        # Update Theme SRT
+        # Update Theme SRT (this one can be overwritten as it's theme-specific)
         theme_srt = folder / 'shorts' / f'theme_{int(theme_number):03d}.srt'
-        
+        with open(theme_srt, 'w', encoding='utf-8') as f:
+            for i, cue in enumerate(cues, 1):
+                try:
+                    abs_start = parse_srt_time(cue['start'].replace(',', '.'))
+                    abs_end = parse_srt_time(cue['end'].replace(',', '.'))
+                    
+                    start_rel = max(0, abs_start - theme_start)
+                    end_rel = max(0, abs_end - theme_start)
+                    
+                    f.write(f"{i}\n")
+                    f.write(f"{format_srt_time(start_rel)} --> {format_srt_time(end_rel)}\n")
+                    f.write(f"{cue['text']}\n\n")
+                except: continue
+
         # Also update the Main SRT to make splits/joins permanent and global
         srt_files = [f for f in folder.glob('*.srt') if 'theme_' not in f.name and 'adjust' not in f.name]
         if not srt_files: srt_files = list(folder.glob('*.srt'))
         main_srt = srt_files[0] if srt_files else None
 
-        # Write to both files
-        for target_file in [theme_srt, main_srt]:
-            if not target_file: continue
-            is_trimmed = 'theme_' in target_file.name
-            
-            with open(target_file, 'w', encoding='utf-8') as f:
-                write_seq = 1
+        if main_srt:
+            # Merge logic for main SRT: 
+            # 1. Load all existing cues
+            # 2. Remove those that overlap with theme time range
+            # 3. Add new ones
+            # 4. Save
+            try:
+                existing_cues = []
+                with open(main_srt, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
+                
+                # Parse existing
+                pattern = r'(\d+)\s*\n(\d{2}:\d{2}:\d{2}[.,]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[.,]\d{3})\s*\n(.*?)(?=\n\s*\n|\n\s*\d+\s*\n|\Z)'
+                for match in re.finditer(pattern, content, re.DOTALL):
+                    s = parse_srt_time(match.group(2).replace(',', '.'))
+                    e = parse_srt_time(match.group(3).replace(',', '.'))
+                    # Keep if NOT overlapping with theme range
+                    if e <= theme_start or (theme_end > 0 and s >= theme_end):
+                        existing_cues.append({'start': s, 'end': e, 'text': match.group(4).strip()})
+                
+                # Add new restructured cues
                 for cue in cues:
-                    # UI cues are absolute. Theme SRT needs relative.
-                    try:
-                        abs_start = parse_srt_time(cue['start'].replace(',', '.'))
-                        abs_end = parse_srt_time(cue['end'].replace(',', '.'))
-                        
-                        if is_trimmed:
-                            # Filter: only include cues that overlap with theme time range
-                            if abs_end <= theme_start or (theme_end > 0 and abs_start >= theme_end):
-                                continue
-                            
-                            start_to_write = max(0, abs_start - theme_start)
-                            end_to_write = max(0, abs_end - theme_start)
-                        else:
-                            start_to_write = abs_start
-                            end_to_write = abs_end
-                        
-                        f.write(f"{write_seq}\n")
-                        f.write(f"{format_srt_time(start_to_write)} --> {format_srt_time(end_to_write)}\n")
+                    s = parse_srt_time(cue['start'].replace(',', '.'))
+                    e = parse_srt_time(cue['end'].replace(',', '.'))
+                    existing_cues.append({'start': s, 'end': e, 'text': cue['text'].strip()})
+                
+                # Sort by start time
+                existing_cues.sort(key=lambda x: x['start'])
+                
+                # Write back to main SRT
+                with open(main_srt, 'w', encoding='utf-8') as f:
+                    for i, cue in enumerate(existing_cues, 1):
+                        f.write(f"{i}\n")
+                        f.write(f"{format_srt_time(cue['start'])} --> {format_srt_time(cue['end'])}\n")
                         f.write(f"{cue['text']}\n\n")
-                        write_seq += 1
-                    except Exception as cue_err:
-                        app_logger.warning(f"Error processing cue for {target_file.name}: {cue_err}")
-                        continue
+                
+                app_logger.info(f"Merged restructured cues into {main_srt.name}")
+            except Exception as merge_err:
+                app_logger.error(f"Merge error in save_subtitle_restructure: {merge_err}")
 
         # Clear persistent edits JSON for this theme since the SRT now contains the source of truth
         # and old keys will be invalid/stale
@@ -1552,6 +1519,16 @@ def save_global_position():
     bg_color = data.get('bgColor')
     bg_opacity = data.get('bgOpacity')
     font_name = data.get('fontName')
+    
+    # Title styling fields
+    title_font_size = data.get('titleFontSize')
+    title_bg_type = data.get('titleBgType')
+    title_text_color = data.get('titleTextColor')
+    title_font_weight = data.get('titleFontWeight')
+    title_outline_width = data.get('titleOutlineWidth')
+    title_outline_color = data.get('titleOutlineColor')
+    title_all_caps = data.get('titleAllCaps')
+    show_title = data.get('showTitle')
 
     if not all([folder_number, theme_number]):
         return jsonify({'error': 'Missing required fields'}), 400
@@ -1578,105 +1555,61 @@ def save_global_position():
     existing_folder = None
     
     # Preserve existing styling if not provided
-    existing_font_size = None
-    existing_subtitle_bold = None
-    existing_primary_color = None
-    existing_bg_color = None
-    existing_bg_opacity = None
-    existing_font_name = None
+    existing_settings = get_theme_adjust_settings(folder, theme_number)
+    
+    # Update settings with new values
+    if position: existing_settings['subtitle_position'] = position
+    if custom_left is not None: existing_settings['subtitle_left'] = custom_left
+    if custom_top is not None: existing_settings['subtitle_top'] = custom_top
+    if h_align: existing_settings['subtitle_h_align'] = h_align
+    if v_align: existing_settings['subtitle_v_align'] = v_align
+    
+    if font_size is not None: existing_settings['fontSize'] = font_size
+    if subtitle_bold is not None: existing_settings['subtitle_bold'] = subtitle_bold
+    if primary_color is not None: existing_settings['primaryColor'] = primary_color
+    if bg_color is not None: existing_settings['bgColor'] = bg_color
+    if bg_opacity is not None: existing_settings['bgOpacity'] = bg_opacity
+    if font_name is not None: existing_settings['fontName'] = font_name
+    
+    # Update title styling fields
+    if title_font_size is not None: existing_settings['title_font_size'] = title_font_size
+    if title_bg_type is not None: existing_settings['title_bg_type'] = title_bg_type
+    if title_text_color is not None: existing_settings['title_text_color'] = title_text_color
+    if title_font_weight is not None: existing_settings['title_font_weight'] = title_font_weight
+    if title_outline_width is not None: existing_settings['title_outline_width'] = title_outline_width
+    if title_outline_color is not None: existing_settings['title_outline_color'] = title_outline_color
+    if title_all_caps is not None: existing_settings['title_all_caps'] = title_all_caps
+    if show_title is not None: existing_settings['show_title'] = show_title
 
-    if adjust_file.exists():
-        with open(adjust_file, 'r', encoding='utf-8') as f:
-            content = f.read()
-            # Extract existing fields
-            title_match = re.search(r'\*\*Title:\*\*\s*(.+)', content)
-            time_match = re.search(r'\*\*Time Range:\*\*\s*(.+)', content)
-            folder_match = re.search(r'\*\*Folder:\*\*\s*(.+)', content)
-            if title_match:
-                existing_title = title_match.group(1).strip()
-            if time_match:
-                existing_time_range = time_match.group(1).strip()
-            if folder_match:
-                existing_folder = folder_match.group(1).strip()
-                
-            # Extract existing styling
-            fs_match = re.search(r'\*\*subtitle_font_size:\*\*\s*(\d+)', content)
-            if fs_match: existing_font_size = fs_match.group(1)
-            sb_match = re.search(r'\*\*subtitle_bold:\*\*\s*(true|false)', content)
-            if sb_match: existing_subtitle_bold = sb_match.group(1) == 'true'
-            pc_match = re.search(r'\*\*subtitle_primary_color:\*\*\s*(#[0-9a-fA-F]+)', content)
-            if pc_match: existing_primary_color = pc_match.group(1)
-            bc_match = re.search(r'\*\*subtitle_bg_color:\*\*\s*(#[0-9a-fA-F]+)', content)
-            if bc_match: existing_bg_color = bc_match.group(1)
-            bo_match = re.search(r'\*\*subtitle_bg_opacity:\*\*\s*([0-9.]+)', content)
-            if bo_match: existing_bg_opacity = bo_match.group(1)
-            fn_match = re.search(r'\*\*subtitle_font_name:\*\*\s*(.+)', content)
-            if fn_match: existing_font_name = fn_match.group(1).strip()
-    else:
-        # No existing file, fetch theme data from themes.md
+    # Use existing title/time range if not in existing_settings
+    title = existing_settings.get('title')
+    time_range = existing_settings.get('time_range')
+    
+    if not title or not time_range:
+        # No existing file or missing fields, fetch theme data from themes.md
         themes_file = folder / 'themes.md'
         if themes_file.exists():
             themes = creator.parse_themes_file(themes_file)
             for theme in themes:
                 if theme['number'] == int(theme_number):
-                    existing_title = theme.get('title', 'Theme Title')
-                    # Calculate duration
-                    start_secs = creator.parse_timestamp_to_seconds(theme['start'])
-                    end_secs = creator.parse_timestamp_to_seconds(theme['end'])
-                    duration_secs = end_secs - start_secs
-                    minutes = int(duration_secs // 60)
-                    seconds = int(duration_secs % 60)
-                    duration_str = f"{minutes}m {seconds}s"
-                    existing_time_range = f"{theme['start']} - {theme['end']} ({duration_str})"
+                    if not title: title = theme.get('title', 'Theme Title')
+                    if not time_range:
+                        # Calculate duration
+                        start_secs = creator.parse_timestamp_to_seconds(theme['start'])
+                        end_secs = creator.parse_timestamp_to_seconds(theme['end'])
+                        duration_secs = end_secs - start_secs
+                        minutes = int(duration_secs // 60)
+                        seconds = int(duration_secs % 60)
+                        duration_str = f"{minutes}m {seconds}s"
+                        time_range = f"{theme['start']} - {theme['end']} ({duration_str})"
                     break
-        # Set defaults if not found in themes.md
-        if not existing_title:
-            existing_title = "Theme Title"
-        if not existing_time_range:
-            existing_time_range = "--:--:-- - --:--:--"
-        existing_folder = folder.name
+        
+        # Set defaults if still not found
+        if not title: title = "Theme Title"
+        if not time_range: time_range = "--:--:-- - --:--:--"
 
-    # Rebuild file with updated position
-    with open(adjust_file, 'w', encoding='utf-8') as f:
-        f.write(f"# Theme {int(theme_number)}\n\n")
-        if existing_title:
-            f.write(f"**Title:** {existing_title}\n\n")
-        f.write(f"**Time Range:** {existing_time_range}\n")
-
-        # Write position - either preset or custom with coordinates
-        if custom_left is not None and custom_top is not None:
-            # Custom position with X/Y coordinates
-            f.write(f"**subtitle_position:** custom\n")
-            f.write(f"**subtitle_left:** {custom_left}\n")
-            f.write(f"**subtitle_top:** {custom_top}\n")
-            f.write(f"**subtitle_h_align:** {h_align}\n")
-            f.write(f"**subtitle_v_align:** {v_align}\n")
-        else:
-            # Preset position
-            f.write(f"**subtitle_position:** {position}\n")
-            
-        # Write additional styling (prefer new provided values, then existing)
-        fs = font_size if font_size is not None else existing_font_size
-        if fs is not None: f.write(f"**subtitle_font_size:** {fs}\n")
-        
-        sb = subtitle_bold if subtitle_bold is not None else existing_subtitle_bold
-        if sb is not None: f.write(f"**subtitle_bold:** {'true' if sb else 'false'}\n")
-        
-        pc = primary_color if primary_color is not None else existing_primary_color
-        if pc is not None: f.write(f"**subtitle_primary_color:** {pc}\n")
-        
-        bc = bg_color if bg_color is not None else existing_bg_color
-        if bc is not None: f.write(f"**subtitle_bg_color:** {bc}\n")
-        
-        bo = bg_opacity if bg_opacity is not None else existing_bg_opacity
-        if bo is not None: f.write(f"**subtitle_bg_opacity:** {bo}\n")
-        
-        fn = font_name if font_name is not None else existing_font_name
-        if fn is not None: f.write(f"**subtitle_font_name:** {fn}\n")
-
-        if existing_folder:
-            f.write(f"\n**Folder:** {existing_folder}\n")
-        f.write(f"**Last Modified:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+    # Rebuild file with updated position and styling
+    write_theme_adjust_settings(adjust_file, theme_number, title, time_range, folder.name, existing_settings)
 
     print(f"[DEBUG] Saved global position: folder={folder_number}, theme={theme_number}, position={position}, custom={custom_left}")
 
@@ -1724,13 +1657,33 @@ def get_global_position():
         font_name_match = re.search(r'\*\*subtitle_font_name:\*\*\s*(.+)', content)
         subtitle_bold_match = re.search(r'\*\*subtitle_bold:\*\*\s*(true|false)', content)
         
+        # Title styling fields
+        tfs_match = re.search(r'\*\*title_font_size:\*\*\s*(\d+)', content)
+        tbt_match = re.search(r'\*\*title_bg_type:\*\*\s*(\w+)', content)
+        ttc_match = re.search(r'\*\*title_text_color:\*\*\s*(#[0-9a-fA-F]+)', content)
+        tfw_match = re.search(r'\*\*title_font_weight:\*\*\s*(\d+)', content)
+        tow_match = re.search(r'\*\*title_outline_width:\*\*\s*([0-9.]+)', content)
+        toc_match = re.search(r'\*\*title_outline_color:\*\*\s*(#[0-9a-fA-F]+)', content)
+        tac_match = re.search(r'\*\*title_all_caps:\*\*\s*(true|false)', content)
+        st_match = re.search(r'\*\*show_title:\*\*\s*(true|false)', content)
+
         styling_data = {
             'font_size': int(font_size_match.group(1)) if font_size_match else None,
             'subtitle_bold': subtitle_bold_match.group(1) == 'true' if subtitle_bold_match else None,
             'primary_color': primary_color_match.group(1) if primary_color_match else None,
             'bg_color': bg_color_match.group(1) if bg_color_match else None,
             'bg_opacity': float(bg_opacity_match.group(1)) if bg_opacity_match else None,
-            'font_name': font_name_match.group(1).strip() if font_name_match else None
+            'font_name': font_name_match.group(1).strip() if font_name_match else None,
+            
+            # Title styling
+            'title_font_size': int(tfs_match.group(1)) if tfs_match else None,
+            'title_bg_type': tbt_match.group(1) if tbt_match else None,
+            'title_text_color': ttc_match.group(1) if ttc_match else None,
+            'title_font_weight': int(tfw_match.group(1)) if tfw_match else None,
+            'title_outline_width': float(tow_match.group(1)) if tow_match else None,
+            'title_outline_color': toc_match.group(1) if toc_match else None,
+            'title_all_caps': tac_match.group(1) == 'true' if tac_match else None,
+            'show_title': st_match.group(1) == 'true' if st_match else None
         }
 
         # Check if it's a custom position with coordinates
@@ -3134,15 +3087,35 @@ def get_theme_adjust_settings(folder_path, theme_number):
         'subtitle_top': None,
         'subtitle_h_align': 'center',
         'subtitle_v_align': 'bottom',
-        'subtitle_bold': False
+        'subtitle_bold': False,
+        'title': None,
+        'time_range': None,
+        'folder': None,
+        'title_font_size': None,
+        'title_bg_type': 'gradient',
+        'title_text_color': '#00ff9d',
+        'title_font_weight': 800,
+        'title_outline_width': 0,
+        'title_outline_color': '#000000',
+        'title_all_caps': True,
+        'show_title': True
     }
     
     if adjust_file.exists():
         with open(adjust_file, 'r', encoding='utf-8') as f:
             content = f.read()
             
-        # Extract subtitle position
+        # Extract title and time range
+        title_match = re.search(r'\*\*Title:\*\*\s*(.+)', content)
+        if title_match: settings['title'] = title_match.group(1).strip()
+        
+        time_match = re.search(r'\*\*Time Range:\*\*\s*(.+)', content)
+        if time_match: settings['time_range'] = time_match.group(1).strip()
+        
+        folder_match = re.search(r'\*\*Folder:\*\*\s*(.+)', content)
+        if folder_match: settings['folder'] = folder_match.group(1).strip()
 
+        # Extract subtitle position
         pos_match = re.search(r'\*\*subtitle_position:\*\*\s*(\w+)', content)
         if pos_match:
             settings['subtitle_position'] = pos_match.group(1)
@@ -3188,8 +3161,105 @@ def get_theme_adjust_settings(folder_path, theme_number):
         subtitle_bold_match = re.search(r'\*\*subtitle_bold:\*\*\s*(true|false)', content)
         if subtitle_bold_match:
             settings['subtitle_bold'] = subtitle_bold_match.group(1) == 'true'
+
+        karaoke_match = re.search(r'\*\*karaoke_highlighting:\*\*\s*(true|false)', content)
+        if karaoke_match:
+            settings['karaoke_enabled'] = karaoke_match.group(1) == 'true'
+            
+        # Title styling fields
+        tfs_match = re.search(r'\*\*title_font_size:\*\*\s*(\d+)', content)
+        if tfs_match: settings['title_font_size'] = int(tfs_match.group(1))
+        
+        tbt_match = re.search(r'\*\*title_bg_type:\*\*\s*(\w+)', content)
+        if tbt_match: settings['title_bg_type'] = tbt_match.group(1)
+        
+        ttc_match = re.search(r'\*\*title_text_color:\*\*\s*(#[0-9a-fA-F]+)', content)
+        if ttc_match: settings['title_text_color'] = ttc_match.group(1)
+        
+        tfw_match = re.search(r'\*\*title_font_weight:\*\*\s*(\d+)', content)
+        if tfw_match: settings['title_font_weight'] = int(tfw_match.group(1))
+        
+        tow_match = re.search(r'\*\*title_outline_width:\*\*\s*([0-9.]+)', content)
+        if tow_match: settings['title_outline_width'] = float(tow_match.group(1))
+        
+        toc_match = re.search(r'\*\*title_outline_color:\*\*\s*(#[0-9a-fA-F]+)', content)
+        if toc_match: settings['title_outline_color'] = toc_match.group(1)
+        
+        tac_match = re.search(r'\*\*title_all_caps:\*\*\s*(true|false)', content)
+        if tac_match: settings['title_all_caps'] = tac_match.group(1) == 'true'
+
+        st_match = re.search(r'\*\*show_title:\*\*\s*(true|false)', content)
+        if st_match: settings['show_title'] = st_match.group(1) == 'true'
             
     return settings
+
+
+def write_theme_adjust_settings(adjust_file, theme_number, title, time_range, folder_name, settings_dict):
+    """Write theme adjustment settings to theme_XXX_adjust.md, preserving all fields."""
+    with open(adjust_file, 'w', encoding='utf-8') as f:
+        f.write(f"# Theme {int(theme_number)}\n\n")
+        if title:
+            f.write(f"**Title:** {title}\n\n")
+        if time_range:
+            f.write(f"**Time Range:** {time_range}\n")
+            
+        # Write position - either preset or custom with coordinates
+        position = settings_dict.get('subtitle_position', 'bottom')
+        f.write(f"**subtitle_position:** {position}\n")
+        
+        if settings_dict.get('subtitle_left') is not None:
+            f.write(f"**subtitle_left:** {settings_dict['subtitle_left']}\n")
+        if settings_dict.get('subtitle_top') is not None:
+            f.write(f"**subtitle_top:** {settings_dict['subtitle_top']}\n")
+            
+        f.write(f"**subtitle_h_align:** {settings_dict.get('subtitle_h_align', 'center')}\n")
+        f.write(f"**subtitle_v_align:** {settings_dict.get('subtitle_v_align', 'bottom')}\n")
+        
+        # Write additional styling
+        if 'fontSize' in settings_dict:
+            f.write(f"**subtitle_font_size:** {settings_dict['fontSize']}\n")
+        
+        if 'subtitle_bold' in settings_dict:
+            f.write(f"**subtitle_bold:** {'true' if settings_dict['subtitle_bold'] else 'false'}\n")
+            
+        if 'primaryColor' in settings_dict:
+            f.write(f"**subtitle_primary_color:** {settings_dict['primaryColor']}\n")
+            
+        if 'bgColor' in settings_dict:
+            f.write(f"**subtitle_bg_color:** {settings_dict['bgColor']}\n")
+            
+        if 'bgOpacity' in settings_dict:
+            # We save the value as-is (could be 0.0-1.0 or 0-100)
+            f.write(f"**subtitle_bg_opacity:** {settings_dict['bgOpacity']}\n")
+            
+        if 'fontName' in settings_dict:
+            f.write(f"**subtitle_font_name:** {settings_dict['fontName']}\n")
+
+        # Preserve karaoke highlighting if present
+        if 'karaoke_enabled' in settings_dict:
+            f.write(f"**karaoke_highlighting:** {'true' if settings_dict['karaoke_enabled'] else 'false'}\n")
+
+        # Write title styling
+        if 'title_font_size' in settings_dict:
+            f.write(f"**title_font_size:** {settings_dict['title_font_size']}\n")
+        if 'title_bg_type' in settings_dict:
+            f.write(f"**title_bg_type:** {settings_dict['title_bg_type']}\n")
+        if 'title_text_color' in settings_dict:
+            f.write(f"**title_text_color:** {settings_dict['title_text_color']}\n")
+        if 'title_font_weight' in settings_dict:
+            f.write(f"**title_font_weight:** {settings_dict['title_font_weight']}\n")
+        if 'title_outline_width' in settings_dict:
+            f.write(f"**title_outline_width:** {settings_dict['title_outline_width']}\n")
+        if 'title_outline_color' in settings_dict:
+            f.write(f"**title_outline_color:** {settings_dict['title_outline_color']}\n")
+        if 'title_all_caps' in settings_dict:
+            f.write(f"**title_all_caps:** {'true' if settings_dict['title_all_caps'] else 'false'}\n")
+        if 'show_title' in settings_dict:
+            f.write(f"**show_title:** {'true' if settings_dict['show_title'] else 'false'}\n")
+
+        if folder_name:
+            f.write(f"\n**Folder:** {folder_name}\n")
+        f.write(f"**Last Modified:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
 
 
 @app.route('/api/encode-canvas-karaoke', methods=['POST'])
@@ -3242,11 +3312,12 @@ def encode_canvas_karaoke():
                 with open(adjust_file, 'r', encoding='utf-8') as f:
                     adj_content = f.read()
 
-                tr_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})', adj_content)
+                tr_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)\s*-\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)', adj_content)
                 if tr_match:
                     def parse_ts(s):
-                        h, m, sec = map(int, s.split(':'))
-                        return h * 3600 + m * 60 + sec
+                        s = s.replace(',', '.')
+                        h, m, sec = s.split(':')
+                        return int(h) * 3600 + int(m) * 60 + float(sec)
                     start_time = parse_ts(tr_match.group(1))
                     end_time = parse_ts(tr_match.group(2))
             
@@ -3261,15 +3332,16 @@ def encode_canvas_karaoke():
 
                 # Parse time range
 
-                time_pattern = r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})'
+                time_pattern = r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)\s*-\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)'
                 time_match = re.search(time_pattern, themes_content)
 
                 if not time_match:
                     return jsonify({'error': 'Could not parse theme time range from themes.md'}), 400
 
                 def parse_time_str(time_str):
-                    h, m, s = map(int, time_str.split(':'))
-                    return h * 3600 + m * 60 + s
+                    time_str = time_str.replace(',', '.')
+                    h, m, s = time_str.split(':')
+                    return int(h) * 3600 + int(m) * 60 + float(s)
 
                 start_time = parse_time_str(time_match.group(1))
                 end_time = parse_time_str(time_match.group(2))
@@ -3283,19 +3355,25 @@ def encode_canvas_karaoke():
         if not word_timestamps_file or not word_timestamps_file.exists():
             return jsonify({'error': 'Word timestamps not found'}), 404
 
-        # Get theme SRT
-        srt_file = folder / 'shorts' / f'theme_{int(theme_number):03d}.srt'
-        if not srt_file.exists():
-            srt_file = folder / 'adjust.srt'
+        # Prefer the main (absolute) SRT file for rendering to ensure perfect sync
+        srt_file = None
+        srt_files = [f for f in folder.glob('*.srt') if 'theme_' not in f.name and 'adjust' not in f.name]
+        if srt_files:
+            srt_file = srt_files[0]
+        else:
+            # Fallback to theme-specific one
+            srt_file = folder / 'shorts' / f'theme_{int(theme_number):03d}.srt'
+            if not srt_file.exists():
+                srt_file = folder / 'adjust.srt'
 
-        # Fall back to main video SRT if adjust.srt doesn't exist
-        if not srt_file.exists():
-            for srt in folder.glob('*.srt'):
-                if 'transcribe' not in srt.name and 'theme' not in srt.name:
-                    srt_file = srt
-                    break
+            # Last resort
+            if not srt_file.exists():
+                for srt in folder.glob('*.srt'):
+                    if not any(x in srt.name.lower() for x in ['theme_', 'adjust', 'transcribe']):
+                        srt_file = srt
+                        break
 
-        if not srt_file.exists():
+        if not srt_file or not srt_file.exists():
             return jsonify({'error': 'Subtitle file not found'}), 404
 
         # Output path
@@ -3306,21 +3384,35 @@ def encode_canvas_karaoke():
         adjust_settings = get_theme_adjust_settings(folder, theme_number)
         
         # Merge into karaoke_settings (but let incoming data override if present)
-        final_settings = {
-            'fontSize': adjust_settings.get('fontSize', karaoke_settings.get('fontSize', 48) * 2),
-            'fontName': adjust_settings.get('fontName', karaoke_settings.get('fontName', 'Arial')),
-            'textColor': karaoke_settings.get('textColor', '#ffff00'),
-            'primaryColor': adjust_settings.get('primaryColor', '#ffffff'),
-            'pastColor': karaoke_settings.get('pastColor', '#808080'),
-            'mode': karaoke_settings.get('mode', 'normal'),
-            'effect_type': karaoke_settings.get('effectType', 'none'),
-            'auto_emoji': karaoke_settings.get('autoEmoji', False),
-            'keyword_scaling': karaoke_settings.get('keywordScaling', False),
-            'bgColor': adjust_settings.get('bgColor', '#000000'),
-            'bgOpacity': adjust_settings.get('bgOpacity', 0.63),
-            'font_weight': 'bold' if adjust_settings.get('subtitle_bold', False) else 'normal'
-        }
+        final_settings = karaoke_settings.copy()
+        
+        # Ensure base fields are present if missing
+        if 'fontSize' not in final_settings: final_settings['fontSize'] = 80
+        if 'fontName' not in final_settings: final_settings['fontName'] = 'Arial'
+        if 'bgColor' not in final_settings: final_settings['bgColor'] = '#000000'
+        if 'bgOpacity' not in final_settings: final_settings['bgOpacity'] = 0.63
+        
+        final_settings.update({
+            'show_title': karaoke_settings.get('show_title', False),
+            'title': adjust_settings.get('title', 'Theme Title')
+        })
+        
+        # Merge in saved adjustments (overrides incoming if present)
         final_settings.update(adjust_settings)
+        
+        # Ensure title fields are robustly set from either source
+        mapping = {
+            'title_font_size': 'titleFontSize',
+            'title_bg_type': 'titleBgType',
+            'title_text_color': 'titleTextColor',
+            'title_font_weight': 'titleFontWeight',
+            'title_outline_width': 'titleOutlineWidth',
+            'title_outline_color': 'titleOutlineColor',
+            'title_all_caps': 'titleAllCaps'
+        }
+        for snake, camel in mapping.items():
+            if snake not in final_settings and camel in karaoke_settings:
+                final_settings[snake] = karaoke_settings[camel]
 
         # Extract audio levels for reactive effects if needed
         if final_settings.get('effect_type') == 'volume_shake':
@@ -3563,12 +3655,26 @@ def export_canvas_karaoke():
                         canvas_karaoke_progress[jid] = {'status': 'error', 'error': 'Word timestamps not found', 'complete': False}
                     return
 
-                # Get theme subtitles
-                srt_file = folder / 'shorts' / f'theme_{int(t_num):03d}.srt'
-                if not srt_file.exists():
-                    srt_file = folder / 'adjust.srt'
+                # Prefer the main (absolute) SRT file for rendering to ensure perfect sync
+                # even if theme boundaries have shifted.
+                srt_file = None
+                srt_files = [f for f in folder.glob('*.srt') if 'theme_' not in f.name and 'adjust' not in f.name]
+                if srt_files:
+                    srt_file = srt_files[0]
+                else:
+                    # Fallback to theme-specific one if main is missing
+                    srt_file = folder / 'shorts' / f'theme_{int(t_num):03d}.srt'
+                    if not srt_file.exists():
+                        srt_file = folder / 'adjust.srt'
+                    
+                    if not srt_file.exists():
+                        # Last resort: any SRT
+                        for srt in folder.glob('*.srt'):
+                            if not any(x in srt.name.lower() for x in ['theme_', 'adjust', 'transcribe']):
+                                srt_file = srt
+                                break
                 
-                if not srt_file.exists():
+                if not srt_file or not srt_file.exists():
                     with canvas_karaoke_lock:
                         canvas_karaoke_progress[jid] = {'status': 'error', 'error': 'Subtitle file not found', 'complete': False}
                     return
@@ -3593,11 +3699,14 @@ def export_canvas_karaoke():
                     if t_match: theme_title = t_match.group(1).strip()
                     
                     if start_time == 0 and end_time == 0:
-                        tr_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})', adj_content)
+                        # Allow both HH:MM:SS and HH:MM:SS,mmm or HH:MM:SS.mmm
+                        tr_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)\s*-\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)', adj_content)
                         if tr_match:
                             def parse_ts(s):
-                                h, m, sec = map(int, s.split(':'))
-                                return h * 3600 + m * 60 + sec
+                                # Handle HH:MM:SS.mmm or HH:MM:SS,mmm
+                                s = s.replace(',', '.')
+                                h, m, sec = s.split(':')
+                                return int(h) * 3600 + int(m) * 60 + float(sec)
                             start_time = parse_ts(tr_match.group(1))
                             end_time = parse_ts(tr_match.group(2))
                             app_logger.info(f"Using adjust.md times: {start_time} - {end_time}")
@@ -3621,11 +3730,12 @@ def export_canvas_karaoke():
                                     if title_match: theme_title = title_match.group(1).strip()
                                 
                                 # Extract Time Range
-                                time_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})', section)
+                                time_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)\s*-\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)', section)
                                 if time_match:
                                     def parse_t(s):
-                                        h, m, sec = map(int, s.split(':'))
-                                        return h * 3600 + m * 60 + sec
+                                        s = s.replace(',', '.')
+                                        h, m, sec = s.split(':')
+                                        return int(h) * 3600 + int(m) * 60 + float(sec)
                                     start_time = parse_t(time_match.group(1))
                                     end_time = parse_t(time_match.group(2))
                                     app_logger.info(f"Using themes.md times: {start_time} - {end_time}")
@@ -3659,21 +3769,35 @@ def export_canvas_karaoke():
                 adjust_settings = get_theme_adjust_settings(folder, t_num)
                 
                 # Setup final settings for the renderer, merging incoming with adjust.md
-                final_render_settings = {
-                    'fontSize': adjust_settings.get('fontSize', settings_dict.get('fontSize', 48) * 2),
-                    'fontName': adjust_settings.get('fontName', settings_dict.get('fontName', 'Arial')),
-                    'textColor': settings_dict.get('textColor', '#ffff00'),
-                    'primaryColor': adjust_settings.get('primaryColor', '#ffffff'),
-                    'pastColor': settings_dict.get('pastColor', '#808080'),
-                    'mode': settings_dict.get('mode', 'normal'),
-                    'effect_type': settings_dict.get('effect_type', 'none'),
-                    'auto_emoji': settings_dict.get('auto_emoji', False),
-                    'keyword_scaling': settings_dict.get('keyword_scaling', False),
-                    'bgColor': adjust_settings.get('bgColor', '#000000'),
-                    'bgOpacity': adjust_settings.get('bgOpacity', 0.63),
-                    'font_weight': 'bold' if adjust_settings.get('subtitle_bold', False) else 'normal'
-                }
+                final_render_settings = settings_dict.copy()
+                
+                # Ensure base subtitle fields are present if missing
+                if 'fontSize' not in final_render_settings: final_render_settings['fontSize'] = 80
+                if 'fontName' not in final_render_settings: final_render_settings['fontName'] = 'Arial'
+                if 'bgColor' not in final_render_settings: final_render_settings['bgColor'] = '#000000'
+                if 'bgOpacity' not in final_render_settings: final_render_settings['bgOpacity'] = 0.63
+                
+                final_render_settings.update({
+                    'show_title': settings_dict.get('show_title', False),
+                    'title': theme_title
+                })
+                
+                # Merge in saved adjustments (overrides incoming if present)
                 final_render_settings.update(adjust_settings)
+                
+                # Ensure title fields are robustly set from either source (handle camelCase from UI)
+                mapping = {
+                    'title_font_size': 'titleFontSize',
+                    'title_bg_type': 'titleBgType',
+                    'title_text_color': 'titleTextColor',
+                    'title_font_weight': 'titleFontWeight',
+                    'title_outline_width': 'titleOutlineWidth',
+                    'title_outline_color': 'titleOutlineColor',
+                    'title_all_caps': 'titleAllCaps'
+                }
+                for snake, camel in mapping.items():
+                    if snake not in final_render_settings and camel in settings_dict:
+                        final_render_settings[snake] = settings_dict[camel]
                 
                 # Extract audio levels for reactive effects if needed
                 if final_render_settings.get('effect_type') == 'volume_shake':

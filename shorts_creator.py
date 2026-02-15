@@ -1219,7 +1219,16 @@ Video Path: {video_info['video_path']}
             'subtitle_v_align': 'bottom',
             'subtitle_bold': False,
             'karaoke_enabled': True,
-            'has_adjustments': False
+            'has_adjustments': False,
+            # Title styling defaults
+            'show_title': True,
+            'title_font_size': None,
+            'title_bg_type': 'gradient',
+            'title_text_color': '#00ff9d',
+            'title_font_weight': 800,
+            'title_outline_width': 0,
+            'title_outline_color': '#000000',
+            'title_all_caps': True
         }
         
         if adjust_file.exists():
@@ -1269,6 +1278,31 @@ Video Path: {video_info['video_path']}
 
             karaoke_match = re.search(r'\*\*karaoke_highlighting:\*\*\s*(true|false)', content)
             if karaoke_match: res['karaoke_enabled'] = karaoke_match.group(1) == 'true'
+
+            # Title styling fields
+            tfs_match = re.search(r'\*\*title_font_size:\*\*\s*(\d+)', content)
+            if tfs_match: res['title_font_size'] = int(tfs_match.group(1))
+            
+            tbt_match = re.search(r'\*\*title_bg_type:\*\*\s*(\w+)', content)
+            if tbt_match: res['title_bg_type'] = tbt_match.group(1)
+            
+            ttc_match = re.search(r'\*\*title_text_color:\*\*\s*(#[0-9a-fA-F]+)', content)
+            if ttc_match: res['title_text_color'] = ttc_match.group(1)
+            
+            tfw_match = re.search(r'\*\*title_font_weight:\*\*\s*(\d+)', content)
+            if tfw_match: res['title_font_weight'] = int(tfw_match.group(1))
+            
+            tow_match = re.search(r'\*\*title_outline_width:\*\*\s*([0-9.]+)', content)
+            if tow_match: res['title_outline_width'] = float(tow_match.group(1))
+            
+            toc_match = re.search(r'\*\*title_outline_color:\*\*\s*(#[0-9a-fA-F]+)', content)
+            if toc_match: res['title_outline_color'] = toc_match.group(1)
+            
+            tac_match = re.search(r'\*\*title_all_caps:\*\*\s*(true|false)', content)
+            if tac_match: res['title_all_caps'] = tac_match.group(1) == 'true'
+
+            st_match = re.search(r'\*\*show_title:\*\*\s*(true|false)', content)
+            if st_match: res['show_title'] = st_match.group(1) == 'true'
                 
         return res
 
@@ -1336,7 +1370,17 @@ Video Path: {video_info['video_path']}
             'subtitle_left': adjust_settings.get('subtitle_left'),
             'subtitle_top': adjust_settings.get('subtitle_top'),
             'subtitle_h_align': adjust_settings.get('subtitle_h_align', 'center'),
-            'subtitle_v_align': adjust_settings.get('subtitle_v_align', 'bottom')
+            'subtitle_v_align': adjust_settings.get('subtitle_v_align', 'bottom'),
+            # Title styling
+            'title': theme.get('title', 'Theme Title'),
+            'show_title': adjust_settings.get('show_title', True),
+            'title_font_size': adjust_settings.get('title_font_size'),
+            'title_bg_type': adjust_settings.get('title_bg_type', 'gradient'),
+            'title_text_color': adjust_settings.get('title_text_color', '#00ff9d'),
+            'title_font_weight': adjust_settings.get('title_font_weight', 800),
+            'title_outline_width': adjust_settings.get('title_outline_width', 0),
+            'title_outline_color': adjust_settings.get('title_outline_color', '#000000'),
+            'title_all_caps': adjust_settings.get('title_all_caps', True)
         }
 
         # Extract audio levels for reactive effects if needed

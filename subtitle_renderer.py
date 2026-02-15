@@ -76,8 +76,9 @@ class UniversalSubtitleRenderer:
         self.bg_color = self._hex_to_rgb(settings.get('bgColor', '#000000'))
         self.bg_opacity = float(settings.get('bgOpacity', 0.63))
         
-        # Font path cache to avoid repeated subprocess calls
+        # Font and property caches
         self._font_path_cache = {}
+        self._font_obj_cache = {}
         
         self.mode = settings.get('mode', 'standard')  # 'standard', 'normal', 'cumulative'
         
@@ -93,9 +94,98 @@ class UniversalSubtitleRenderer:
         self.subtitle_h_align = settings.get('subtitle_h_align', 'center')
         self.subtitle_v_align = settings.get('subtitle_v_align', 'bottom')
 
+        # Title styling
+        self.title_font_size_pref = int(settings.get('title_font_size', self.font_size * 0.6))
+        self.title_bg_type = settings.get('title_bg_type', 'gradient')
+        self.title_text_color = self._hex_to_rgb(settings.get('title_text_color', '#00ff9d'))
+        self.title_font_weight = str(settings.get('title_font_weight', '800'))
+        self.title_outline_width = float(settings.get('title_outline_width', 0))
+        self.title_outline_color = self._hex_to_rgb(settings.get('title_outline_color', '#000000'))
+        self.title_all_caps = settings.get('title_all_caps', True)
+        self.show_title = settings.get('show_title', False)
+        self.title_text = settings.get('title', 'Theme Title')
+
         # Pre-calculate word timings
         self.words_by_time = sorted(self.word_timestamps, key=lambda w: w['start'])
+        
+        # Pre-calculate title properties to save CPU every frame
+        self._precalculate_title_properties()
 
+    def _precalculate_title_properties(self):
+        """Pre-calculate title font size and pre-render title layer to avoid doing it every frame."""
+        if not self.show_title or not self.title_text:
+            return
+
+        title = self.title_text.upper() if self.title_all_caps else self.title_text
+        
+        # Base title font size from settings
+        max_title_width = self.output_width * 0.85 # Safe area
+        
+        # Font weight from settings
+        weight_suffix = "Bold"
+        fw = str(self.title_font_weight)
+        if fw == "400": weight_suffix = "Regular"
+        elif fw == "600": weight_suffix = "SemiBold"
+        
+        curr_size = self.title_font_size_pref
+        title_font = self._get_font(curr_size, f"{self.font_name}:{weight_suffix}")
+        
+        # Dummy draw for bbox calculation
+        dummy_img = Image.new("RGBA", (self.output_width, 400), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(dummy_img)
+        
+        # Auto-scale font size if title is too long
+        while curr_size > 10:
+            bbox = draw.textbbox((0, 0), title, font=title_font)
+            if (bbox[2] - bbox[0]) <= max_title_width:
+                break
+            curr_size -= 2
+            title_font = self._get_font(curr_size, f"{self.font_name}:{weight_suffix}")
+
+        self.resolved_title_text = title
+        self.resolved_title_font = title_font
+        
+        # Get bounding box for the background relative to center top (y=80)
+        bbox = draw.textbbox((self.output_width / 2, 80), title, font=title_font, anchor="mt")
+        padding = 20
+        bg_bbox = [bbox[0] - padding, bbox[1] - padding/2, bbox[2] + padding, bbox[3] + padding/2]
+        
+        # Create a dedicated title surface
+        surface_height = int(bg_bbox[3] + 50)
+        self.title_surface = Image.new("RGBA", (self.output_width, surface_height), (0, 0, 0, 0))
+        s_draw = ImageDraw.Draw(self.title_surface)
+        
+        # Draw background on surface
+        box_outline_color = self.title_text_color + (100,)
+        if self.title_bg_type == 'gradient':
+            s_draw.rounded_rectangle(bg_bbox, radius=8, fill=(0, 0, 0, 180), outline=box_outline_color, width=2)
+        elif self.title_bg_type == 'solid':
+            s_draw.rounded_rectangle(bg_bbox, radius=8, fill=(0, 0, 0, 230), outline=(50, 50, 50, 255), width=2)
+            
+        # Draw text with stroke on surface
+        stroke_width = int(round(self.title_outline_width))
+        stroke_fill = self.title_outline_color + (255,) if stroke_width > 0 else None
+        
+        try:
+            s_draw.text(
+                (self.output_width / 2, 80), 
+                title, 
+                fill=self.title_text_color + (255,), 
+                font=title_font, 
+                anchor="mt",
+                stroke_width=stroke_width,
+                stroke_fill=stroke_fill
+            )
+        except TypeError:
+            if stroke_width > 0:
+                offsets = [(-1,-1), (1,-1), (-1,1), (1,1), (0,-1), (0,1), (-1,0), (1,0)]
+                for dx, dy in offsets:
+                    s_draw.text(
+                        (self.output_width / 2 + dx*stroke_width, 80 + dy*stroke_width), 
+                        title, fill=stroke_fill, font=title_font, anchor="mt"
+                    )
+            s_draw.text((self.output_width / 2, 80), title, fill=self.title_text_color + (255,), font=title_font, anchor="mt")
+        
     def _hex_to_rgb(self, hex_color: str) -> Tuple[int, int, int]:
         """Convert #RRGGBB to (R, G, B)."""
         if not hex_color: return (255, 255, 255)
@@ -311,198 +401,219 @@ class UniversalSubtitleRenderer:
             if formatting.get('html'):
                 subtitle_data = formatting['html']
 
-        # Crop to vertical
-        input_height, input_width = frame.shape[:2]
-        scale = max(self.output_width / input_width, self.output_height / input_height)
-        new_width, new_height = int(input_width * scale), int(input_height * scale)
-        frame_resized = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_LINEAR)
-        x_offset = (new_width - self.output_width) // 2
-        y_offset = (new_height - self.output_height) // 2
-        frame_cropped = frame_resized[y_offset:y_offset + self.output_height, x_offset:x_offset + self.output_width]
+        # Input is now guaranteed to be output resolution thanks to FFmpeg extraction
+        frame_cropped = frame
 
         # Convert to PIL
         pil_image = Image.fromarray(cv2.cvtColor(frame_cropped, cv2.COLOR_BGR2RGB))
         
-        if not subtitle_text or not subtitle_text.strip():
-            return cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
-
-        # Get words and timestamps
-        subtitle_word_timestamps = []
-        if subtitle_start is not None and subtitle_end is not None:
-            colored_words, highlighted_index = self.get_words_at_time_for_subtitle(current_time, subtitle_data, subtitle_start, subtitle_end)
-            plain_text = ' '.join([w['text'] for w in colored_words])
-            subtitle_word_timestamps = self.get_words_for_subtitle(subtitle_start, subtitle_end, plain_text)
-        else:
-            colored_words, highlighted_index = self.get_words_at_time(current_time, subtitle_text)
-
-        # Word wrapping
-        lines = []
-        current_line = []
-        current_line_width = 0
-        max_width = self.output_width - 80
+        # Prepare overlay layers only if there is something to draw
+        has_title = self.show_title and self.settings.get('title')
+        has_subs = subtitle_text and subtitle_text.strip()
         
-        for word_info in colored_words:
-            word_font = self._get_word_font(word_info)
-            word_width = self._get_word_width(word_info['text'], word_font)
-            space_width = self._get_space_width(word_font)
-            
-            if not current_line:
-                current_line = [word_info]
-                current_line_width = word_width
-            elif current_line_width + space_width + word_width <= max_width:
-                current_line.append(word_info)
-                current_line_width += space_width + word_width
-            else:
-                lines.append(current_line)
-                current_line = [word_info]
-                current_line_width = word_width
-        
-        if current_line: lines.append(current_line)
+        if not (has_title or has_subs):
+            # Just return the original frame if nothing to draw
+            return frame_cropped
 
-        # Layout
-        line_height = int(self.font_size * 1.2)
-        total_height = len(lines) * line_height
-
-        if self.settings.get('effect_type') == 'flash':
-            startY = (self.output_height - line_height) / 2
-        elif self.subtitle_position == 'custom' and self.subtitle_left is not None and self.subtitle_top is not None:
-            startY = self.subtitle_top - (total_height / 2)
-        else:
-            if self.subtitle_position == 'top': startY = 100
-            elif self.subtitle_position == 'middle': startY = (self.output_height - total_height) / 2
-            else: startY = self.output_height - 100 - total_height
-
-        # Rendering Layers
         pil_image = pil_image.convert("RGBA")
         overlay_layer = Image.new("RGBA", pil_image.size, (0, 0, 0, 0))
         overlay_draw = ImageDraw.Draw(overlay_layer)
-        glow_layer = Image.new("RGBA", pil_image.size, (0, 0, 0, 0))
-        glow_draw = ImageDraw.Draw(glow_layer)
-
-        # Pass 1: Background boxes
-        y_copy = startY
-        bg_alpha = int(self.bg_opacity * 255)
-        bg_fill = self.bg_color + (bg_alpha,)
         
-        for line in lines:
-            line_width = 0
-            for i, word_info in enumerate(line):
-                wf = self._get_word_font(word_info)
-                line_width += self._get_word_width(word_info['text'], wf)
-                if i < len(line) - 1: line_width += self._get_space_width(wf)
-
-            if self.settings.get('effect_type') == 'flash' or self.settings.get('effect_type') == 'dynamic_box':
-                xCenter = self.output_width / 2
-            elif (self.subtitle_position == 'custom' and self.subtitle_left is not None):
-                xCenter = self.subtitle_left
-            else:
-                xCenter = self.output_width / 2
-
-            if self.settings.get('effect_type') != 'dynamic_box':
-                overlay_draw.rectangle(
-                    [xCenter - (line_width / 2) - 10, y_copy, xCenter + (line_width / 2) + 10, y_copy + line_height],
-                    fill=bg_fill
-                )
-            y_copy += line_height
-
-        # Pass 2: Text
-        y_text = startY
-        words_before_line = 0
-        for line in lines:
-            line_width = 0
-            for i, word_info in enumerate(line):
-                wf = self._get_word_font(word_info)
-                line_width += self._get_word_width(word_info['text'], wf)
-                if i < len(line) - 1: line_width += self._get_space_width(wf)
-
-            if self.settings.get('effect_type') == 'flash': x = self.output_width / 2
-            elif self.subtitle_position == 'custom' and self.subtitle_left is not None:
-                if self.subtitle_h_align == 'left': x = self.subtitle_left
-                elif self.subtitle_h_align == 'right': x = self.subtitle_left - line_width
-                else: x = self.subtitle_left - (line_width / 2)
-            else:
-                x = (self.output_width - line_width) / 2
-
-            text_y = y_text + (line_height / 2)
-            for j, word_info in enumerate(line):
-                word_idx = words_before_line + j
-                is_highlighted = (word_idx == highlighted_index)
-                
-                # Timing
-                if word_idx < len(subtitle_word_timestamps):
-                    ts = subtitle_word_timestamps[word_idx]
-                    w_start, w_end = ts['start'], ts['end']
-                else:
-                    w_start = subtitle_start if subtitle_start is not None else current_time
-                    w_end = subtitle_end if subtitle_end is not None else current_time + 1.0
-                
-                # Apply Effects
-                effect_mods = self.effects.apply_word_effect(word_info, current_time, w_start, w_end, is_highlighted=is_highlighted)
-                word_text = effect_mods['text']
-                if not word_text:
-                    x += self._get_word_width(word_info['text'], self._get_word_font(word_info)) + self._get_space_width(self._get_word_font(word_info))
-                    continue
-
-                # Get and normalize color
-                word_color = effect_mods['color']
-                if isinstance(word_color, str):
-                    word_color = self._hex_to_rgb(word_color)
-                
-                word_font = self._get_word_font({**word_info, 'sizeMultiplier': word_info.get('sizeMultiplier', 1.0) * effect_mods['scale']})
-                x_off, y_off = effect_mods['offset_x'], effect_mods['offset_y']
-                
-                # Glow
-                if word_color == self.text_color and effect_mods['glow_blur'] > 0:
-                    glow_draw.text((x + x_off, text_y + y_off), word_text, fill=self.glow_color + (255,), font=word_font, anchor="lm")
-                
-                # Outline
-                if effect_mods.get('custom_render') and self.settings.get('effect_type') == 'shadow_3d':
-                    self.effects.apply_3d_shadow(overlay_draw, x + x_off, text_y + y_off, word_text, word_font, word_color + (255,))
-                else:
-                    offsets = [(-2,-2), (2,-2), (-2,2), (2,2)]
-                    for dx, dy in offsets:
-                        overlay_draw.text((x + x_off + dx, text_y + y_off + dy), word_text, fill=self.outline_color + (255,), font=word_font, anchor="lm")
-                
-                # Dynamic Box
-                if self.settings.get('effect_type') == 'dynamic_box' and is_highlighted:
-                    bbox = overlay_draw.textbbox((x + x_off, text_y + y_off), word_text, font=word_font, anchor="lm")
-                    pad = 10
-                    overlay_draw.rectangle([bbox[0]-pad, bbox[1]-pad, bbox[2]+pad, bbox[3]+pad], fill=self.text_color+(255,))
-                    # Re-normalize word_color if it changed (e.g. to bgColor)
-                    word_color = self._hex_to_rgb(self.settings.get('bgColor', '#000000'))
-
-                # Progressive Fill
-                if self.settings.get('effect_type') == 'progressive_fill' and is_highlighted:
-                    overlay_draw.text((x + x_off, text_y + y_off), word_text, fill=self.primary_color + (255,), font=word_font, anchor="lm")
-                    prog = max(0, min(1, (current_time - w_start) / (w_end - w_start)))
-                    bbox = overlay_draw.textbbox((x + x_off, text_y + y_off), word_text, font=word_font, anchor="lm")
-                    tw, th = bbox[2]-bbox[0], bbox[3]-bbox[1]
-                    if tw > 0 and th > 0:
-                        word_layer = Image.new("RGBA", (int(tw)+20, int(th)+20), (0,0,0,0))
-                        word_draw = ImageDraw.Draw(word_layer)
-                        word_draw.text((10, 10 + th/2), word_text, fill=word_color+(255,), font=word_font, anchor="lm")
-                        mask = self.effects.get_progressive_fill_mask(word_layer.width, word_layer.height, prog)
-                        overlay_layer.paste(word_layer, (int(bbox[0])-10, int(bbox[1])-10), mask)
-                else:
-                    # Final draw with normalized color
-                    overlay_draw.text((x + x_off, text_y + y_off), word_text, fill=word_color + (255,), font=word_font, anchor="lm")
-                
-                # Emoji
-                if 'emoji' in effect_mods:
-                    emoji_font = self._get_font(int(self.font_size * 1.2), "NotoColorEmoji")
-                    overlay_draw.text((x + x_off, text_y + y_off - line_height), effect_mods['emoji'], fill=(255,255,255,255), font=emoji_font, anchor="mm")
-
-                x += self._get_word_width(word_text, word_font) + self._get_space_width(word_font)
-
-            y_text += line_height
-            words_before_line += len(line)
-
-        # Compositing
+        # Glow layer only if blur > 0
+        glow_layer = None
         if self.glow_blur > 0:
+            glow_layer = Image.new("RGBA", pil_image.size, (0, 0, 0, 0))
+            glow_draw = ImageDraw.Draw(glow_layer)
+
+        # 1. Render title if enabled
+        if has_title:
+            self._render_title(overlay_layer, self.settings.get('title'))
+
+        # 2. Render subtitles if they exist
+        if has_subs:
+            # Get words and timestamps
+            subtitle_word_timestamps = []
+            if subtitle_start is not None and subtitle_end is not None:
+                colored_words, highlighted_index = self.get_words_at_time_for_subtitle(current_time, subtitle_data, subtitle_start, subtitle_end)
+                plain_text = ' '.join([w['text'] for w in colored_words])
+                subtitle_word_timestamps = self.get_words_for_subtitle(subtitle_start, subtitle_end, plain_text)
+            else:
+                colored_words, highlighted_index = self.get_words_at_time(current_time, subtitle_text)
+
+            # Word wrapping
+            lines = []
+            current_line = []
+            current_line_width = 0
+            max_width = self.output_width - 80
+            
+            # Cache fonts to avoid repeated _get_word_font calls
+            font_cache = {}
+            
+            for word_info in colored_words:
+                cache_key = (word_info.get('bold'), word_info.get('italic'), word_info.get('sizeMultiplier', 1.0))
+                if cache_key not in font_cache:
+                    font_cache[cache_key] = self._get_word_font(word_info)
+                
+                word_font = font_cache[cache_key]
+                word_width = self._get_word_width(word_info['text'], word_font)
+                space_width = self._get_space_width(word_font)
+                
+                if not current_line:
+                    current_line = [{**word_info, 'font': word_font, 'width': word_width, 'space_width': space_width}]
+                    current_line_width = word_width
+                elif current_line_width + space_width + word_width <= max_width:
+                    current_line.append({**word_info, 'font': word_font, 'width': word_width, 'space_width': space_width})
+                    current_line_width += space_width + word_width
+                else:
+                    lines.append(current_line)
+                    current_line = [{**word_info, 'font': word_font, 'width': word_width, 'space_width': space_width}]
+                    current_line_width = word_width
+            
+            if current_line: lines.append(current_line)
+
+            # Layout
+            line_height = int(self.font_size * 1.2)
+            total_height = len(lines) * line_height
+
+            if self.settings.get('effect_type') == 'flash':
+                startY = (self.output_height - line_height) / 2
+            elif self.subtitle_position == 'custom' and self.subtitle_left is not None and self.subtitle_top is not None:
+                startY = self.subtitle_top - (total_height / 2)
+            else:
+                if self.subtitle_position == 'top': startY = 100
+                elif self.subtitle_position == 'middle': startY = (self.output_height - total_height) / 2
+                else: startY = self.output_height - 100 - total_height
+
+            # Pass 1: Background boxes
+            y_copy = startY
+            bg_alpha = int(self.bg_opacity * 255)
+            if bg_alpha > 0:
+                bg_fill = self.bg_color + (bg_alpha,)
+                for line in lines:
+                    line_width = 0
+                    for i, word_info in enumerate(line):
+                        line_width += word_info['width']
+                        if i < len(line) - 1: line_width += word_info['space_width']
+
+                    if self.settings.get('effect_type') == 'flash' or self.settings.get('effect_type') == 'dynamic_box':
+                        xCenter = self.output_width / 2
+                    elif (self.subtitle_position == 'custom' and self.subtitle_left is not None):
+                        xCenter = self.subtitle_left
+                    else:
+                        xCenter = self.output_width / 2
+
+                    if self.settings.get('effect_type') != 'dynamic_box':
+                        overlay_draw.rectangle(
+                            [xCenter - (line_width / 2) - 10, y_copy, xCenter + (line_width / 2) + 10, y_copy + line_height],
+                            fill=bg_fill
+                        )
+                    y_copy += line_height
+
+            # Pass 2: Text
+            y_text = startY
+            words_before_line = 0
+            for line in lines:
+                line_width = 0
+                for i, word_info in enumerate(line):
+                    line_width += word_info['width']
+                    if i < len(line) - 1: line_width += word_info['space_width']
+
+                if self.settings.get('effect_type') == 'flash': x = self.output_width / 2
+                elif (self.subtitle_position == 'custom' and self.subtitle_left is not None): x = self.subtitle_left - (line_width / 2)
+                else: x = self.output_width / 2 - (line_width / 2)
+
+                text_y = y_text + (line_height / 2)
+
+                for j, word_info in enumerate(line):
+                    word_text = word_info['text']
+                    word_color = word_info['color']
+                    word_font = word_info['font']
+                    
+                    is_highlighted = (words_before_line + j) == highlighted_index
+                    
+                    # Effect modifications
+                    w_start = subtitle_start
+                    w_end = subtitle_end
+                    if highlighted_index != -1 and j < len(subtitle_word_timestamps):
+                        ts = subtitle_word_timestamps[j]
+                        w_start, w_end = ts['start'], ts['end']
+                    
+                    effect_mods = self.effects.apply_word_effect(word_info, current_time, w_start, w_end, is_highlighted)
+                    
+                    word_text = effect_mods['text']
+                    word_color = effect_mods['color']
+                    if isinstance(word_color, str):
+                        word_color = self._hex_to_rgb(word_color)
+                    
+                    # Update font if scale changed
+                    if effect_mods['scale'] != 1.0:
+                        word_font = self._get_word_font({**word_info, 'sizeMultiplier': word_info.get('sizeMultiplier', 1.0) * effect_mods['scale']})
+                    
+                    x_off, y_off = effect_mods['offset_x'], effect_mods['offset_y']
+                    
+                    # Glow (only if glow_layer exists)
+                    if glow_layer and word_color == self.text_color and effect_mods['glow_blur'] > 0:
+                        glow_draw.text((x + x_off, text_y + y_off), word_text, fill=self.glow_color + (255,), font=word_font, anchor="lm")
+                    
+                    # Outline
+                    if effect_mods.get('custom_render') and self.settings.get('effect_type') == 'shadow_3d':
+                        self.effects.apply_3d_shadow(overlay_draw, x + x_off, text_y + y_off, word_text, word_font, word_color + (255,))
+                    else:
+                        # Draw outline using native stroke if possible, fallback to loop
+                        try:
+                            overlay_draw.text((x + x_off, text_y + y_off), word_text, fill=word_color + (255,), font=word_font, anchor="lm", stroke_width=2, stroke_fill=self.outline_color + (255,))
+                        except TypeError:
+                            offsets = [(-2,-2), (2,-2), (-2,2), (2,2)]
+                            for dx, dy in offsets:
+                                overlay_draw.text((x + x_off + dx, text_y + y_off + dy), word_text, fill=self.outline_color + (255,), font=word_font, anchor="lm")
+                    
+                    # Dynamic Box
+                    if self.settings.get('effect_type') == 'dynamic_box' and is_highlighted:
+                        bbox = overlay_draw.textbbox((x + x_off, text_y + y_off), word_text, font=word_font, anchor="lm")
+                        pad = 10
+                        overlay_draw.rectangle([bbox[0]-pad, bbox[1]-pad, bbox[2]+pad, bbox[3]+pad], fill=self.text_color+(255,))
+                        word_color = self._hex_to_rgb(self.settings.get('bgColor', '#000000'))
+
+                    # Progressive Fill
+                    if self.settings.get('effect_type') == 'progressive_fill' and is_highlighted:
+                        overlay_draw.text((x + x_off, text_y + y_off), word_text, fill=self.primary_color + (255,), font=word_font, anchor="lm")
+                        prog = max(0, min(1, (current_time - w_start) / (w_end - w_start)))
+                        bbox = overlay_draw.textbbox((x + x_off, text_y + y_off), word_text, font=word_font, anchor="lm")
+                        tw, th = bbox[2]-bbox[0], bbox[3]-bbox[1]
+                        if tw > 0 and th > 0:
+                            word_layer = Image.new("RGBA", (int(tw)+20, int(th)+20), (0,0,0,0))
+                            word_draw = ImageDraw.Draw(word_layer)
+                            word_draw.text((10, 10 + th/2), word_text, fill=word_color+(255,), font=word_font, anchor="lm")
+                            mask = self.effects.get_progressive_fill_mask(word_layer.width, word_layer.height, prog)
+                            overlay_layer.paste(word_layer, (int(bbox[0])-10, int(bbox[1])-10), mask)
+                    else:
+                        # Final draw with normalized color
+                        overlay_draw.text((x + x_off, text_y + y_off), word_text, fill=word_color + (255,), font=word_font, anchor="lm")
+                    
+                    # Emoji
+                    if 'emoji' in effect_mods:
+                        emoji_font = self._get_font(int(self.font_size * 1.2), "NotoColorEmoji")
+                        overlay_draw.text((x + x_off, text_y + y_off - line_height), effect_mods['emoji'], fill=(255,255,255,255), font=emoji_font, anchor="mm")
+
+                    x += word_info['width'] + word_info['space_width']
+
+                y_text += line_height
+                words_before_line += len(line)
+
+        # Final Compositing
+        if glow_layer and self.glow_blur > 0:
             glow_layer = glow_layer.filter(ImageFilter.GaussianBlur(radius=self.glow_blur))
             overlay_layer = Image.alpha_composite(overlay_layer, glow_layer)
+        
         pil_image = Image.alpha_composite(pil_image, overlay_layer)
+        
+        # Convert back to BGR for FFmpeg pipe (rawvideo bgr24)
         return cv2.cvtColor(np.array(pil_image.convert("RGB")), cv2.COLOR_RGB2BGR)
+
+    def _render_title(self, overlay_layer: Image.Image, title_not_used: str):
+        """Render the pre-calculated title surface onto the overlay layer."""
+        if hasattr(self, 'title_surface'):
+            overlay_layer.paste(self.title_surface, (0, 0), self.title_surface)
 
     def _get_word_font(self, word_info: Dict) -> ImageFont.FreeTypeFont:
         """Get the font for a specific word based on its style."""
@@ -516,60 +627,67 @@ class UniversalSubtitleRenderer:
         return self._get_font(size, f"{self.font_name}:{weight}{style}")
 
     def _get_font(self, size: int, font_name: str = None) -> ImageFont.FreeTypeFont:
-        """Get font with fallbacks."""
+        """Get font with fallbacks and multi-level caching."""
         if font_name is None: font_name = self.font_name
         
-        # Check cache first
-        if font_name in self._font_path_cache:
-            return ImageFont.truetype(self._font_path_cache[font_name], size)
-
-        # 1. Try direct paths (essential for local font files)
-        direct_paths = [
-            f"/usr/share/fonts/truetype/{font_name}.ttf",
-            f"/usr/share/fonts/truetype/{font_name}.ttc",
-        ]
-        for path in direct_paths:
-            try:
+        # 1. Check object cache first (fastest)
+        cache_key = (font_name, size)
+        if cache_key in self._font_obj_cache:
+            return self._font_obj_cache[cache_key]
+        
+        # 2. Check path cache
+        font_path = self._font_path_cache.get(font_name)
+        
+        if not font_path:
+            # Try to find the path
+            direct_paths = [
+                f"/usr/share/fonts/truetype/{font_name}.ttf",
+                f"/usr/share/fonts/truetype/{font_name}.ttc",
+            ]
+            for path in direct_paths:
                 if os.path.exists(path):
-                    self._font_path_cache[font_name] = path
-                    return ImageFont.truetype(path, size)
-            except: pass
+                    font_path = path
+                    break
             
-        # 2. Try fc-match (the most robust way on Linux to resolve "Family:Style")
+            if not font_path:
+                try:
+                    result = subprocess.run(['fc-match', '-f', '%{file}', font_name], capture_output=True, text=True)
+                    if result.returncode == 0 and result.stdout.strip():
+                        match_path = result.stdout.strip()
+                        if os.path.exists(match_path):
+                            font_path = match_path
+                except: pass
+            
+            if not font_path:
+                fallbacks = [
+                    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                    "/usr/share/fonts/liberation-sans-fonts/LiberationSans-Regular.ttf",
+                    "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
+                ]
+                if ":Bold" in font_name:
+                    fallbacks = [
+                        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+                        "/usr/share/fonts/liberation-sans-fonts/LiberationSans-Bold.ttf"
+                    ] + fallbacks
+                for path in fallbacks:
+                    if os.path.exists(path):
+                        font_path = path
+                        break
+            
+            if font_path:
+                self._font_path_cache[font_name] = font_path
+        
+        # 3. Create font object and cache it
         try:
-            # -f '%{file}' returns the absolute path to the best matching font file
-            result = subprocess.run(['fc-match', '-f', '%{file}', font_name], capture_output=True, text=True)
-            if result.returncode == 0 and result.stdout.strip():
-                match_path = result.stdout.strip()
-                if os.path.exists(match_path):
-                    self._font_path_cache[font_name] = match_path
-                    return ImageFont.truetype(match_path, size)
-        except: pass
-        
-        # 3. Last resort fallbacks
-        # We separate regular and bold fallbacks to avoid "Always Bold" issue
-        fallbacks = [
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-            "/usr/share/fonts/liberation-sans-fonts/LiberationSans-Regular.ttf",
-            "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
-        ]
-        
-        # If bold was explicitly requested, prioritize bold fallbacks
-        if ":Bold" in font_name:
-            fallbacks = [
-                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-                "/usr/share/fonts/liberation-sans-fonts/LiberationSans-Bold.ttf"
-            ] + fallbacks
+            if font_path:
+                font_obj = ImageFont.truetype(font_path, size)
+            else:
+                font_obj = ImageFont.load_default()
+        except:
+            font_obj = ImageFont.load_default()
             
-        for path in fallbacks:
-            try:
-                if os.path.exists(path):
-                    self._font_path_cache[font_name] = path
-                    return ImageFont.truetype(path, size)
-            except: pass
-            
-        # Default fallback (no caching for default as it's built-in)
-        return ImageFont.load_default()
+        self._font_obj_cache[cache_key] = font_obj
+        return font_obj
 
     def _get_word_width(self, text: str, font) -> int:
         bbox = font.getbbox(text)
@@ -595,62 +713,100 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
         with open(formatting_file, 'r', encoding='utf-8') as f: formatting = json.load(f)
 
     renderer = UniversalSubtitleRenderer(video_path, word_timestamps, settings, formatting)
+    
+    # Standard FPS
     fps = renderer.fps if 0 < renderer.fps <= 120 else 30
+    if abs(fps - 23.976) < 0.1: fps = 23.976
+    elif abs(fps - 24) < 0.1: fps = 24
+    elif abs(fps - 25) < 0.1: fps = 25
+    elif abs(fps - 29.97) < 0.1: fps = 29.97
+    elif abs(fps - 30) < 0.1: fps = 30
+    elif abs(fps - 50) < 0.1: fps = 50
+    elif abs(fps - 59.94) < 0.1: fps = 59.94
+    elif abs(fps - 60) < 0.1: fps = 60
+    
     total_frames = int((end_time - start_time) * fps)
     
     import tempfile, shutil
     temp_dir = Path(tempfile.mkdtemp(prefix='short_renderer_'))
     
-    # Pre-extract segment to a temporary file for better OpenCV compatibility (especially AV1)
-    # and much faster seeking.
+    # Extract segment and RESIZE to vertical in one go (much faster than OpenCV per-frame)
     temp_segment = temp_dir / "segment.mp4"
-    logger.info(f"Extracting segment {start_time}-{end_time} to {temp_segment}...")
+    logger.info(f"Extracting and resizing segment {start_time}-{end_time} to vertical {renderer.output_width}x{renderer.output_height}...")
+    
+    # FFmpeg filter for vertical crop/scale
+    vf_filter = f"scale={renderer.output_width}:{renderer.output_height}:force_original_aspect_ratio=increase,crop={renderer.output_width}:{renderer.output_height}:(iw-ow)/2:(ih-oh)/2"
     
     extract_cmd = [
         'ffmpeg', '-y', '-ss', str(start_time), '-i', str(video_path),
-        '-t', str(end_time - start_time), '-c:v', 'libx264', '-preset', 'ultrafast',
-        '-crf', '18', '-c:a', 'copy', str(temp_segment)
+        '-t', str(end_time - start_time), 
+        '-vf', vf_filter,
+        '-r', str(fps),
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18', 
+        '-c:a', 'aac', '-b:a', '192k',
+        str(temp_segment)
     ]
     subprocess.run(extract_cmd, capture_output=True, check=True)
     
-    # Re-initialize renderer with the small segment
     segment_renderer = UniversalSubtitleRenderer(str(temp_segment), word_timestamps, settings, formatting)
     
+    # FFmpeg Pipe
+    ffmpeg_cmd = [
+        'ffmpeg', '-y',
+        '-f', 'rawvideo',
+        '-vcodec', 'rawvideo',
+        '-s', f'{renderer.output_width}x{renderer.output_height}',
+        '-pix_fmt', 'bgr24',
+        '-r', str(fps),
+        '-i', '-',
+        '-ss', str(start_time),
+        '-i', str(video_path), 
+        '-t', str(end_time - start_time),
+        '-map', '0:v:0', '-map', '1:a:0?', 
+        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+        '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', 
+        str(output_path)
+    ]
+    
+    process = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    
     try:
-        # segment_renderer starts at 0, so we use frame indices relative to start of segment
         for frame_idx in range(total_frames):
             current_time = start_time + (frame_idx / fps)
-            # Use segment time which is relative to its start
-            current_segment_time = frame_idx / fps
             
             ret, frame = segment_renderer.cap.read()
             if not ret: break
 
             subtitle_text, subtitle_start, subtitle_end, subtitle_seq = "", None, None, None
-            is_theme_srt = 'theme_' in Path(subtitle_srt_path).name.lower()
+            import re
+            is_theme_srt = bool(re.search(r'theme_\d{3}\.srt$', Path(subtitle_srt_path).name.lower()))
             
             for sub in subtitles:
                 s_start = sub['start'] + (start_time if is_theme_srt else 0)
                 s_end = sub['end'] + (start_time if is_theme_srt else 0)
+                
                 if s_start <= current_time <= s_end:
                     subtitle_text, subtitle_seq = sub['text'], sub.get('sequence')
                     subtitle_start, subtitle_end = s_start, s_end
                     break
 
             rendered_frame = segment_renderer.render_frame(frame, current_time, subtitle_text, subtitle_start, subtitle_end, subtitle_seq)
-            cv2.imwrite(str(temp_dir / f"frame_{frame_idx:06d}.jpg"), rendered_frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
+            process.stdin.write(rendered_frame.tobytes())
+            
             if progress_callback and frame_idx % 10 == 0:
-                progress_callback((frame_idx / total_frames) * 70, "rendering", f"Frame {frame_idx}/{total_frames}")
+                progress_callback((frame_idx / total_frames) * 95, "rendering", f"Frame {frame_idx}/{total_frames}")
 
-        ffmpeg_cmd = [
-            'ffmpeg', '-y', '-framerate', str(fps), '-start_number', '0', '-i', str(temp_dir / 'frame_%06d.jpg'),
-            '-ss', str(start_time), '-i', str(video_path), '-t', str(end_time - start_time),
-            '-map', '0:v:0', '-map', '1:a:0?', '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
-            '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', str(output_path)
-        ]
-        subprocess.run(ffmpeg_cmd, capture_output=True)
+        process.stdin.close()
+        stdout, stderr = process.communicate()
+        
+        if process.returncode != 0:
+            logger.error(f"FFmpeg error: {stderr.decode()}")
+            return False
+            
         return True
     finally:
+        if process.poll() is None:
+            process.kill()
         segment_renderer.release()
         renderer.release()
         shutil.rmtree(temp_dir, ignore_errors=True)

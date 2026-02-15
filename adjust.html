@@ -155,6 +155,151 @@
             color: white;
         }
 
+        /* Title Overlay Styling */
+        .title-overlay {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(to bottom, rgba(0, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0.4) 100%);
+            color: #00ff9d;
+            padding: 10px 24px;
+            border-radius: 8px;
+            font-weight: 800;
+            font-size: 20px;
+            z-index: 150;
+            max-width: 85%;
+            min-width: 100px;
+            min-height: 40px;
+            text-align: center;
+            pointer-events: auto;
+            border: 2px solid rgba(0, 255, 157, 0.4);
+            cursor: text;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+            transition: all 0.3s ease;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        .title-overlay:hover {
+            background: rgba(0, 0, 0, 0.85);
+            border-color: rgba(0, 255, 157, 0.8);
+            transform: translateX(-50%) translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 255, 157, 0.2);
+        }
+
+        .title-overlay:focus {
+            outline: none;
+            background: rgba(0, 0, 0, 0.9);
+            border-color: #00ff9d;
+            box-shadow: 0 0 20px rgba(0, 255, 157, 0.3);
+        }
+
+        .title-text {
+            display: inline-block;
+            min-width: 20px;
+            outline: none;
+        }
+
+        /* Resize handle for title */
+        .resize-handle {
+            position: absolute;
+            bottom: 2px;
+            right: 2px;
+            width: 14px;
+            height: 14px;
+            background: #00ff9d;
+            border-radius: 50%;
+            cursor: nwse-resize;
+            display: block !important;
+            z-index: 200;
+            border: 2px solid #000;
+            box-shadow: 0 0 5px rgba(0,0,0,0.8);
+            opacity: 0.6;
+            transition: all 0.2s;
+            user-select: none;
+            pointer-events: auto;
+        }
+
+        .style-handle {
+            position: absolute;
+            bottom: 2px;
+            left: 2px;
+            width: 14px;
+            height: 14px;
+            background: #ff4b2b;
+            border-radius: 50%;
+            cursor: pointer;
+            display: block !important;
+            z-index: 200;
+            border: 2px solid #000;
+            box-shadow: 0 0 5px rgba(0,0,0,0.8);
+            opacity: 0.6;
+            transition: all 0.2s;
+            user-select: none;
+            pointer-events: auto;
+        }
+
+        .title-overlay:hover .resize-handle,
+        .title-overlay:focus .resize-handle,
+        .title-overlay:hover .style-handle,
+        .title-overlay:focus .style-handle {
+            opacity: 1;
+            transform: scale(1.2);
+        }
+
+        /* Title Style Menu */
+        .title-style-menu {
+            position: fixed;
+            background: rgba(30, 30, 45, 0.98);
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 12px;
+            z-index: 10000;
+            width: 220px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+            color: #fff;
+            font-family: sans-serif;
+            font-size: 13px;
+        }
+
+        .title-style-menu h4 {
+            margin: 0 0 5px 0;
+            font-size: 14px;
+            color: #00ff9d;
+            border-bottom: 1px solid #444;
+            padding-bottom: 5px;
+        }
+
+        .style-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .style-row label {
+            flex: 1;
+        }
+
+        .style-row select, .style-row input {
+            background: #2a2a2a;
+            border: 1px solid #444;
+            color: #fff;
+            padding: 4px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .title-style-menu button:hover {
+            background: #555 !important;
+        }
+
         /* Custom Video Controls */
         .video-controls-overlay {
             position: absolute;
@@ -1453,6 +1598,10 @@
                         <span style="font-size: 13px; color: #aaa;">Show Subtitles</span>
                     </label>
                     <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="title-toggle" style="width: 18px; height: 18px;">
+                        <span style="font-size: 13px; color: #aaa;">Show Title</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
                         <input type="checkbox" id="overlay-toggle" style="width: 18px; height: 18px;">
                         <span style="font-size: 13px; color: #aaa;">Show 9:16 Crop Overlay</span>
                     </label>
@@ -1462,6 +1611,13 @@
             <div class="video-wrapper">
                 <video id="original-video"></video>
                 
+                <!-- Title overlay for original video -->
+                <div id="original-title-overlay" class="title-overlay hidden" contenteditable="true" title="drag to resize">
+                    <span class="title-text"></span>
+                    <div class="resize-handle" contenteditable="false"></div>
+                    <div class="style-handle" contenteditable="false" title="Title styling"></div>
+                </div>
+
                 <!-- Canvas for subtitles on original video side -->
                 <canvas id="original-karaoke-canvas"></canvas>
 
@@ -1593,6 +1749,13 @@
             <div class="video-wrapper preview-wrapper">
                 <video id="preview-video" loop playsinline></video>
                 <div class="autosave-indicator preview-autosave" id="preview-autosave-indicator"></div>
+
+                <!-- Title overlay for preview video -->
+                <div id="preview-title-overlay" class="title-overlay hidden" contenteditable="true" title="drag to resize">
+                    <span class="title-text"></span>
+                    <div class="resize-handle" contenteditable="false"></div>
+                    <div class="style-handle" contenteditable="false" title="Title styling"></div>
+                </div>
 
                 <!-- Canvas for unified subtitle rendering -->
                 <canvas id="karaoke-canvas"></canvas>
@@ -1984,6 +2147,48 @@
                 <button id="save-subs-btn" class="btn btn-primary">Save Subtitles</button>
             </div>
         </div>
+    </div>
+
+    <!-- Title Style Menu -->
+    <div id="title-style-menu" class="title-style-menu">
+        <h4>Title Styling</h4>
+        <div class="style-row">
+            <label>Font Size:</label>
+            <input type="number" id="title-font-size-input" value="80" min="10" max="200" step="1">
+        </div>
+        <div class="style-row">
+            <label>Background:</label>
+            <select id="title-bg-type">
+                <option value="gradient">Gradient</option>
+                <option value="solid">Solid Black</option>
+                <option value="none">None</option>
+            </select>
+        </div>
+        <div class="style-row">
+            <label>Text Color:</label>
+            <input type="color" id="title-text-color" value="#00ff9d">
+        </div>
+        <div class="style-row">
+            <label>Font Weight:</label>
+            <select id="title-font-weight">
+                <option value="400">Normal</option>
+                <option value="600">Semi-bold</option>
+                <option value="800" selected>Extra-bold</option>
+            </select>
+        </div>
+        <div class="style-row">
+            <label>Outline Width:</label>
+            <input type="number" id="title-outline-width" value="0" min="0" max="5" step="0.5">
+        </div>
+        <div class="style-row">
+            <label>Outline Color:</label>
+            <input type="color" id="title-outline-color" value="#000000">
+        </div>
+        <div class="style-row">
+            <label>All Caps:</label>
+            <input type="checkbox" id="title-all-caps" checked>
+        </div>
+        <button id="close-title-style-menu" style="margin-top: 5px; padding: 6px; background: #444; color: #fff; border: none; border-radius: 4px; cursor: pointer;">Close</button>
     </div>
 
     <script>
@@ -2479,14 +2684,13 @@
             // Debounce save to avoid too many requests
             autoSaveTimeout = setTimeout(async () => {
                 try {
-                    const updates = {
-                        folder: folderNumber,
-                        theme: themeNumber,
-                        title: document.getElementById('theme-name').textContent,
-                        start: formatTime(startSeconds),
-                        end: formatTime(endSeconds)
-                    };
-
+                                          const updates = {
+                                              folder: folderNumber,
+                                              theme: themeNumber,
+                                              title: document.getElementById('theme-name').innerText,
+                                              start: formatTime(startSeconds),
+                                              end: formatTime(endSeconds)
+                                          };
                     const response = await fetch('/api/update-theme', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -2916,7 +3120,7 @@
                 effect_type: effectType,
                 auto_emoji: document.getElementById('auto-emoji')?.checked || false,
                 keyword_scaling: document.getElementById('keyword-scaling')?.checked || false,
-                fontSize: parseInt(document.getElementById('subtitle-size')?.value || '48'),
+                fontSize: parseInt(document.getElementById('subtitle-size')?.value || '80'),
                 primaryColor: document.getElementById('subtitle-color')?.value || '#ffffff',
                 textColor: document.getElementById('highlight-text-color')?.value || '#ffff00',
                 pastColor: document.getElementById('past-color')?.value || '#808080',
@@ -2932,7 +3136,15 @@
                 subtitle_h_align: horizontalAlign,
                 subtitle_v_align: verticalAlign,
                 subtitle_top: customPosition ? customPosition.top : null,
-                subtitle_left: customPosition ? customPosition.centerX : null
+                subtitle_left: customPosition ? customPosition.centerX : null,
+                show_title: document.getElementById('title-toggle')?.checked || localStorage.getItem('show_title') === 'true',
+                title_font_size: parseInt(document.getElementById('title-font-size-input')?.value || '20'),
+                title_bg_type: document.getElementById('title-bg-type')?.value || 'gradient',
+                title_text_color: document.getElementById('title-text-color')?.value || '#00ff9d',
+                title_font_weight: document.getElementById('title-font-weight')?.value || '800',
+                title_outline_width: parseFloat(document.getElementById('title-outline-width')?.value || '0'),
+                title_outline_color: document.getElementById('title-outline-color')?.value || '#000000',
+                title_all_caps: document.getElementById('title-all-caps')?.checked || false
             };
         }
 
@@ -3047,7 +3259,16 @@
                         primaryColor: document.getElementById('subtitle-color').value,
                         bgColor: document.getElementById('subtitle-bg').value,
                         bgOpacity: document.getElementById('subtitle-bg-opacity').value,
-                        fontName: document.getElementById('subtitle-font').value
+                        fontName: document.getElementById('subtitle-font').value,
+                        // Title styling fields
+                        titleFontSize: document.getElementById('title-font-size-input')?.value || 80,
+                        titleBgType: document.getElementById('title-bg-type')?.value,
+                        titleTextColor: document.getElementById('title-text-color')?.value,
+                        titleFontWeight: document.getElementById('title-font-weight')?.value,
+                        titleOutlineWidth: document.getElementById('title-outline-width')?.value || 0,
+                        titleOutlineColor: document.getElementById('title-outline-color')?.value,
+                        titleAllCaps: document.getElementById('title-all-caps')?.checked,
+                        showTitle: localStorage.getItem('show_title') === 'true'
                     })
                 });
 
@@ -3081,23 +3302,22 @@
                 const data = await response.json();
                 globalPosition = data.position || 'bottom';
 
+                // Get preview video element to calculate scale factor
+                const previewVideo = document.getElementById('preview-video');
+                const previewHeight = previewVideo?.offsetHeight || 500;
+                const previewWidth = previewVideo?.offsetWidth || 281;
+
+                // Target output resolution
+                const targetWidth = 1080;
+                const targetHeight = 1920;
+
+                // Calculate scale factors (output -> preview)
+                const scaleX = previewWidth / targetWidth;
+                const scaleY = previewHeight / targetHeight;
+
                 // Check if it's a custom position with coordinates
                 if (data.position === 'custom' && data.left !== null && data.top !== null) {
                     const hAlign = data.h_align || 'center';
-
-                    // Get preview video element to calculate scale factor
-                    const previewVideo = document.getElementById('preview-video');
-                    const previewHeight = previewVideo?.offsetHeight || 500;
-                    const previewWidth = previewVideo?.offsetWidth || 281;
-
-                    // Target output resolution
-                    const targetWidth = 1080;
-                    const targetHeight = 1920;
-
-                    // Calculate scale factors (output -> preview)
-                    const scaleX = previewWidth / targetWidth;
-                    const scaleY = previewHeight / targetHeight;
-
 
                     // Scale coordinates from output resolution to preview resolution
                     const scaledLeft = data.left * scaleX;
@@ -3140,7 +3360,9 @@
                 }
                 
                 // Load and apply additional styling fields if present
-                if (data.font_size !== undefined && data.font_size !== null) document.getElementById('subtitle-size').value = data.font_size;
+                if (data.font_size !== undefined && data.font_size !== null) {
+                    document.getElementById('subtitle-size').value = data.font_size;
+                }
                 if (data.subtitle_bold !== undefined && data.subtitle_bold !== null) document.getElementById('subtitle-bold').checked = data.subtitle_bold;
                 if (data.primary_color) document.getElementById('subtitle-color').value = data.primary_color;
                 if (data.bg_color) document.getElementById('subtitle-bg').value = data.bg_color;
@@ -3149,6 +3371,36 @@
                     document.getElementById('subtitle-bg-opacity').value = opacity > 1 ? opacity : opacity * 100;
                 }
                 if (data.font_name) document.getElementById('subtitle-font').value = data.font_name;
+
+                // Load and apply title styling
+                if (data.title_font_size) {
+                    document.getElementById('title-font-size-input').value = data.title_font_size;
+                }
+                if (data.title_bg_type) document.getElementById('title-bg-type').value = data.title_bg_type;
+                if (data.title_text_color) document.getElementById('title-text-color').value = data.title_text_color;
+                if (data.title_font_weight) document.getElementById('title-font-weight').value = data.title_font_weight;
+                if (data.title_outline_width !== undefined && data.title_outline_width !== null) {
+                    document.getElementById('title-outline-width').value = data.title_outline_width;
+                }
+                if (data.title_outline_color) document.getElementById('title-outline-color').value = data.title_outline_color;
+                if (data.title_all_caps !== undefined && data.title_all_caps !== null) document.getElementById('title-all-caps').checked = data.title_all_caps;
+                if (data.show_title !== undefined && data.show_title !== null) {
+                    document.getElementById('title-toggle').checked = data.show_title;
+                    localStorage.setItem('show_title', data.show_title);
+                    
+                    const originalOverlay = document.getElementById('original-title-overlay');
+                    const previewOverlay = document.getElementById('preview-title-overlay');
+                    if (data.show_title) {
+                        originalOverlay.classList.remove('hidden');
+                        previewOverlay.classList.remove('hidden');
+                    } else {
+                        originalOverlay.classList.add('hidden');
+                        previewOverlay.classList.add('hidden');
+                    }
+                }
+                
+                // Trigger title style application
+                document.getElementById('title-font-size-input')?.dispatchEvent(new Event('change'));
 
                 return globalPosition;
             } catch (error) {
@@ -3613,6 +3865,21 @@
                 // Update header with theme info
                 document.getElementById('header-title').textContent = `Adjust Theme ${themeData.number}`;
                 document.getElementById('header-theme-name').textContent = displayTitle;
+                
+                // Update title overlays and bottom panel
+                const showTitlePref = localStorage.getItem('show_title') === 'true';
+                
+                originalTitleOverlay.querySelector('.title-text').textContent = displayTitle;
+                previewTitleOverlay.querySelector('.title-text').textContent = displayTitle;
+                themeNameElement.textContent = displayTitle;
+                
+                if (showTitlePref) {
+                    originalTitleOverlay.classList.remove('hidden');
+                    previewTitleOverlay.classList.remove('hidden');
+                } else {
+                    originalTitleOverlay.classList.add('hidden');
+                    previewTitleOverlay.classList.add('hidden');
+                }
 
                 // Load all theme cues for subtitle editing (must be awaited for sequence matching)
                 await loadThemeCues();
@@ -5280,41 +5547,95 @@
 
         // Theme name editing
         const themeNameElement = document.getElementById('theme-name');
+        const originalTitleOverlay = document.getElementById('original-title-overlay');
+        const previewTitleOverlay = document.getElementById('preview-title-overlay');
         let originalThemeName = '';
 
-        themeNameElement.addEventListener('focus', () => {
-            originalThemeName = themeNameElement.textContent;
-        });
+        function updateAllTitles(newName, excludeElement = null) {
+            themeData.title = newName;
+            
+            // Update all elements except the one currently being edited
+            if (themeNameElement !== excludeElement) themeNameElement.innerText = newName;
+            if (originalTitleOverlay !== excludeElement) originalTitleOverlay.querySelector('.title-text').innerText = newName;
+            if (previewTitleOverlay !== excludeElement) previewTitleOverlay.querySelector('.title-text').innerText = newName;
+            
+            document.getElementById('header-theme-name').innerText = newName;
+            autoSaveTheme();
+        }
 
-        themeNameElement.addEventListener('blur', () => {
-            const newName = themeNameElement.textContent.trim();
-            if (newName && newName !== originalThemeName) {
-                // Save the new name
-                themeData.title = newName;
-                autoSaveTheme();
-                // Update header too
-                document.getElementById('header-theme-name').textContent = newName;
-            } else if (!newName) {
-                // Revert if empty
-                themeNameElement.textContent = originalThemeName;
-            }
-        });
+        [themeNameElement, originalTitleOverlay, previewTitleOverlay].forEach(el => {
+            el.addEventListener('focus', () => {
+                // If it's an overlay, get text from the nested title-text
+                const textEl = el.classList.contains('title-overlay') ? el.querySelector('.title-text') : el;
+                originalThemeName = textEl.innerText;
+            });
 
-        themeNameElement.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                themeNameElement.blur();
-            } else if (e.key === 'Escape') {
-                themeNameElement.textContent = originalThemeName;
-                themeNameElement.blur();
-            }
+            el.addEventListener('input', (e) => {
+                // If it's an overlay, we're editing the whole thing or children. 
+                // Best to get text from the title-text span if we can.
+                const textEl = el.classList.contains('title-overlay') ? el.querySelector('.title-text') : el;
+                const newName = textEl.innerText.trim();
+                
+                // Real-time sync to other elements (without triggering save yet to avoid spam)
+                if (themeNameElement !== el) themeNameElement.innerText = newName;
+                if (originalTitleOverlay !== el) originalTitleOverlay.querySelector('.title-text').innerText = newName;
+                if (previewTitleOverlay !== el) previewTitleOverlay.querySelector('.title-text').innerText = newName;
+                document.getElementById('header-theme-name').innerText = newName;
+            });
+
+            el.addEventListener('blur', () => {
+                const textEl = el.classList.contains('title-overlay') ? el.querySelector('.title-text') : el;
+                const newName = textEl.innerText.trim();
+                if (newName && newName !== originalThemeName) {
+                    updateAllTitles(newName, el);
+                } else if (!newName) {
+                    textEl.innerText = originalThemeName;
+                    updateAllTitles(originalThemeName);
+                }
+            });
+
+            el.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    el.blur();
+                } else if (e.key === 'Escape') {
+                    el.innerText = originalThemeName;
+                    el.blur();
+                }
+            });
         });
 
         // Subtitles toggle
         document.getElementById('subtitles-toggle').addEventListener('change', (e) => {
+            const enabled = e.target.checked;
+            localStorage.setItem('show_subtitles', enabled);
+            
             const track = originalVideo.textTracks[0];
             if (track) {
-                track.mode = e.target.checked ? 'showing' : 'hidden';
+                track.mode = enabled ? 'showing' : 'hidden';
+            }
+            // Trigger UI update to sync canvas
+            updateSubtitlePreview();
+        });
+
+        // Title overlay toggle
+        document.getElementById('title-toggle').addEventListener('change', (e) => {
+            const enabled = e.target.checked;
+            localStorage.setItem('show_title', enabled);
+            
+            const originalOverlay = document.getElementById('original-title-overlay');
+            const previewOverlay = document.getElementById('preview-title-overlay');
+            if (enabled) {
+                originalOverlay.classList.remove('hidden');
+                previewOverlay.classList.remove('hidden');
+            } else {
+                originalOverlay.classList.add('hidden');
+                previewOverlay.classList.add('hidden');
+            }
+            
+            // Save to server
+            if (typeof saveGlobalPosition === 'function' && typeof globalPosition !== 'undefined') {
+                saveGlobalPosition(globalPosition);
             }
         });
 
@@ -5475,7 +5796,7 @@
 
                 // Get current styling settings
                 const settings = getCurrentSubtitleSettings();
-
+                
                 // Request export
                 console.log('📡 Sending export request to /api/export-canvas-karaoke', {folder: folderNumber, theme: themeNumber, settings: settings});
                 const response = await fetch('/api/export-canvas-karaoke', {
@@ -5488,7 +5809,8 @@
                         themeEnd: endSeconds,
                         settings: settings
                     })
-                }).catch(err => {
+                })
+                .catch(err => {
                     console.error('❌ Fetch error:', err);
                     throw err;
                 });
@@ -6333,8 +6655,223 @@
             }
         });
 
+        // Title resizing logic
+        function setupTitleResizing() {
+            const handles = document.querySelectorAll('.resize-handle');
+            
+            handles.forEach(handle => {
+                handle.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    const overlay = handle.parentElement;
+                    const startY = e.clientY;
+                    // Get logical font size from the input directly
+                    const fontSizeInput = document.getElementById('title-font-size-input');
+                    const startFontSizeLogical = parseFloat(fontSizeInput?.value || 80);
+                    
+                    const onMouseMove = (moveEvent) => {
+                        const deltaY = moveEvent.clientY - startY;
+                        
+                        // Get scale to convert visual drag to logical font size change
+                        const previewVideo = document.getElementById('preview-video');
+                        const previewHeight = previewVideo.offsetHeight || 500;
+                        const scale = 1920 / previewHeight;
+
+                        // Adjust font size based on vertical drag
+                        // Drag down to increase size, up to decrease
+                        // Convert change to logical space
+                        const logicalDelta = deltaY * scale;
+                        const newSize = Math.max(10, Math.min(300, startFontSizeLogical + logicalDelta / 2));
+                        
+                        // Update the input value (logical)
+                        const fontSizeInput = document.getElementById('title-font-size-input');
+                        if (fontSizeInput) {
+                            fontSizeInput.value = Math.round(newSize);
+                            // Trigger the change event to update DOM visual style via applyStyles
+                            fontSizeInput.dispatchEvent(new Event('change'));
+                        }
+                    };
+                    
+                    const onMouseUp = () => {
+                        document.removeEventListener('mousemove', onMouseMove);
+                        document.removeEventListener('mouseup', onMouseUp);
+                        
+                        // Update the font size input value to match the visual size
+                        const currentSize = parseFloat(document.getElementById('original-title-overlay').style.fontSize);
+                        const fontSizeInput = document.getElementById('title-font-size-input');
+                        if (fontSizeInput) {
+                            fontSizeInput.value = Math.round(currentSize);
+                        }
+                        
+                        // Save the new font size preference
+                        localStorage.setItem('title_font_size', `${currentSize}px`);
+                        
+                        // Save to server via applyStyles (if it exists)
+                        if (typeof setupTitleStyling === 'function') {
+                            // Find the internal applyStyles and call it or just trigger change
+                            fontSizeInput?.dispatchEvent(new Event('change'));
+                        }
+                    };
+                    
+                    document.addEventListener('mousemove', onMouseMove);
+                    document.addEventListener('mouseup', onMouseUp);
+                });
+            });
+        }
+
+        // Title styling logic
+        function setupTitleStyling() {
+            const styleHandles = document.querySelectorAll('.style-handle');
+            const menu = document.getElementById('title-style-menu');
+            const overlays = [document.getElementById('original-title-overlay'), document.getElementById('preview-title-overlay')];
+            
+            const fontSizeInput = document.getElementById('title-font-size-input');
+            const bgTypeSelect = document.getElementById('title-bg-type');
+            const textColorInput = document.getElementById('title-text-color');
+            const fontWeightSelect = document.getElementById('title-font-weight');
+            const outlineWidthInput = document.getElementById('title-outline-width');
+            const outlineColorInput = document.getElementById('title-outline-color');
+            const allCapsCheckbox = document.getElementById('title-all-caps');
+
+            const applyStyles = () => {
+                const previewVideo = document.getElementById('preview-video');
+                const previewHeight = previewVideo.offsetHeight || 500;
+                const scale = previewHeight / 1920;
+
+                const fontSize = `${Math.round(fontSizeInput.value * scale)}px`;
+                const textColor = textColorInput.value;
+                const fontWeight = fontWeightSelect.value;
+                const outlineWidth = `${(outlineWidthInput.value * scale).toFixed(1)}px`;
+                const outlineColor = outlineColorInput.value;
+                const textTransform = allCapsCheckbox.checked ? 'uppercase' : 'none';
+                
+                let background = '';
+                let border = '2px solid rgba(0, 255, 157, 0.4)';
+                let boxShadow = '0 4px 15px rgba(0, 0, 0, 0.5)';
+                
+                if (bgTypeSelect.value === 'gradient') {
+                    background = 'linear-gradient(to bottom, rgba(0, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0.4) 100%)';
+                } else if (bgTypeSelect.value === 'solid') {
+                    background = 'rgba(0, 0, 0, 0.9)';
+                } else {
+                    background = 'transparent';
+                    border = 'none';
+                    boxShadow = 'none';
+                }
+
+                overlays.forEach(overlay => {
+                    if (!overlay) return;
+                    overlay.style.fontSize = fontSize;
+                    overlay.style.color = textColor;
+                    overlay.style.fontWeight = fontWeight;
+                    overlay.style.textTransform = textTransform;
+                    overlay.style.background = background;
+                    overlay.style.border = border;
+                    overlay.style.boxShadow = boxShadow;
+                    overlay.style.webkitTextStrokeWidth = outlineWidth;
+                    overlay.style.webkitTextStrokeColor = outlineColor;
+                });
+                
+                localStorage.setItem('title_style_fontSize', fontSizeInput.value);
+                localStorage.setItem('title_style_bgType', bgTypeSelect.value);
+                localStorage.setItem('title_style_textColor', textColorInput.value);
+                localStorage.setItem('title_style_fontWeight', fontWeightSelect.value);
+                localStorage.setItem('title_style_outlineWidth', outlineWidthInput.value);
+                localStorage.setItem('title_style_outlineColor', outlineColorInput.value);
+                localStorage.setItem('title_style_allCaps', allCapsCheckbox.checked);
+                
+                // Compatibility with existing code
+                localStorage.setItem('title_font_size', fontSize);
+                
+                // Save to server
+                if (typeof saveGlobalPosition === 'function' && typeof globalPosition !== 'undefined') {
+                    saveGlobalPosition(globalPosition);
+                }
+            };
+
+            styleHandles.forEach(handle => {
+                handle.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    if (menu.style.display === 'flex') {
+                        menu.style.display = 'none';
+                    } else {
+                        const rect = handle.getBoundingClientRect();
+                        menu.style.left = `${rect.left}px`;
+                        menu.style.top = `${rect.bottom + 5}px`;
+                        menu.style.display = 'flex';
+                    }
+                });
+            });
+
+            // Close when clicking outside
+            document.addEventListener('mousedown', (e) => {
+                if (menu.style.display === 'flex' && !menu.contains(e.target) && !Array.from(styleHandles).some(h => h.contains(e.target))) {
+                    menu.style.display = 'none';
+                }
+            });
+
+            document.getElementById('close-title-style-menu').addEventListener('click', () => {
+                menu.style.display = 'none';
+            });
+
+            [fontSizeInput, bgTypeSelect, textColorInput, fontWeightSelect, outlineWidthInput, outlineColorInput, allCapsCheckbox].forEach(el => {
+                el.addEventListener('change', applyStyles);
+                if (el.type === 'number') el.addEventListener('input', applyStyles);
+            });
+
+            // Load saved styles
+            const savedSize = localStorage.getItem('title_style_fontSize');
+            if (savedSize) {
+                fontSizeInput.value = savedSize;
+                bgTypeSelect.value = localStorage.getItem('title_style_bgType') || 'gradient';
+                textColorInput.value = localStorage.getItem('title_style_textColor') || '#00ff9d';
+                fontWeightSelect.value = localStorage.getItem('title_style_fontWeight') || '800';
+                outlineWidthInput.value = localStorage.getItem('title_style_outlineWidth') || '0';
+                outlineColorInput.value = localStorage.getItem('title_style_outlineColor') || '#000000';
+                allCapsCheckbox.checked = localStorage.getItem('title_style_allCaps') !== 'false';
+                applyStyles();
+            } else {
+                // Fallback to legacy font size if available
+                const legacySize = localStorage.getItem('title_font_size');
+                if (legacySize) {
+                    fontSizeInput.value = parseInt(legacySize);
+                    applyStyles();
+                }
+            }
+        }
+
+        // Apply saved title font size
+        function applyTitleFontSize() {
+            const savedSize = localStorage.getItem('title_font_size');
+            if (savedSize) {
+                document.getElementById('original-title-overlay').style.fontSize = savedSize;
+                document.getElementById('preview-title-overlay').style.fontSize = savedSize;
+            }
+        }
+
         // Initialize
         if (folderNumber && themeNumber) {
+            // Apply persistent subtitle preference
+            const showSubs = localStorage.getItem('show_subtitles') !== 'false'; // Default to true
+            const subsToggle = document.getElementById('subtitles-toggle');
+            if (subsToggle) {
+                subsToggle.checked = showSubs;
+                const track = originalVideo.textTracks[0];
+                if (track) track.mode = showSubs ? 'showing' : 'hidden';
+            }
+
+            // Apply persistent title preference
+            const showTitle = localStorage.getItem('show_title') === 'true'; // Default to false
+            const titleToggle = document.getElementById('title-toggle');
+            if (titleToggle) {
+                titleToggle.checked = showTitle;
+                // Overlay visibility is handled in loadTheme or by CSS 'hidden' class by default
+                // But we can force it here if the elements already exist (they don't yet, they are added in loadTheme)
+            }
+
             loadTheme().then(() => {
                 // Initialize position mode buttons after theme loads
                 setPositionMode('global'); // Default to global mode
@@ -6342,6 +6879,10 @@
                 loadKaraokeSetting();
                 // Load word timestamps for preview highlighting
                 loadWordTimestamps();
+                
+                // Initialize title resizing and styling
+                setupTitleResizing();
+                setupTitleStyling();
                 
                 // Initialize collapsible sections from localStorage
                 const sections = ['global-settings-section', 'karaoke-section', 'subtitle-text-section'];
