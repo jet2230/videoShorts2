@@ -190,22 +190,20 @@ Return the reason only, nothing else."""
         except Exception:
             return None
 
-    def identify_theme_boundaries(self, transcript_segments: List[Dict], progress_callback=None, cancel_check=None) -> List[Dict]:
+    def identify_theme_boundaries(self, transcript_segments: List[Dict], progress_callback=None, cancel_check=None, 
+                                 window_duration=600, window_overlap=120, target_themes_per_window=8) -> List[Dict]:
         """
         Use AI to identify natural theme boundaries from transcript segments.
 
-        Uses overlapping 10-minute windows to handle arbitrarily long videos:
-        - Window 1: 0-10 minutes
-        - Window 2: 8-18 minutes (2 min overlap)
-        - Window 3: 16-26 minutes (2 min overlap)
-        - etc.
-
-        This prevents themes from being cut at window boundaries.
+        Uses overlapping windows to handle arbitrarily long videos.
 
         Args:
             transcript_segments: List of segments with 'start', 'end', 'text' keys
             progress_callback: Optional callback for progress updates
             cancel_check: Optional function that returns True if task should be cancelled
+            window_duration: Duration of each window in seconds
+            window_overlap: Overlap between windows in seconds
+            target_themes_per_window: Number of themes to target per window
 
         Returns:
             List of theme dicts with 'start_time', 'end_time', and 'description'
@@ -226,15 +224,15 @@ Return the reason only, nothing else."""
         # Get total duration in seconds
         total_duration = int(transcript_segments[-1]['end'])
 
-        # Create overlapping windows (10 minutes each, 2 minute overlap)
+        # Create overlapping windows
         windows = []
         current_start = 0
         while current_start < total_duration:
-            current_end = min(current_start + 600, total_duration)  # 10 minutes = 600 seconds
+            current_end = min(current_start + window_duration, total_duration)
             windows.append((current_start, current_end))
             if current_end >= total_duration:
                 break
-            current_start = current_end - 120  # Backtrack 2 minutes (120 seconds) for overlap
+            current_start = current_end - window_overlap
 
         _log_msg(f"  AI Identifying themes across {len(windows)} windows...")
 
@@ -275,7 +273,8 @@ Return the reason only, nothing else."""
                 window_start,
                 window_end,
                 window_idx + 1,
-                len(windows)
+                len(windows),
+                target_themes=target_themes_per_window
             )
 
             if window_themes:
@@ -288,7 +287,7 @@ Return the reason only, nothing else."""
         return merged_themes
 
     def _process_window(self, transcript: str, window_start: int, window_end: int,
-                        window_num: int, total_windows: int) -> List[Dict]:
+                        window_num: int, total_windows: int, target_themes=8) -> List[Dict]:
         """
         Process a single window and identify themes.
 
@@ -298,13 +297,14 @@ Return the reason only, nothing else."""
             window_end: Window end time in seconds
             window_num: Current window number (for progress)
             total_windows: Total number of windows
+            target_themes: Number of themes to target
 
         Returns:
             List of themes for this window
         """
         # Adjust target number of themes based on window size
-        # For a 10-minute window, aim for 3-5 themes (45-90 seconds each)
-        target_themes = 4 if total_windows > 1 else 15
+        if total_windows == 1:
+            target_themes = max(target_themes, 15)
 
         prompt = f"""Identify YouTube Shorts clips from this Islamic lecture. Find {target_themes} clips.
 

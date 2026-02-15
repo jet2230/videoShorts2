@@ -86,11 +86,6 @@ class TranscribeWhisper:
                 _log_msg(f"GPU memory check failed: {e}")
 
         self.device = "cuda" if use_cuda else "cpu"
-        
-        # EXPERIMENTAL: Force CPU for medium/large models if CUDA is being unstable
-        if self.model_size in ['medium', 'large', 'large-v3', 'large-v3-turbo']:
-            print(f"DEBUG: Forcing CPU for {self.model_size} model to ensure stability...")
-            self.device = "cpu"
             
         _log_msg(f"Using device: {self.device}")
 

@@ -750,6 +750,38 @@
             font-size: 14px;
             color: #00ff9d;
             margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .subtitle-section h3::after {
+            content: '▼';
+            font-size: 10px;
+            transition: transform 0.3s ease;
+            margin-left: 8px;
+        }
+
+        .subtitle-section.collapsed h3::after {
+            transform: rotate(-90deg);
+        }
+
+        .section-content {
+            transition: max-height 0.3s ease-out, opacity 0.3s ease-out, margin-top 0.3s ease-out;
+            max-height: 1000px;
+            opacity: 1;
+            overflow: visible;
+        }
+
+        .collapsed .section-content {
+            max-height: 0;
+            opacity: 0;
+            margin-top: 0;
+            margin-bottom: 0;
+            overflow: hidden;
+            pointer-events: none;
         }
 
         .form-row {
@@ -1536,269 +1568,350 @@
                 </div>
             </div>
 
-            <div class="subtitle-editor" id="subtitle-editor">
-                <div class="subtitle-section" id="subtitle-text-section">
-                    <h3>Subtitle Text</h3>
-
-                    <!-- Action buttons toolbar -->
-                    <div class="actions-toolbar">
-                        <div class="actions-group">
-                            <button id="edit-all-subs-btn" class="action-btn" title="Edit all subtitles for this theme">📝 Edit All</button>
-                            <button id="lock-video-btn" class="action-btn" title="Lock video controls to enable dragging">
-                                <span id="lock-icon">🔓</span> Lock
-                            </button>
-                        </div>
-                        <div class="actions-group">
-                            <button class="toolbar-btn" onmousedown="event.preventDefault(); removeFormatting()" title="Clear all formatting">🗑 Clear</button>
-                        </div>
-                    </div>
-
-                    <!-- Rich text formatting toolbar -->
-                    <div class="rich-text-toolbar">
-                        <button class="toolbar-btn" data-style="bold" onmousedown="event.preventDefault(); toggleStyle('bold')"><b>Bold</b></button>
-                        <button class="toolbar-btn" data-style="italic" onmousedown="event.preventDefault(); toggleStyle('italic')"><i>Italic</i></button>
-                        <button class="toolbar-btn" data-style="color" onmousedown="event.preventDefault(); applyColor('#ff0000')">🔴</button>
-                        <button class="toolbar-btn" data-style="color" onmousedown="event.preventDefault(); applyColor('#00ff00')">🟢</button>
-                        <button class="toolbar-btn" data-style="color" onmousedown="event.preventDefault(); applyColor('#00ffff')">🔵</button>
-                        <button class="toolbar-btn" data-style="color" onmousedown="event.preventDefault(); applyColor('#ffff00')">🟡</button>
-                        <button class="toolbar-btn" data-style="color" onmousedown="event.preventDefault(); applyColor('#ffffff')">⚪</button>
-                        <div class="color-picker-wrapper">
-                            <input type="color" id="custom-color-picker" value="#ff00ff" title="Custom color">
-                        </div>
-                        <div class="toolbar-divider"></div>
-                        <button class="toolbar-btn" data-style="size" onmousedown="event.preventDefault(); applySize(1.2)">A+</button>
-                        <button class="toolbar-btn" data-style="size" onmousedown="event.preventDefault(); applySize(0.8)">a-</button>
-                    </div>
-                    <div class="subtitle-text-area" id="subtitle-text" contenteditable="true" data-placeholder="Edit subtitle text here..."></div>
-                    <div id="subtitle-duration-info" style="margin-top: 8px; font-size: 12px; color: #00ff9d; font-weight: 500; display: flex; justify-content: flex-start; align-items: center; gap: 12px;">
-                        <div class="nudge-group" style="gap: 4px;">
-                            <span style="color: #aaa; margin-right: 4px;">Start:</span>
-                            <button class="nudge-btn" style="width: 22px; height: 22px; font-size: 10px;" onclick="nudgeCueTiming('start', -0.1)" title="Earlier by 0.1s">-</button>
-                            <button class="nudge-btn" style="width: 22px; height: 22px; font-size: 10px;" onclick="nudgeCueTiming('start', 0.1)" title="Later by 0.1s">+</button>
-                        </div>
-                        
-                        <div style="display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.05); padding: 2px 8px; border-radius: 4px;">
-                            <span style="color: #aaa; font-weight: normal; font-size: 11px;">Duration:</span>
-                            <span id="subtitle-duration-value" style="min-width: 40px; text-align: center;">0.00s</span>
-                        </div>
-
-                        <div class="nudge-group" style="gap: 4px;">
-                            <button class="nudge-btn" style="width: 22px; height: 22px; font-size: 10px;" onclick="nudgeCueTiming('end', -0.1)" title="Earlier by 0.1s">-</button>
-                            <button class="nudge-btn" style="width: 22px; height: 22px; font-size: 10px;" onclick="nudgeCueTiming('end', 0.1)" title="Later by 0.1s">+</button>
-                            <span style="color: #aaa; margin-left: 4px;">:End</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="subtitle-section" id="global-settings-section">
-                    <h3>Global Subtitle Settings</h3>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Font Family</label>
-                            <select id="subtitle-font">
-                                <option value="Arial">Arial</option>
-                                <option value="Calibri">Calibri</option>
-                                <option value="Times New Roman">Times New Roman</option>
-                                <option value="Courier New">Courier New</option>
-                                <option value="Georgia">Georgia</option>
-                                <option value="Verdana">Verdana</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Font Size (px)</label>
-                            <div style="display: flex; align-items: center; gap: 10px;">
-                                <input type="number" id="subtitle-size" value="80" min="20" max="200" style="flex: 1;">
-                                <label style="display: flex; align-items: center; gap: 5px; margin-bottom: 0; cursor: pointer; white-space: nowrap;">
-                                    <input type="checkbox" id="subtitle-bold" style="width: 16px; height: 16px;">
-                                    <span style="font-size: 12px;">Bold</span>
-                                </label>
+                        <div class="subtitle-editor" id="subtitle-editor">
+                            <div class="subtitle-section" id="subtitle-text-section">
+                                <h3 onclick="toggleSection('subtitle-text-section')">Subtitle Text</h3>
+                                <div class="section-content">
+                                    <!-- Action buttons toolbar -->
+                                    <div class="actions-toolbar">
+                                        <div class="actions-group">
+                                            <button id="edit-all-subs-btn" class="action-btn" title="Edit all subtitles for this theme">📝 Edit All</button>
+                                            <button id="lock-video-btn" class="action-btn" title="Lock video controls to enable dragging">
+                                                <span id="lock-icon">🔓</span> Lock
+                                            </button>
+                                        </div>
+                                        <div class="actions-group">
+                                            <button class="toolbar-btn" onmousedown="event.preventDefault(); removeFormatting()" title="Clear all formatting">🗑 Clear</button>
+                                        </div>
+                                    </div>
+            
+                                    <!-- Rich text formatting toolbar -->
+                                    <div class="rich-text-toolbar">
+                                        <button class="toolbar-btn" data-style="bold" onmousedown="event.preventDefault(); toggleStyle('bold')"><b>Bold</b></button>
+                                        <button class="toolbar-btn" data-style="italic" onmousedown="event.preventDefault(); toggleStyle('italic')"><i>Italic</i></button>
+                                        <button class="toolbar-btn" data-style="color" onmousedown="event.preventDefault(); applyColor('#ff0000')">🔴</button>
+                                        <button class="toolbar-btn" data-style="color" onmousedown="event.preventDefault(); applyColor('#00ff00')">🟢</button>
+                                        <button class="toolbar-btn" data-style="color" onmousedown="event.preventDefault(); applyColor('#00ffff')">🔵</button>
+                                        <button class="toolbar-btn" data-style="color" onmousedown="event.preventDefault(); applyColor('#ffff00')">🟡</button>
+                                        <button class="toolbar-btn" data-style="color" onmousedown="event.preventDefault(); applyColor('#ffffff')">⚪</button>
+                                        <div class="color-picker-wrapper">
+                                            <input type="color" id="custom-color-picker" value="#ff00ff" title="Custom color">
+                                        </div>
+                                        <div class="toolbar-divider"></div>
+                                        <button class="toolbar-btn" data-style="size" onmousedown="event.preventDefault(); applySize(1.2)">A+</button>
+                                        <button class="toolbar-btn" data-style="size" onmousedown="event.preventDefault(); applySize(0.8)">a-</button>
+                                    </div>
+                                    <div class="subtitle-text-area" id="subtitle-text" contenteditable="true" data-placeholder="Edit subtitle text here..."></div>
+                                    <div id="subtitle-duration-info" style="margin-top: 8px; font-size: 12px; color: #00ff9d; font-weight: 500; display: flex; justify-content: flex-start; align-items: center; gap: 12px;">
+                                        <div class="nudge-group" style="gap: 4px;">
+                                            <span style="color: #aaa; margin-right: 4px;">Start:</span>
+                                            <button class="nudge-btn" style="width: 22px; height: 22px; font-size: 10px;" onclick="nudgeCueTiming('start', -0.1)" title="Earlier by 0.1s">-</button>
+                                            <button class="nudge-btn" style="width: 22px; height: 22px; font-size: 10px;" onclick="nudgeCueTiming('start', 0.1)" title="Later by 0.1s">+</button>
+                                        </div>
+                                        
+                                        <div style="display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.05); padding: 2px 8px; border-radius: 4px;">
+                                            <span style="color: #aaa; font-weight: normal; font-size: 11px;">Duration:</span>
+                                            <span id="subtitle-duration-value" style="min-width: 40px; text-align: center;">0.00s</span>
+                                        </div>
+            
+                                        <div class="nudge-group" style="gap: 4px;">
+                                            <button class="nudge-btn" style="width: 22px; height: 22px; font-size: 10px;" onclick="nudgeCueTiming('end', -0.1)" title="Earlier by 0.1s">-</button>
+                                            <button class="nudge-btn" style="width: 22px; height: 22px; font-size: 10px;" onclick="nudgeCueTiming('end', 0.1)" title="Later by 0.1s">+</button>
+                                            <span style="color: #aaa; margin-left: 4px;">:End</span>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Text Color</label>
-                            <input type="color" id="subtitle-color" value="#ffffff">
-                        </div>
-                        <div class="form-group">
-                            <label>Background Color</label>
-                            <input type="color" id="subtitle-bg" value="#000000">
-                        </div>
-                        <div class="form-group">
-                            <label>Background Opacity</label>
-                            <input type="range" id="subtitle-bg-opacity" min="0" max="100" value="70" step="1">
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Position Mode</label>
-                            <div class="position-mode-group">
-                                <button class="position-mode-btn active" data-mode="global">Global</button>
-                                <button class="position-mode-btn" data-mode="current">Current</button>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>Position</label>
-                            <select id="subtitle-position">
-                                <option value="bottom">Bottom</option>
-                                <option value="middle">Middle</option>
-                                <option value="top">Top</option>
-                                <option value="custom">Custom (Draggable)</option>
-                            </select>
-                        </div>
-                    </div>
+            
+                            <div class="subtitle-section" id="global-settings-section">
+                                    <h3 onclick="toggleSection('global-settings-section')">Global Subtitle Settings</h3>
 
-                    <div class="form-row" style="justify-content: center;">
-                        <div class="form-group" style="flex: 0; min-width: 140px;">
-                            <label style="text-align: center;">H: ⬅ ⬌ ➡</label>
-                            <div class="align-group">
-                                <button class="align-btn" data-align="left" title="Align Left">⬅</button>
-                                <button class="align-btn active" data-align="center" title="Align Center">⬌</button>
-                                <button class="align-btn" data-align="right" title="Align Right">➡</button>
-                            </div>
-                        </div>
-                        <div class="form-group" style="flex: 0; min-width: 140px;">
-                            <label style="text-align: center;">V: ⬆ ⬍ ⬇</label>
-                            <div class="align-group">
-                                <button class="align-btn" data-valign="top" title="Align Top">⬆</button>
-                                <button class="align-btn active" data-valign="middle" title="Align Middle">⬍</button>
-                                <button class="align-btn" data-valign="bottom" title="Align Bottom">⬇</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                                    <div class="section-content">
+
+                                        <div class="form-row">
+
+                                            <div class="form-group">
+
+                                                <label>Font Family</label>
+
+                                                <select id="subtitle-font">
+
+                                                    <option value="Arial">Arial</option>
+
+                                                    <option value="Calibri">Calibri</option>
+
+                                                    <option value="Times New Roman">Times New Roman</option>
+
+                                                    <option value="Courier New">Courier New</option>
+
+                                                    <option value="Georgia">Georgia</option>
+
+                                                    <option value="Verdana">Verdana</option>
+
+                                                </select>
+
+                                            </div>
+
+                                            <div class="form-group">
+
+                                                <label>Font Size (px)</label>
+
+                                                <div style="display: flex; align-items: center; gap: 10px;">
+
+                                                    <input type="number" id="subtitle-size" value="80" min="20" max="200" style="flex: 1;">
+
+                                                    <label style="display: flex; align-items: center; gap: 5px; margin-bottom: 0; cursor: pointer; white-space: nowrap;">
+
+                                                        <input type="checkbox" id="subtitle-bold" style="width: 16px; height: 16px;">
+
+                                                        <span style="font-size: 12px;">Bold</span>
+
+                                                    </label>
+
+                                                </div>
+
+                                            </div>
+
+                                        </div>
+
+                                        <div class="form-row">
+
+                                            <div class="form-group">
+
+                                                <label>Text Color</label>
+
+                                                <input type="color" id="subtitle-color" value="#ffffff">
+
+                                            </div>
+
+                                            <div class="form-group">
+
+                                                <label>Background Color</label>
+
+                                                <input type="color" id="subtitle-bg" value="#000000">
+
+                                            </div>
+
+                                            <div class="form-group">
+
+                                                <label>Background Opacity</label>
+
+                                                <input type="range" id="subtitle-bg-opacity" min="0" max="100" value="70" step="1">
+
+                                            </div>
+
+                                        </div>
+
+                                        <div class="form-row">
+
+                                            <div class="form-group">
+
+                                                <label>Position Mode</label>
+
+                                                <div class="position-mode-group">
+
+                                                    <button class="position-mode-btn active" data-mode="global">Global</button>
+
+                                                    <button class="position-mode-btn" data-mode="current">Current</button>
+
+                                                </div>
+
+                                            </div>
+
+                                            <div class="form-group">
+
+                                                <label>Position</label>
+
+                                                <select id="subtitle-position">
+
+                                                    <option value="bottom">Bottom</option>
+
+                                                    <option value="middle">Middle</option>
+
+                                                    <option value="top">Top</option>
+
+                                                    <option value="custom">Custom (Draggable)</option>
+
+                                                </select>
+
+                                            </div>
+
+                                        </div>
+
+                                        <div class="form-row" style="justify-content: center;">
+
+                                            <div class="form-group" style="flex: 0; min-width: 140px;">
+
+                                                <label style="text-align: center;">H: ⬅ ⬌ ➡</label>
+
+                                                <div class="align-group">
+
+                                                    <button class="align-btn" data-align="left" title="Align Left">⬅</button>
+
+                                                    <button class="align-btn active" data-align="center" title="Align Center">⬌</button>
+
+                                                    <button class="align-btn" data-align="right" title="Align Right">➡</button>
+
+                                                </div>
+
+                                            </div>
+
+                                            <div class="form-group" style="flex: 0; min-width: 140px;">
+
+                                                <label style="text-align: center;">V: ⬆ ⬍ ⬇</label>
+
+                                                <div class="align-group">
+
+                                                    <button class="align-btn" data-valign="top" title="Align Top">⬆</button>
+
+                                                    <button class="align-btn active" data-valign="middle" title="Align Middle">⬍</button>
+
+                                                    <button class="align-btn" data-valign="bottom" title="Align Bottom">⬇</button>
+
+                                                </div>
+
+                                            </div>
+
+                                        </div>
+
+                                    </div>
+
+                                </div>
 
                 <!-- Subtitle Effect & Karaoke Section -->
                 <div class="subtitle-section" id="karaoke-section">
-                    <div class="form-row">
-                        <div class="form-group" style="width: 100%;">
-                            <label style="font-size: 13px; color: #00ff9d; font-weight: 600;">Subtitle Style / Effect</label>
-                            <select id="effect-type" style="padding: 8px 10px; background: #2a2a2a; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 13px; width: 100%; margin-bottom: 10px;">
-                                <option value="none">No Karaoke (Standard Subtitles)</option>
-                                <option value="standard">🎤 Standard Karaoke Highlight</option>
-                                <optgroup label="Animation Effects">
-                                    <option value="pop">Word Pop / Bounce</option>
-                                    <option value="slide">Slide Reveal</option>
-                                    <option value="typewriter">Typewriter</option>
-                                </optgroup>
-                                <optgroup label="Advanced Karaoke Styles">
-                                    <option value="progressive_fill">Progressive Color Fill</option>
-                                    <option value="wave">Wave / Wiggle</option>
-                                    <option value="flash">Flash (Center Focus)</option>
-                                </optgroup>
-                                <optgroup label="Visual Styling">
-                                    <option value="neon_glitch">Neon Glitch</option>
-                                    <option value="dynamic_box">Dynamic Box / Ribbon</option>
-                                    <option value="shadow_3d">Multi-Layer Shadow (3D)</option>
-                                </optgroup>
-                                <optgroup label="Audio-Reactive">
-                                    <option value="volume_shake">Volume Shake</option>
-                                    <option value="pulsing_glow">Pulsing Glow</option>
-                                </optgroup>
-                            </select>
+                    <h3 onclick="toggleSection('karaoke-section')">Subtitle Style / Effect</h3>
+                    <div class="section-content">
+                        <div class="form-row">
+                            <div class="form-group" style="width: 100%;">
+                                <label style="font-size: 13px; color: #00ff9d; font-weight: 600;">Subtitle Style / Effect</label>
+                                <select id="effect-type" style="padding: 8px 10px; background: #2a2a2a; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 13px; width: 100%; margin-bottom: 10px;">
+                                    <option value="none">No Karaoke (Standard Subtitles)</option>
+                                    <option value="standard">🎤 Standard Karaoke Highlight</option>
+                                    <optgroup label="Animation Effects">
+                                        <option value="pop">Word Pop / Bounce</option>
+                                        <option value="slide">Slide Reveal</option>
+                                        <option value="typewriter">Typewriter</option>
+                                    </optgroup>
+                                    <optgroup label="Advanced Karaoke Styles">
+                                        <option value="progressive_fill">Progressive Color Fill</option>
+                                        <option value="wave">Wave / Wiggle</option>
+                                        <option value="flash">Flash (Center Focus)</option>
+                                    </optgroup>
+                                    <optgroup label="Visual Styling">
+                                        <option value="neon_glitch">Neon Glitch</option>
+                                        <option value="dynamic_box">Dynamic Box / Ribbon</option>
+                                        <option value="shadow_3d">Multi-Layer Shadow (3D)</option>
+                                    </optgroup>
+                                    <optgroup label="Audio-Reactive">
+                                        <option value="volume_shake">Volume Shake</option>
+                                        <option value="pulsing_glow">Pulsing Glow</option>
+                                    </optgroup>
+                                </select>
 
-                            <div id="karaoke-style-controls" style="display: none; flex-direction: column; gap: 15px; padding: 15px; background: #1a1a1a; border-radius: 8px; border: 1px solid #333;">
-                                <!-- Emphasis Options -->
-                                <div style="display: flex; align-items: center; gap: 10px;">
-                                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                                        <input type="checkbox" id="auto-emoji" style="width: 16px; height: 16px;">
-                                        <span style="font-size: 12px; color: #aaa;">Auto-Emoji 🚀</span>
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-left: 20px;">
-                                        <input type="checkbox" id="keyword-scaling" style="width: 16px; height: 16px;">
-                                        <span style="font-size: 12px; color: #aaa;">Keyword Scaling</span>
-                                    </label>
-                                </div>
-
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                                    <!-- Karaoke Mode -->
-                                    <div style="display: flex; flex-direction: column; gap: 5px;">
-                                        <label style="font-size: 12px; color: #aaa; font-weight: 500;">Highlight Behavior</label>
-                                        <select id="karaoke-mode" style="padding: 6px 8px; background: #2a2a2a; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 12px;">
-                                            <option value="normal" selected>Normal (Highlight & Fade)</option>
-                                            <option value="cumulative">Cumulative (Stay Highlighted)</option>
-                                        </select>
-                                    </div>
-
-                                    <!-- Font Size Scale -->
-                                    <div style="display: flex; flex-direction: column; gap: 5px;">
-                                        <label style="font-size: 12px; color: #aaa; font-weight: 500;">Font Size: <span id="font-scale-value">100%</span></label>
-                                        <input type="range" id="font-size-scale" min="50" max="200" value="100" style="width: 100%; height: 6px;">
-                                    </div>
-
-                                    <!-- Past Words Color (for cumulative mode) -->
-                                    <div style="display: flex; align-items: center; gap: 10px; grid-column: 1 / -1;">
-                                        <label style="font-size: 12px; color: #aaa; font-weight: 500; min-width: 120px;">Past Words Color:</label>
-                                        <input type="color" id="past-color" value="#808080" style="width: 50px; height: 28px; cursor: pointer; border: none; border-radius: 4px;">
-                                        <span style="font-size: 11px; color: #666;">(for cumulative mode)</span>
-                                    </div>
-
-                                    <!-- Divider -->
-                                    <div style="grid-column: 1 / -1; height: 1px; background: #333; margin: 10px 0;"></div>
-
-                                    <!-- Color Preset -->
+                                <div id="karaoke-style-controls" style="display: none; flex-direction: column; gap: 15px; padding: 15px; background: #1a1a1a; border-radius: 8px; border: 1px solid #333;">
+                                    <!-- Emphasis Options -->
                                     <div style="display: flex; align-items: center; gap: 10px;">
-                                        <label style="font-size: 12px; color: #aaa; font-weight: 500; min-width: 70px;">Preset:</label>
-                                        <select id="highlight-preset" style="flex: 1; padding: 6px 8px; background: #2a2a2a; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 12px;">
-                                            <option value="custom">Custom</option>
-                                            <option value="yellow-glow" selected>Yellow Glow</option>
-                                            <option value="red-bold">Red Bold</option>
-                                            <option value="cyan-neon">Cyan Neon</option>
-                                            <option value="green-glow">Green Glow</option>
-                                            <option value="pink-soft">Pink Soft</option>
-                                            <option value="orange-fire">Orange Fire</option>
-                                            <option value="white-clean">White Clean</option>
-                                            <option value="purple-vibe">Purple Vibe</option>
-                                        </select>
+                                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                            <input type="checkbox" id="auto-emoji" style="width: 16px; height: 16px;">
+                                            <span style="font-size: 12px; color: #aaa;">Auto-Emoji 🚀</span>
+                                        </label>
+                                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-left: 20px;">
+                                            <input type="checkbox" id="keyword-scaling" style="width: 16px; height: 16px;">
+                                            <span style="font-size: 12px; color: #aaa;">Keyword Scaling</span>
+                                        </label>
                                     </div>
 
-                                    <!-- Text Color -->
-                                    <div style="display: flex; align-items: center; gap: 10px;">
-                                        <label style="font-size: 12px; color: #aaa; font-weight: 500; min-width: 70px;">Text Color:</label>
-                                        <input type="color" id="highlight-text-color" value="#ffff00" style="width: 50px; height: 28px; cursor: pointer; border: none; border-radius: 4px;">
-                                    </div>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                                                                            <!-- Karaoke Mode -->
+                                                                            <div style="display: flex; flex-direction: column; gap: 5px;">
+                                                                                <label style="font-size: 12px; color: #aaa; font-weight: 500;">Highlight Behavior</label>
+                                                                                <select id="karaoke-mode" style="padding: 6px 8px; background: #2a2a2a; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 12px;">
+                                                                                    <option value="normal" selected>Normal (Highlight & Fade)</option>
+                                                                                    <option value="cumulative">Cumulative (Stay Highlighted)</option>
+                                                                                </select>
+                                                                            </div>
+                                        
+                                                                            <!-- Past Words Color (for cumulative mode) -->
+                                                                            <div style="display: flex; align-items: center; gap: 10px; grid-column: 1 / -1;">
+                                                                                <label style="font-size: 12px; color: #aaa; font-weight: 500; min-width: 120px;">Past Words Color:</label>
+                                                                                <input type="color" id="past-color" value="#808080" style="width: 50px; height: 28px; cursor: pointer; border: none; border-radius: 4px;">
+                                                                                <span style="font-size: 11px; color: #666;">(for cumulative mode)</span>
+                                                                            </div>
+                                        <!-- Divider -->
+                                        <div style="grid-column: 1 / -1; height: 1px; background: #333; margin: 10px 0;"></div>
 
-                                    <!-- Glow Color -->
-                                    <div style="display: flex; align-items: center; gap: 10px;">
-                                        <label style="font-size: 12px; color: #aaa; font-weight: 500; min-width: 70px;">Glow Color:</label>
-                                        <input type="color" id="highlight-glow-color" value="#ffff00" style="width: 50px; height: 28px; cursor: pointer; border: none; border-radius: 4px;">
-                                    </div>
+                                        <!-- Color Preset -->
+                                        <div style="display: flex; align-items: center; gap: 10px;">
+                                            <label style="font-size: 12px; color: #aaa; font-weight: 500; min-width: 70px;">Preset:</label>
+                                            <select id="highlight-preset" style="flex: 1; padding: 6px 8px; background: #2a2a2a; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 12px;">
+                                                <option value="custom">Custom</option>
+                                                <option value="yellow-glow" selected>Yellow Glow</option>
+                                                <option value="red-bold">Red Bold</option>
+                                                <option value="cyan-neon">Cyan Neon</option>
+                                                <option value="green-glow">Green Glow</option>
+                                                <option value="pink-soft">Pink Soft</option>
+                                                <option value="orange-fire">Orange Fire</option>
+                                                <option value="white-clean">White Clean</option>
+                                                <option value="purple-vibe">Purple Vibe</option>
+                                            </select>
+                                        </div>
 
-                                    <!-- Glow Blur -->
-                                    <div style="display: flex; align-items: center; gap: 10px;">
-                                        <label style="font-size: 12px; color: #aaa; font-weight: 500; min-width: 70px;">Glow Blur:</label>
-                                        <input type="range" id="highlight-glow-blur" min="0" max="30" value="10" style="flex: 1; height: 6px;">
-                                        <span id="highlight-glow-blur-value" style="font-size: 11px; color: #aaa; min-width: 30px;">10px</span>
-                                    </div>
+                                        <!-- Text Color -->
+                                        <div style="display: flex; align-items: center; gap: 10px;">
+                                            <label style="font-size: 12px; color: #aaa; font-weight: 500; min-width: 70px;">Text Color:</label>
+                                            <input type="color" id="highlight-text-color" value="#ffff00" style="width: 50px; height: 28px; cursor: pointer; border: none; border-radius: 4px;">
+                                        </div>
 
-                                    <!-- Font Weight -->
-                                    <div style="display: flex; align-items: center; gap: 10px;">
-                                        <label style="font-size: 12px; color: #aaa; font-weight: 500; min-width: 70px;">Font Weight:</label>
-                                        <select id="highlight-font-weight" style="flex: 1; padding: 6px 8px; background: #2a2a2a; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 12px;">
-                                            <option value="normal">Normal</option>
-                                            <option value="bold">Bold</option>
-                                            <option value="100">Thin (100)</option>
-                                            <option value="300">Light (300)</option>
-                                            <option value="500">Medium (500)</option>
-                                            <option value="700">Extra Bold (700)</option>
-                                            <option value="900">Black (900)</option>
-                                        </select>
-                                    </div>
+                                        <!-- Glow Color -->
+                                        <div style="display: flex; align-items: center; gap: 10px;">
+                                            <label style="font-size: 12px; color: #aaa; font-weight: 500; min-width: 70px;">Glow Color:</label>
+                                            <input type="color" id="highlight-glow-color" value="#ffff00" style="width: 50px; height: 28px; cursor: pointer; border: none; border-radius: 4px;">
+                                        </div>
 
-                                    <!-- Reset Button -->
-                                    <div style="grid-column: 1 / -1; display: flex; justify-content: center; margin-top: 10px;">
-                                        <button id="reset-highlight-style" style="padding: 8px 20px; background: #444; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Reset to Default</button>
-                                    </div>
+                                        <!-- Glow Blur -->
+                                        <div style="display: flex; align-items: center; gap: 10px;">
+                                            <label style="font-size: 12px; color: #aaa; font-weight: 500; min-width: 70px;">Glow Blur:</label>
+                                            <select id="highlight-glow-blur" style="flex: 1; padding: 6px 8px; background: #2a2a2a; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 12px;">
+                                                <option value="0">None (0px)</option>
+                                                <option value="2">Minimal (2px)</option>
+                                                <option value="5">Soft (5px)</option>
+                                                <option value="10" selected>Normal (10px)</option>
+                                                <option value="15">Strong (15px)</option>
+                                                <option value="20">Extra (20px)</option>
+                                                <option value="30">Max (30px)</option>
+                                            </select>
+                                        </div>
 
-                                    <!-- Export Video Button -->
-                                    <div style="grid-column: 1 / -1; display: flex; justify-content: center; margin-top: 10px;">
-                                        <button id="export-canvas-video" style="padding: 10px 24px; background: linear-gradient(135deg, #4CAF50, #45a049); color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 600;">🎬 Export Final Short (with Subtitles)</button>
+                                        <!-- Font Weight -->
+                                        <div style="display: flex; align-items: center; gap: 10px;">
+                                            <label style="font-size: 12px; color: #aaa; font-weight: 500; min-width: 70px;">Font Weight:</label>
+                                            <select id="highlight-font-weight" style="flex: 1; padding: 6px 8px; background: #2a2a2a; color: #fff; border: 1px solid #444; border-radius: 4px; font-size: 12px;">
+                                                <option value="normal">Normal</option>
+                                                <option value="bold">Bold</option>
+                                                <option value="100">Thin (100)</option>
+                                                <option value="300">Light (300)</option>
+                                                <option value="500">Medium (500)</option>
+                                                <option value="700">Extra Bold (700)</option>
+                                                <option value="900">Black (900)</option>
+                                            </select>
+                                        </div>
+
+                                        <div style="grid-column: 1 / -1; display: flex; justify-content: center; margin-top: 10px;">
+                                            <button id="reset-highlight-style" style="padding: 8px 20px; background: #444; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Reset to Default</button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>  <!-- End of karaoke-section -->
+                </div>
+
+                <!-- Export Video Button (Outside collapsible areas) -->
+                <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: center;">
+                    <button id="export-canvas-video" style="width: 100%; padding: 12px 24px; background: linear-gradient(135deg, #4CAF50, #45a049); color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.2); transition: transform 0.2s, box-shadow 0.2s;">🎬 Export Final Short (with Subtitles)</button>
+                </div>
+            </div>  <!-- End of karaoke-section -->
             </div>
 
             <div id="message" style="margin-top: 16px;"></div>
@@ -5227,17 +5340,10 @@
             document.documentElement.style.setProperty('--highlight-glow-color', glowColorRgba);
             document.documentElement.style.setProperty('--highlight-glow-blur', glowBlur + 'px');
             document.documentElement.style.setProperty('--highlight-font-weight', fontWeight);
-
-            // Update blur value display
-            document.getElementById('highlight-glow-blur-value').textContent = glowBlur + 'px';
         }
 
         // Save highlight style to server
         async function saveHighlightStyle() {
-            // Convert font scale from percentage to decimal
-            const fontScalePercent = parseInt(document.getElementById('font-size-scale').value);
-            const fontScaleDecimal = fontScalePercent / 100;
-
             const styleData = {
                 folder: folderNumber,
                 preset: document.getElementById('highlight-preset').value,
@@ -5250,7 +5356,7 @@
                 effectType: document.getElementById('effect-type').value,
                 autoEmoji: document.getElementById('auto-emoji').checked,
                 keywordScaling: document.getElementById('keyword-scaling').checked,
-                fontSizeScale: fontScaleDecimal,
+                fontSizeScale: 1.0, // Fixed at 1.0 as we use the global font size instead
                 pastColor: document.getElementById('past-color').value
             };
 
@@ -5285,12 +5391,6 @@
                         if (data.style.effectType) document.getElementById('effect-type').value = data.style.effectType;
                         if (data.style.autoEmoji !== undefined) document.getElementById('auto-emoji').checked = data.style.autoEmoji;
                         if (data.style.keywordScaling !== undefined) document.getElementById('keyword-scaling').checked = data.style.keywordScaling;
-
-                        // Convert font scale from decimal to percentage
-                        const fontScaleDecimal = data.style.font_size_scale !== undefined ? data.style.font_size_scale : 1.0;
-                        const fontScalePercent = Math.round(fontScaleDecimal * 100);
-                        document.getElementById('font-size-scale').value = fontScalePercent;
-                        document.getElementById('font-scale-value').textContent = fontScalePercent + '%';
 
                         // Load past color
                         document.getElementById('past-color').value = data.style.past_color || '#808080';
@@ -5332,8 +5432,6 @@
             document.getElementById('effect-type').value = 'none';
             document.getElementById('auto-emoji').checked = false;
             document.getElementById('keyword-scaling').checked = false;
-            document.getElementById('font-size-scale').value = '100';
-            document.getElementById('font-scale-value').textContent = '100%';
             document.getElementById('past-color').value = '#808080';
             updateHighlightStyle();
             saveHighlightStyle();
@@ -5403,12 +5501,6 @@
             await saveHighlightStyle();
             updateSubtitlePreview();
         });
-        document.getElementById('font-size-scale').addEventListener('change', async (e) => {
-            const percent = e.target.value;
-            document.getElementById('font-scale-value').textContent = percent + '%';
-            await saveHighlightStyle();
-            updateSubtitlePreview();
-        });
         document.getElementById('past-color').addEventListener('change', async (e) => {
             await saveHighlightStyle();
             updateSubtitlePreview();
@@ -5431,7 +5523,7 @@
             saveHighlightStyle();
             updateSubtitlePreview();
         });
-        document.getElementById('highlight-glow-blur').addEventListener('input', () => {
+        document.getElementById('highlight-glow-blur').addEventListener('change', () => {
             document.getElementById('highlight-preset').value = 'custom';
             updateHighlightStyle();
             saveHighlightStyle();
@@ -5837,11 +5929,28 @@
                 loadKaraokeSetting();
                 // Load word timestamps for preview highlighting
                 loadWordTimestamps();
+                
+                // Initialize collapsible sections from localStorage
+                const sections = ['global-settings-section', 'karaoke-section', 'subtitle-text-section'];
+                sections.forEach(id => {
+                    const isCollapsed = localStorage.getItem(`collapsed_${id}`) === 'true';
+                    if (isCollapsed) {
+                        document.getElementById(id)?.classList.add('collapsed');
+                    }
+                });
             });
         } else {
             document.getElementById('loading').classList.add('hidden');
             document.getElementById('error').textContent = 'Missing folder or theme number';
             document.getElementById('error').classList.remove('hidden');
+        }
+
+        function toggleSection(id) {
+            const section = document.getElementById(id);
+            if (section) {
+                const isCollapsed = section.classList.toggle('collapsed');
+                localStorage.setItem(`collapsed_${id}`, isCollapsed);
+            }
         }
     </script>
 </body>

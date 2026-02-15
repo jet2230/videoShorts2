@@ -25,44 +25,65 @@ def load_settings(settings_file: str = 'settings.ini') -> configparser.ConfigPar
 
     if Path(settings_file).exists():
         config.read(settings_file)
-        return config
-    else:
-        # Create default settings if file doesn't exist
-        config['whisper'] = {
-            'model': 'small',
-            'language': 'ar',
-            'task': 'transcribe'
-        }
-        config['video'] = {
-            'output_dir': 'videos',
-            'aspect_ratio': '9:16',
-            'resolution_width': '1080',
-            'resolution_height': '1920',
-            'codec': 'libx264',
-            'preset': 'medium',
-            'crf': '23'
-        }
-        config['subtitle'] = {
-            'font_name': 'Arial',
-            'font_size': '24',
-            'primary_colour': '&HFFFFFF',
-            'back_colour': '&H80000000',
-            'outline_colour': '&H00000000',
-            'alignment': '2',
-            'margin_v': '35'
-        }
-        config['theme'] = {
+        # Ensure new theme keys exist even if file was old
+        if 'theme' not in config:
+            config['theme'] = {}
+        
+        theme_defaults = {
             'min_duration': '30',
             'max_duration': '240',
             'ai_enabled': 'true',
             'ai_model': 'llama3',
             'ai_provider': 'ollama',
             'window_duration': '600',
-            'window_overlap': '120'
+            'window_overlap': '120',
+            'theme_cap': '50',
+            'target_themes_per_window': '8'
+        }
+        for key, value in theme_defaults.items():
+            if key not in config['theme']:
+                config['theme'][key] = value
+                
+        return config
+    else:
+        # Create default settings if file doesn't exist
+        config['whisper'] = {
+            'model': 'small',      # Whisper model size (tiny, base, small, medium, large)
+            'language': 'ar',      # Default transcription language
+            'task': 'transcribe'   # Task type (transcribe or translate)
+        }
+        config['video'] = {
+            'output_dir': 'videos',       # Where to store processed content
+            'aspect_ratio': '9:16',       # Output video shape
+            'resolution_width': '1080',   # Standard vertical width
+            'resolution_height': '1920',  # Standard vertical height
+            'codec': 'libx264',           # Video encoder
+            'preset': 'medium',           # Encoding speed/quality preset
+            'crf': '23'                   # Quality factor (lower is higher quality)
+        }
+        config['subtitle'] = {
+            'font_name': 'Arial',         # Subtitle font
+            'font_size': '24',            # Base font size
+            'primary_colour': '&HFFFFFF', # Text color (ASS format)
+            'back_colour': '&H80000000',  # Background color with transparency
+            'outline_colour': '&H00000000', # Text outline color
+            'alignment': '2',             # Text alignment (2 = Bottom Center)
+            'margin_v': '35'              # Vertical distance from edge
+        }
+        config['theme'] = {
+            'min_duration': '30',         # Minimum clip length in seconds
+            'max_duration': '240',        # Maximum clip length in seconds
+            'ai_enabled': 'true',         # Whether to use LLM for theme boundary detection
+            'ai_model': 'llama3',         # Local LLM model name (via Ollama)
+            'ai_provider': 'ollama',      # LLM backend provider
+            'window_duration': '600',     # Segment length for AI processing (seconds)
+            'window_overlap': '120',      # Overlap between AI segments to prevent cut themes
+            'theme_cap': '50',            # Global limit on total themes per video
+            'target_themes_per_window': '8' # How many themes to aim for in each 10-min window
         }
         config['folder'] = {
-            'naming_scheme': 'numbered',
-            'number_padding': '3'
+            'naming_scheme': 'numbered',  # Folder naming pattern
+            'number_padding': '3'         # Padding for folder numbers (e.g., 001)
         }
 
         # Save default settings
@@ -105,12 +126,6 @@ class YouTubeShortsCreator:
     def __init__(self, base_dir: str = "videos"):
         self.base_dir = Path(base_dir)
         self.base_dir.mkdir(exist_ok=True)
-        try:
-            import torch
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-        except ImportError:
-            pass
 
     def sanitize_title(self, title: str) -> str:
         """Sanitize video title for use as folder and file name."""
@@ -504,8 +519,20 @@ Video Path: {video_info['video_path']}
             ai_used = True
             ai_model = ai_generator.model
 
+            # Get window settings from config
+            window_duration = int(settings.get('theme', 'window_duration', fallback=600))
+            window_overlap = int(settings.get('theme', 'window_overlap', fallback=120))
+            target_per_window = int(settings.get('theme', 'target_themes_per_window', fallback=8))
+
             # Use AI to identify theme boundaries with progress updates and cancellation support
-            ai_themes = ai_generator.identify_theme_boundaries(segments, progress_callback=progress_callback, cancel_check=cancel_check)
+            ai_themes = ai_generator.identify_theme_boundaries(
+                segments, 
+                progress_callback=progress_callback, 
+                cancel_check=cancel_check,
+                window_duration=window_duration,
+                window_overlap=window_overlap,
+                target_themes_per_window=target_per_window
+            )
 
             if ai_themes:
                 _log_msg(f"    AI identified {len(ai_themes)} themes")
@@ -684,8 +711,9 @@ Video Path: {video_info['video_path']}
     def _identify_themes(self, segments: List[Dict], transcript: str) -> List[Dict]:
         """Identify potential themes for shorts from segments."""
         themes = []
-        min_duration = 20  # 20 seconds
-        max_duration = 240  # 4 minutes
+        theme_cap = int(settings.get('theme', 'theme_cap', fallback=50))
+        min_duration = float(settings.get('theme', 'min_duration', fallback=30))
+        max_duration = float(settings.get('theme', 'max_duration', fallback=240))
 
         # Strategy 1: Find numbered list items (very common in lectures)
         number_patterns = [
@@ -795,8 +823,8 @@ Video Path: {video_info['video_path']}
                     # Update last_end_idx to prevent overlap
                     last_end_idx = end_idx + 1
 
-            # Try to get up to 15 themes
-            themes = themes[:15]
+            # Try to get up to theme_cap themes
+            themes = themes[:theme_cap]
 
         # Fallback strategy: if not enough themes found, use sliding window
         if len(themes) < 3:
@@ -829,14 +857,14 @@ Video Path: {video_info['video_path']}
                         'type': 'window'
                     })
 
-            themes = themes[:12]
+            themes = themes[:int(theme_cap * 0.8)]
 
         # Add titles and reasons
         for theme in themes:
             theme['title'] = self._generate_theme_title(theme['text'])
             theme['reason'] = self._get_theme_reason(theme['text'])
 
-        return themes[:15]
+        return themes[:theme_cap]
 
     def _format_timestamp(self, seconds: float) -> str:
         """Format seconds to SRT timestamp."""

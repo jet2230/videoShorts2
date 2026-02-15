@@ -84,6 +84,12 @@ task_counter = 0
 
 import multiprocessing
 
+# Set start method to 'spawn' for CUDA compatibility in subprocesses
+try:
+    multiprocessing.set_start_method('spawn', force=True)
+except RuntimeError:
+    pass
+
 # Global process manager for shared state
 task_manager = None
 tasks = {}
@@ -280,10 +286,72 @@ def save_settings():
     if 'theme' in data:
         settings.set('theme', 'ai_enabled', 'true' if data['theme'].get('ai_enabled', False) else 'false')
         settings.set('theme', 'ai_model', data['theme'].get('ai_model', 'llama3'))
+        
+        # New theme settings
+        if 'theme_cap' in data['theme']:
+            settings.set('theme', 'theme_cap', str(data['theme']['theme_cap']))
+        if 'target_themes_per_window' in data['theme']:
+            settings.set('theme', 'target_themes_per_window', str(data['theme']['target_themes_per_window']))
+        if 'min_duration' in data['theme']:
+            settings.set('theme', 'min_duration', str(data['theme']['min_duration']))
+        if 'max_duration' in data['theme']:
+            settings.set('theme', 'max_duration', str(data['theme']['max_duration']))
 
-    # Save to file
-    with open('settings.ini', 'w') as f:
-        settings.write(f)
+    # Save to file with comments manually to preserve them
+    try:
+        with open('settings.ini', 'w', encoding='utf-8') as f:
+            f.write("; YouTube Shorts Creator Settings\n\n")
+            
+            f.write("[whisper]\n")
+            f.write(f"; Whisper model size: tiny, base, small, medium, large\n")
+            f.write(f"model = {settings.get('whisper', 'model')}\n")
+            f.write(f"; Default language code or 'auto' for detection\n")
+            f.write(f"language = {settings.get('whisper', 'language')}\n")
+            f.write(f"; Task type: transcribe or translate\n")
+            f.write(f"task = {settings.get('whisper', 'task')}\n\n")
+            
+            f.write("[video]\n")
+            f.write(f"; Directory where processed content is stored\n")
+            f.write(f"output_dir = {settings.get('video', 'output_dir')}\n")
+            f.write(f"; Output video shape (Shorts MUST be 9:16)\n")
+            f.write(f"aspect_ratio = {settings.get('video', 'aspect_ratio')}\n")
+            f.write(f"resolution_width = {settings.get('video', 'resolution_width')}\n")
+            f.write(f"resolution_height = {settings.get('video', 'resolution_height')}\n")
+            f.write(f"codec = {settings.get('video', 'codec')}\n")
+            f.write(f"preset = {settings.get('video', 'preset')}\n")
+            f.write(f"crf = {settings.get('video', 'crf')}\n\n")
+            
+            f.write("[subtitle]\n")
+            f.write(f"font_name = {settings.get('subtitle', 'font_name')}\n")
+            f.write(f"font_size = {settings.get('subtitle', 'font_size')}\n")
+            f.write(f"primary_colour = {settings.get('subtitle', 'primary_colour')}\n")
+            f.write(f"back_colour = {settings.get('subtitle', 'back_colour')}\n")
+            f.write(f"outline_colour = {settings.get('subtitle', 'outline_colour')}\n")
+            f.write(f"alignment = {settings.get('subtitle', 'alignment')}\n")
+            f.write(f"margin_v = {settings.get('subtitle', 'margin_v')}\n\n")
+            
+            f.write("[theme]\n")
+            f.write(f"; Duration range for clips\n")
+            f.write(f"min_duration = {settings.get('theme', 'min_duration')}\n")
+            f.write(f"max_duration = {settings.get('theme', 'max_duration')}\n")
+            f.write(f"; AI theme detection settings\n")
+            f.write(f"ai_enabled = {settings.get('theme', 'ai_enabled')}\n")
+            f.write(f"ai_model = {settings.get('theme', 'ai_model')}\n")
+            f.write(f"ai_provider = {settings.get('theme', 'ai_provider')}\n")
+            f.write(f"; Window-based processing for long videos\n")
+            f.write(f"window_duration = {settings.get('theme', 'window_duration')}\n")
+            f.write(f"window_overlap = {settings.get('theme', 'window_overlap')}\n")
+            f.write(f"; Global limit on total themes per video\n")
+            f.write(f"theme_cap = {settings.get('theme', 'theme_cap')}\n")
+            f.write(f"; Themes to find in each 10-minute window\n")
+            f.write(f"target_themes_per_window = {settings.get('theme', 'target_themes_per_window')}\n\n")
+            
+            f.write("[folder]\n")
+            f.write(f"naming_scheme = {settings.get('folder', 'naming_scheme')}\n")
+            f.write(f"number_padding = {settings.get('folder', 'number_padding')}\n")
+    except Exception as e:
+        app_logger.error(f"Error saving settings.ini: {e}")
+        return jsonify({'error': str(e)}), 500
 
     return jsonify({'success': True})
 

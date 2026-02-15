@@ -1309,6 +1309,7 @@
                         <option value="medium">Medium</option>
                         <option value="large">Large (best)</option>
                     </select>
+                    <div class="help-text">Larger models are more accurate but require more GPU memory and time. "Medium" is usually the best balance.</div>
                 </div>
 
                 <div class="form-group">
@@ -1321,11 +1322,13 @@
                         <option value="de">German</option>
                         <option value="auto">Auto-detect</option>
                     </select>
+                    <div class="help-text">Force a specific language or use "Auto-detect" for mixed content.</div>
                 </div>
 
                 <div class="form-group">
                     <label>Video Output Directory</label>
                     <input type="text" id="setting-video-output-dir">
+                    <div class="help-text">The root folder where all processed videos and themes will be stored.</div>
                 </div>
 
                 <div class="form-group">
@@ -1335,6 +1338,7 @@
                         <option value="16:9">16:9 (Horizontal)</option>
                         <option value="1:1">1:1 (Square)</option>
                     </select>
+                    <div class="help-text">The frame shape of the output video. Shorts MUST be 9:16.</div>
                 </div>
 
                 <div class="form-group">
@@ -1342,6 +1346,7 @@
                         <input type="checkbox" id="setting-ai-enabled">
                         Enable AI Theme Detection
                     </label>
+                    <div class="help-text">Use a local LLM (via Ollama) to intelligently find topic boundaries instead of just using keywords.</div>
                 </div>
 
                 <div class="form-group">
@@ -1351,6 +1356,29 @@
                         <option value="mistral">Mistral</option>
                         <option value="gemma">Gemma</option>
                     </select>
+                    <div class="help-text">Which local LLM to use. Llama 3 is highly recommended for theme identification.</div>
+                </div>
+
+                <div class="form-group">
+                    <label>Theme Cap (Max total themes)</label>
+                    <input type="number" id="setting-theme-cap" min="1" max="200" step="1">
+                    <div class="help-text">Maximum number of themes to generate for the entire video.</div>
+                </div>
+
+                <div class="form-group">
+                    <label>Themes Per Window</label>
+                    <input type="number" id="setting-themes-per-window" min="1" max="20" step="1">
+                    <div class="help-text">Target number of themes for each 10-minute section of the video.</div>
+                </div>
+
+                <div class="form-group">
+                    <label>Theme Duration Range (seconds)</label>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="number" id="setting-theme-min-duration" placeholder="Min" style="width: 80px;">
+                        <span>to</span>
+                        <input type="number" id="setting-theme-max-duration" placeholder="Max" style="width: 80px;">
+                    </div>
+                    <div class="help-text">Standard shorts are 30-90 seconds.</div>
                 </div>
 
                 <button class="btn btn-primary" id="save-settings-btn">Save Settings</button>
@@ -2025,6 +2053,12 @@
                 document.getElementById('setting-video-aspect-ratio').value = settings.video.aspect_ratio;
                 document.getElementById('setting-ai-enabled').checked = settings.theme.ai_enabled;
                 document.getElementById('setting-ai-model').value = settings.theme.ai_model;
+                
+                // New theme settings
+                document.getElementById('setting-theme-cap').value = settings.theme.theme_cap || 50;
+                document.getElementById('setting-themes-per-window').value = settings.theme.target_themes_per_window || 8;
+                document.getElementById('setting-theme-min-duration').value = settings.theme.min_duration || 30;
+                document.getElementById('setting-theme-max-duration').value = settings.theme.max_duration || 240;
             } catch (error) {
                 showNotification('Error loading settings: ' + error.message, 'error');
             }
@@ -2044,6 +2078,10 @@
                 theme: {
                     ai_enabled: document.getElementById('setting-ai-enabled').checked,
                     ai_model: document.getElementById('setting-ai-model').value,
+                    theme_cap: document.getElementById('setting-theme-cap').value,
+                    target_themes_per_window: document.getElementById('setting-themes-per-window').value,
+                    min_duration: document.getElementById('setting-theme-min-duration').value,
+                    max_duration: document.getElementById('setting-theme-max-duration').value
                 }
             };
 
