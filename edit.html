@@ -306,6 +306,11 @@
             background: rgba(255, 255, 255, 0.1);
         }
 
+        .checkbox-item.active {
+            background: rgba(0, 255, 157, 0.2) !important;
+            border: 1px solid rgba(0, 255, 157, 0.4) !important;
+        }
+
         .checkbox-item input[type="checkbox"] {
             width: 18px;
             height: 18px;
@@ -566,6 +571,7 @@
 
         .shake-animation {
             animation: shake 0.2s infinite;
+            animation-play-state: paused;
         }
 
         @keyframes shake {
@@ -1280,14 +1286,6 @@
     <div class="editor-layout">
         <!-- Left Toolbar -->
         <div class="toolbar-left">
-            <button class="tool-btn" onclick="togglePanel('trim')" data-panel="trim">
-                ✂️
-                <span class="tooltip">Trim</span>
-            </button>
-            <button class="tool-btn" onclick="togglePanel('speed')" data-panel="speed">
-                ⏱️
-                <span class="tooltip">Speed</span>
-            </button>
             <button class="tool-btn" onclick="togglePanel('effects')" data-panel="effects">
                 ✨
                 <span class="tooltip">Effects</span>
@@ -1295,6 +1293,10 @@
             <button class="tool-btn" onclick="togglePanel('lighting')" data-panel="lighting">
                 💡
                 <span class="tooltip">Lighting</span>
+            </button>
+            <button class="tool-btn" onclick="togglePanel('animations')" data-panel="animations">
+                🎬
+                <span class="tooltip">Animations</span>
             </button>
         </div>
 
@@ -1325,9 +1327,12 @@
                                 <option value="8">8x</option>
                             </select>
                         </div>
-                        <div class="checkbox-item" style="padding: 4px 10px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); margin-bottom: 0; display: flex; align-items: center; gap: 5px;">
+                        <div class="checkbox-item" id="logoMasterToggle" style="padding: 4px 10px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); margin-bottom: 0; display: flex; align-items: center; gap: 5px; display: none !important;">
                             <span style="font-size: 11px; white-space: nowrap;">🏢 Logo</span>
                             <input type="checkbox" id="logoEnabled" onchange="toggleLogoVisibility()" style="width: 14px; height: 14px;">
+                        </div>
+                        <div id="activeAnimationsToggles" style="display: flex; gap: 8px;">
+                            <!-- Dynamic animation toggles will appear here -->
                         </div>
                         <button class="clear-all-btn" onclick="clearAllEffects()" title="Remove all effect markers" style="margin-top: 0; margin-left: 0;">🗑️ Clear All</button>
                     </div>
@@ -1561,6 +1566,22 @@
             </div>
             <div class="effect-item-wrapper">
                 <label class="checkbox-item effect-with-preview">
+                    <input type="checkbox" id="effectCameraGlare" data-effect="cameraGlare" onchange="toggleEffectPreview(this, 'cameraGlare')">
+                    <span>✨ Camera Flash</span>
+                    <button class="effect-preview-btn" onclick="previewVideoEffect('cameraGlare')" style="display: none;">👁️</button>
+                </label>
+                <div class="effect-duration-options" id="durationCameraGlare" style="display: none;">
+                    <select class="duration-select" onchange="updateEffectDuration('cameraGlare', this.value)">
+                        <option value="2">2 seconds</option>
+                        <option value="5" selected>5 seconds</option>
+                        <option value="10">10 seconds</option>
+                        <option value="custom">Custom...</option>
+                    </select>
+                    <input type="number" class="custom-duration-input" id="customCameraGlare" placeholder="Seconds" min="1" style="display: none;" onchange="updateEffectDuration('cameraGlare', this.value)">
+                </div>
+            </div>
+            <div class="effect-item-wrapper">
+                <label class="checkbox-item effect-with-preview">
                     <input type="checkbox" id="effectNeon" data-effect="neon" onchange="toggleEffectPreview(this, 'neon')">
                     <span>Neon Edges</span>
                     <button class="effect-preview-btn" onclick="previewVideoEffect('neon')" style="display: none;">👁️</button>
@@ -1747,26 +1768,55 @@
         <div style="border-top: 1px solid rgba(255,255,255,0.1); margin: 15px 0;"></div>
         <label style="display: block; font-size: 12px; color: #aaa; margin-bottom: 8px; text-transform: uppercase;">Cinematic Presets</label>
         
-        <div class="checkbox-group">
-            <label class="checkbox-item" onclick="applyLightingPreset('warm')">
+        <div class="checkbox-group" id="lightingPresets">
+            <label class="checkbox-item" id="preset-warm" onclick="applyLightingPreset('warm')">
+                <input type="radio" name="lightPreset" style="display: none;">
                 <span>🌅 Golden Hour (Warm)</span>
             </label>
-            <label class="checkbox-item" onclick="applyLightingPreset('cool')">
+            <label class="checkbox-item" id="preset-cool" onclick="applyLightingPreset('cool')">
+                <input type="radio" name="lightPreset" style="display: none;">
                 <span>❄️ Cool Mist (Cold)</span>
             </label>
-            <label class="checkbox-item" onclick="applyLightingPreset('vivid')">
+            <label class="checkbox-item" id="preset-vivid" onclick="applyLightingPreset('vivid')">
+                <input type="radio" name="lightPreset" style="display: none;">
                 <span>🌈 High Vivid</span>
             </label>
-            <label class="checkbox-item" onclick="applyLightingPreset('dreamy')">
+            <label class="checkbox-item" id="preset-dreamy" onclick="applyLightingPreset('dreamy')">
+                <input type="radio" name="lightPreset" style="display: none;">
                 <span>✨ Dreamy Glow</span>
             </label>
-            <label class="checkbox-item" onclick="applyLightingPreset('noir')">
+            <label class="checkbox-item" id="preset-noir" onclick="applyLightingPreset('noir')">
+                <input type="radio" name="lightPreset" style="display: none;">
                 <span>🎬 Film Noir</span>
             </label>
             <label class="checkbox-item" onclick="applyLightingPreset('reset')" style="background: rgba(255,68,68,0.1);">
+                <input type="radio" name="lightPreset" style="display: none;">
                 <span style="color: #ff4444;">↺ Reset Lighting</span>
             </label>
         </div>
+    </div>
+
+    <!-- Animations Panel -->
+    <div class="tool-panel left" id="panel-animations">
+        <button class="close-panel" onclick="closePanel('animations')">×</button>
+        <h3><span class="icon">🎬</span> Animations</h3>
+        
+        <div class="checkbox-group">
+            <label class="checkbox-item" id="anim-cameraGlare">
+                <input type="checkbox" id="animCameraGlare" onchange="toggleAnimation('cameraGlare')">
+                <span>✨ Global Camera Flash</span>
+            </label>
+            <div id="flashIntensityControl" style="margin-top: 10px; padding-left: 28px; display: none;">
+                <label style="display: block; font-size: 11px; color: #aaa; margin-bottom: 5px;">Global Intensity</label>
+                <div class="range-wrapper">
+                    <input type="range" id="flashIntensity" min="1" max="10" step="1" value="5" oninput="updateFlashIntensityDisplay(); applyVideoEffects();">
+                    <span class="value" id="valFlashIntensity" style="min-width: 20px;">5</span>
+                </div>
+            </div>
+        </div>
+        <p style="font-size: 11px; color: #888; margin-top: 10px;">
+            * Animations are applied globally throughout the video.
+        </p>
     </div>
 
     <!-- Subtitles Panel -->
@@ -1972,6 +2022,13 @@
             scale: 0.5,
             stretchWidth: false
         };
+        let currentLightingPreset = null;
+        let activeAnimations = {
+            cameraGlare: false
+        };
+        let animationToggles = {
+            cameraGlare: true // Whether the specific toggle in the header is ON
+        };
         let currentPanel = null;
         let isDraggingStart = false;
         let isDraggingEnd = false;
@@ -2031,6 +2088,14 @@
                     wrapper.scrollTo({ left: scrollTarget, behavior: 'smooth' });
                 }
             }
+        });
+
+        // Sync CSS animations with video play/pause
+        video.addEventListener('play', () => {
+            video.style.animationPlayState = 'running';
+        });
+        video.addEventListener('pause', () => {
+            video.style.animationPlayState = 'paused';
         });
 
         function toggleTimelineZoom() {
@@ -2683,6 +2748,7 @@
         // Update logo list
         function updateLogoList() {
             const container = document.getElementById('logoList');
+            if (!container) return;
             container.innerHTML = '';
 
             logoFiles.forEach((logo, index) => {
@@ -2707,6 +2773,18 @@
             });
         }
 
+        // Update logo toggle visibility in header
+        function updateLogoMasterVisibility() {
+            const masterToggle = document.getElementById('logoMasterToggle');
+            if (!masterToggle) return;
+
+            if (activeLogo.id) {
+                masterToggle.style.setProperty('display', 'flex', 'important');
+            } else {
+                masterToggle.style.setProperty('display', 'none', 'important');
+            }
+        }
+
         // Select logo
         function selectLogo(index) {
             const logo = logoFiles[index];
@@ -2715,6 +2793,7 @@
             activeLogo.enabled = true;
             document.getElementById('logoEnabled').checked = true;
             updateLogoList();
+            updateLogoMasterVisibility();
             renderLogo();
         }
 
@@ -2740,6 +2819,7 @@
             }
             logoFiles.splice(index, 1);
             updateLogoList();
+            updateLogoMasterVisibility();
             renderLogo();
         }
 
@@ -3403,6 +3483,11 @@
             }
         }
         function applyVideoEffects() {
+            // Ensure flash keyframes are generated
+            if (typeof updateFlashIntensityDisplay === 'function') {
+                updateFlashIntensityDisplay();
+            }
+
             // Check if face tracking is enabled and preserve its transform
             const faceTrackingEnabled = document.getElementById('faceTracking').checked;
             const faceTrackingZoom = faceTrackingEnabled ? parseFloat(document.getElementById('faceZoomLevel').value) : null;
@@ -3412,13 +3497,26 @@
             video.style.objectFit = 'contain';
             video.style.transformOrigin = 'center center';
             video.classList.remove('shake-animation');
+            video.classList.remove('glare-animation');
             
             let transforms = [];
             let filters = [];
 
+            // Apply global animations
+            if (activeAnimations.cameraGlare && animationToggles.cameraGlare !== false) {
+                video.classList.add('glare-animation');
+            }
+
             // Apply each active timeline effect
             for (const effectType of activeEffects) {
                 switch (effectType) {
+                    case 'cameraGlare':
+                        video.classList.add('glare-animation');
+                        // Force animation state to match video if it's already playing
+                        if (!video.paused) {
+                            video.style.animationPlayState = 'running';
+                        }
+                        break;
                     case 'mirror':
                         transforms.push('scaleX(-1)');
                         break;
@@ -3562,6 +3660,125 @@
             applyVideoEffects();
         }
 
+        // Toggle animation from sidebar
+        function toggleAnimation(animName) {
+            const checkbox = document.getElementById('anim' + animName.charAt(0).toUpperCase() + animName.slice(1));
+            if (checkbox) {
+                activeAnimations[animName] = checkbox.checked;
+                
+                // Toggle active class on sidebar label
+                const label = document.getElementById('anim-' + animName);
+                if (label) {
+                    if (checkbox.checked) label.classList.add('active');
+                    else label.classList.remove('active');
+                }
+
+                // Special handling for flash intensity control
+                if (animName === 'cameraGlare') {
+                    const control = document.getElementById('flashIntensityControl');
+                    if (control) control.style.display = checkbox.checked ? 'block' : 'none';
+                }
+                
+                updateAnimationsMasterVisibility();
+                applyVideoEffects();
+            }
+        }
+
+        function updateFlashIntensityDisplay() {
+            const val = document.getElementById('flashIntensity').value;
+            document.getElementById('valFlashIntensity').textContent = val;
+            updateFlashAnimation(val);
+        }
+
+        function updateFlashAnimation(intensity) {
+            let styleEl = document.getElementById('dynamic-flash-style');
+            if (!styleEl) {
+                styleEl = document.createElement('style');
+                styleEl.id = 'dynamic-flash-style';
+                document.head.appendChild(styleEl);
+            }
+
+            const numFlashes = parseInt(intensity);
+            const flashDuration = 1; // 1 second total cycle
+            const flashWidthPct = Math.min(8, 60 / numFlashes); // % of the duration
+            
+            let keyframes = ['0%, 100% { filter: var(--base-filters, brightness(1)); }'];
+            
+            // Base filters include user lighting settings
+            const b = document.getElementById('lightBrightness')?.value || 100;
+            const c = document.getElementById('lightContrast')?.value || 100;
+            const s = document.getElementById('lightSaturation')?.value || 100;
+            const e = parseFloat(document.getElementById('lightExposure')?.value || 0);
+            const baseFilters = `brightness(${b}%) contrast(${c}%) saturate(${s}%) brightness(${100 + (e * 20)}%)`;
+
+            for (let i = 0; i < numFlashes; i++) {
+                const start = (i / numFlashes) * 100;
+                const peak = start + (flashWidthPct / 2);
+                const end = start + flashWidthPct;
+                
+                const brightnessMult = i % 2 === 0 ? 1.6 : 1.3;
+                
+                keyframes.push(`${start.toFixed(1)}% { filter: ${baseFilters}; }`);
+                keyframes.push(`${peak.toFixed(1)}% { filter: ${baseFilters} brightness(${brightnessMult}); }`);
+                keyframes.push(`${end.toFixed(1)}% { filter: ${baseFilters}; }`);
+            }
+
+            styleEl.innerHTML = `
+                @keyframes camera-glare {
+                    ${keyframes.join('\n')}
+                }
+                .glare-animation {
+                    animation: camera-glare ${flashDuration}s infinite !important;
+                    animation-play-state: paused;
+                }
+            `;
+        }
+
+        // Update specific toggles in timeline header
+        function updateAnimationsMasterVisibility() {
+            const container = document.getElementById('activeAnimationsToggles');
+            if (!container) return;
+
+            // Clear container
+            container.innerHTML = '';
+
+            // Display names mapping
+            const displayNames = {
+                cameraGlare: '✨ Camera Flash'
+            };
+
+            // Add a toggle for each active animation
+            for (const [anim, activated] of Object.entries(activeAnimations)) {
+                if (activated) {
+                    const toggleDiv = document.createElement('div');
+                    toggleDiv.className = 'checkbox-item';
+                    toggleDiv.style.cssText = 'padding: 4px 10px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); margin-bottom: 0; display: flex; align-items: center; gap: 5px;';
+                    
+                    const span = document.createElement('span');
+                    span.style.cssText = 'font-size: 11px; white-space: nowrap;';
+                    span.textContent = displayNames[anim] || anim;
+                    
+                    const input = document.createElement('input');
+                    input.type = 'checkbox';
+                    input.checked = animationToggles[anim] !== false;
+                    input.style.cssText = 'width: 14px; height: 14px;';
+                    input.onchange = (e) => {
+                        animationToggles[anim] = e.target.checked;
+                        applyVideoEffects();
+                    };
+                    
+                    toggleDiv.appendChild(span);
+                    toggleDiv.appendChild(input);
+                    container.appendChild(toggleDiv);
+                }
+            }
+        }
+
+        // Master switch for all animations (deprecated but kept for compatibility)
+        function toggleAnimationsMaster() {
+            applyVideoEffects();
+        }
+
         // Update lighting preview
         function updateLightingPreview() {
             applyVideoEffects();
@@ -3570,6 +3787,30 @@
         // Apply lighting preset
         function applyLightingPreset(preset) {
             console.log('Applying lighting preset:', preset);
+            
+            // Handle toggle active state
+            const presetContainer = document.getElementById('lightingPresets');
+            if (presetContainer) {
+                const labels = presetContainer.querySelectorAll('.checkbox-item');
+                labels.forEach(l => {
+                    l.classList.remove('active');
+                    const radio = l.querySelector('input[type="radio"]');
+                    if (radio) radio.checked = false;
+                });
+
+                if (preset !== 'reset') {
+                    currentLightingPreset = preset;
+                    const activeLabel = document.getElementById(`preset-${preset}`);
+                    if (activeLabel) {
+                        activeLabel.classList.add('active');
+                        const radio = activeLabel.querySelector('input[type="radio"]');
+                        if (radio) radio.checked = true;
+                    }
+                } else {
+                    currentLightingPreset = null;
+                }
+            }
+
             const b = document.getElementById('lightBrightness');
             const c = document.getElementById('lightContrast');
             const e = document.getElementById('lightExposure');
@@ -4008,8 +4249,22 @@
                     brightness: document.getElementById('lightBrightness').value,
                     contrast: document.getElementById('lightContrast').value,
                     exposure: document.getElementById('lightExposure').value,
-                    saturation: document.getElementById('lightSaturation').value
+                    saturation: document.getElementById('lightSaturation').value,
+                    preset: currentLightingPreset
                 },
+                animations: Object.fromEntries(
+                    Object.entries(activeAnimations)
+                        .filter(([anim, activated]) => activated && animationToggles[anim] !== false)
+                        .map(([anim, activated]) => {
+                            if (anim === 'cameraGlare') {
+                                return [anim, { 
+                                    enabled: true, 
+                                    intensity: document.getElementById('flashIntensity').value 
+                                }];
+                            }
+                            return [anim, true];
+                        })
+                ),
                 effect_markers: effectMarkersData,
                 broll: brollFiles.map(f => f.name),
                 images: [
@@ -4353,6 +4608,7 @@
             updateBrollList();
             updateImageList();
             updateLogoList();
+            updateLogoMasterVisibility();
 
             // Reset lighting sliders and labels
             document.getElementById('lightBrightness').value = 100;
@@ -4363,6 +4619,22 @@
             document.getElementById('valContrast').textContent = '100%';
             document.getElementById('valExposure').textContent = '0';
             document.getElementById('valSaturation').textContent = '100%';
+            
+            currentLightingPreset = null;
+            const presetContainer = document.getElementById('lightingPresets');
+            if (presetContainer) {
+                const labels = presetContainer.querySelectorAll('.checkbox-item');
+                labels.forEach(lbl => lbl.classList.remove('active'));
+            }
+
+            // Reset animations
+            activeAnimations = { cameraGlare: false };
+            animationToggles = { cameraGlare: true };
+            document.querySelectorAll('[id^="anim"]').forEach(el => {
+                if (el.type === 'checkbox') el.checked = false;
+                if (el.classList.contains('checkbox-item')) el.classList.remove('active');
+            });
+            updateAnimationsMasterVisibility();
 
             // Remove all effect markers from the DOM and clear all data
             for (const effectType of Object.keys(effectMarkers)) {
@@ -4454,7 +4726,8 @@
                     brightness: document.getElementById('lightBrightness').value,
                     contrast: document.getElementById('lightContrast').value,
                     exposure: document.getElementById('lightExposure').value,
-                    saturation: document.getElementById('lightSaturation').value
+                    saturation: document.getElementById('lightSaturation').value,
+                    preset: currentLightingPreset
                 },
                 effectMarkers: effectMarkersData,
                 images: imageFiles.map(img => ({
@@ -4470,7 +4743,9 @@
                     }))
                 })),
                 logoFiles: logoFiles.map(l => ({ id: l.id, name: l.name })),
-                activeLogo: activeLogo
+                activeLogo: activeLogo,
+                animations: activeAnimations,
+                animationToggles: animationToggles
             };
             console.log('Current settings:', current);
             return current;
@@ -4565,6 +4840,18 @@
                 document.getElementById('valExposure').textContent = (l.exposure > 0 ? '+' : '') + (l.exposure || 0);
                 document.getElementById('valSaturation').textContent = (l.saturation || 100) + '%';
                 
+                if (l.preset) {
+                    currentLightingPreset = l.preset;
+                    // Apply visual state without re-applying values (they are already set above)
+                    const presetContainer = document.getElementById('lightingPresets');
+                    if (presetContainer) {
+                        const labels = presetContainer.querySelectorAll('.checkbox-item');
+                        labels.forEach(lbl => lbl.classList.remove('active'));
+                        const activeLabel = document.getElementById(`preset-${l.preset}`);
+                        if (activeLabel) activeLabel.classList.add('active');
+                    }
+                }
+
                 updateLightingPreview();
             }
 
@@ -4658,7 +4945,27 @@
                 activeLogo = { ...settings.activeLogo };
                 const toggle = document.getElementById('logoEnabled');
                 if (toggle) toggle.checked = activeLogo.enabled;
+                updateLogoMasterVisibility();
                 renderLogo();
+            }
+
+            // Apply animations
+            if (settings.animations) {
+                activeAnimations = { ...settings.animations };
+                if (settings.animationToggles) {
+                    animationToggles = { ...settings.animationToggles };
+                }
+
+                for (const [anim, enabled] of Object.entries(activeAnimations)) {
+                    const cb = document.getElementById('anim' + anim.charAt(0).toUpperCase() + anim.slice(1));
+                    if (cb) cb.checked = enabled;
+                    const lbl = document.getElementById('anim-' + anim);
+                    if (lbl) {
+                        if (enabled) lbl.classList.add('active');
+                        else lbl.classList.remove('active');
+                    }
+                }
+                updateAnimationsMasterVisibility();
             }
 
             // Final sync of all visual states

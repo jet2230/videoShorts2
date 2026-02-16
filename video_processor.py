@@ -55,6 +55,9 @@ class VideoProcessor:
         image_settings = settings.get('images', [])
         global_effects = settings.get('effects', {})
         lighting = settings.get('lighting', {})
+        animations = settings.get('animations', {})
+        
+        log(f"Received animations: {animations}")
 
         log("Starting optimized video processing...")
 
@@ -95,19 +98,43 @@ class VideoProcessor:
         # Build filter complex
         vf_filters = []
         
-        # 0. Global Lighting adjustments
-        if lighting:
-            b = (float(lighting.get('brightness', 100)) - 100) / 100.0
-            c = float(lighting.get('contrast', 100)) / 100.0
-            s = float(lighting.get('saturation', 100)) / 100.0
-            exp = float(lighting.get('exposure', 0))
+        # 0. Global Lighting (Multiplicative model to match UI CSS filters)
+        b_ui = float(lighting.get('brightness', 100)) / 100.0
+        e_ui = float(lighting.get('exposure', 0))
+        c_ui = float(lighting.get('contrast', 100)) / 100.0
+        s_ui = float(lighting.get('saturation', 100)) / 100.0
+        
+        # Base multiplier from UI (Brightness * Exposure approximation)
+        base_M = b_ui * (1.0 + e_ui * 0.2)
+        safe_M = max(0.001, base_M)
+        
+        # Global Flash multiplier
+        global_flash_expr = "1.0"
+        cam_glare_global = animations.get('cameraGlare') or animations.get('cameraFlash')
+        if cam_glare_global:
+            intensity = 5
+            if isinstance(cam_glare_global, dict):
+                intensity = int(cam_glare_global.get('intensity', 5))
             
-            # Use eq filter for brightness, contrast, saturation
-            vf_filters.append(f"eq=brightness={b}:contrast={c}:saturation={s}")
-            
-            # Use exposure filter
-            if exp != 0:
-                vf_filters.append(f"exposure=exposure={exp}")
+            num_flashes = max(1, intensity)
+            flash_width = min(0.05, 0.4 / num_flashes)
+            spikes = []
+            for i in range(num_flashes):
+                s = i / num_flashes
+                e = s + flash_width
+                v = 0.7 if i % 2 == 0 else 0.4
+                spikes.append((s, e, v))
+            spike_exprs = [f"{v}*between(mod(t,1),{s:.3f},{e:.3f})" for s, e, v in spikes]
+            global_flash_expr = "1.0+" + "+".join(spike_exprs)
+        
+        # Formula to simulate multiplicative brightness M followed by centered contrast C using FFmpeg's eq filter:
+        # contrast = M * C
+        # brightness = 0.5 * C * (M - 1)
+        # Apply global lighting + global flash
+        c_expr_global = f"({safe_M}*({global_flash_expr})*{c_ui})"
+        b_expr_global = f"(0.5*{c_ui}*({safe_M}*({global_flash_expr})-1))"
+        
+        vf_filters.append(f"eq=contrast='{c_expr_global}':brightness='{b_expr_global}':saturation={s_ui}:eval=frame")
 
         # 1. Timeline-based effect filters
         for marker in effect_markers:
@@ -116,7 +143,35 @@ class VideoProcessor:
             e = marker['end_time']
             enable = f"between(t,{s},{e})"
             
-            if etype == 'mirror':
+            if etype == 'cameraGlare' or etype == 'cameraFlash':
+                # Local flash on top of global!
+                intensity = 5
+                if 'intensity' in marker:
+                    intensity = int(marker['intensity'])
+                
+                num_flashes = max(1, intensity)
+                flash_width = min(0.05, 0.4 / num_flashes)
+                
+                spikes = []
+                for i in range(num_flashes):
+                    spike_s = i / num_flashes
+                    spike_e = spike_s + flash_width
+                    v = 0.7 if i % 2 == 0 else 0.4
+                    spikes.append((spike_s, spike_e, v))
+                
+                spike_exprs = [f"{v}*between(mod(t,1),{ss:.3f},{ee:.3f})" for ss, ee, v in spikes]
+                flash_mult = "1.0+" + "+".join(spike_exprs)
+                
+                # Apply local flash to the already adjusted lighting
+                # contrast_final = contrast_current * flash_mult
+                # brightness_final = brightness_current + 0.5 * base_contrast * multiplier_current * (flash_mult - 1)
+                # But simpler: just another eq filter layer that adds the flash
+                
+                # We want to multiply brightness by flash_mult
+                # c = 1.0 * flash_mult
+                # b = 0.5 * 1.0 * (flash_mult - 1)
+                vf_filters.append(f"eq=contrast='{flash_mult}':brightness='0.5*({flash_mult}-1)':enable='{enable}':eval=frame")
+            elif etype == 'mirror':
                 vf_filters.append(f"hflip=enable='{enable}'")
             elif etype == 'grayscale':
                 vf_filters.append(f"hue=s=0:enable='{enable}'")
@@ -521,4 +576,3 @@ if __name__ == '__main__':
     }
 
     processor.apply_effects(output_video, settings)
-
