@@ -4,6 +4,7 @@ Flask server for the YouTube Shorts Creator web GUI.
 """
 
 from flask import Flask, jsonify, request, send_from_directory, send_file
+from werkzeug.utils import secure_filename
 from flask_cors import CORS
 import subprocess
 import threading
@@ -2620,6 +2621,36 @@ def _extract_audio_levels(video_path: Path, start_time: float, end_time: float) 
             levels = [l / max_level for l in levels]
             
         return levels
+
+@app.route('/media/<path:filename>')
+def serve_media(filename):
+    """Serve media files (audio, images, etc.) from the media directory."""
+    return send_from_directory('media', filename)
+
+@app.route('/api/upload-media', methods=['POST'])
+def upload_media():
+    """Handle media upload (images, audio, b-roll) for video editing."""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+    
+    if file:
+        filename = secure_filename(file.filename)
+        # Ensure media directory exists
+        media_dir = Path('media')
+        media_dir.mkdir(exist_ok=True)
+        
+        target_path = media_dir / filename
+        # Save the file (overwrites if already exists, stopping replication)
+        file.save(str(target_path))
+        
+        return jsonify({
+            'filename': filename,
+            'url': f'/media/{filename}'
+        })
 
 @app.route('/api/process-edit', methods=['POST'])
 def process_video_edit():

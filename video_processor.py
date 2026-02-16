@@ -52,6 +52,7 @@ class VideoProcessor:
 
         trim_settings = settings.get('trim', {})
         effect_markers = settings.get('effect_markers', [])
+        image_settings = settings.get('images', [])
         global_effects = settings.get('effects', {})
 
         log("Starting optimized video processing...")
@@ -68,13 +69,32 @@ class VideoProcessor:
             temp_dir_for_cleanup = tempfile.mkdtemp()
             intermediate_output = os.path.join(temp_dir_for_cleanup, 'intermediate.mp4')
 
+        # Build FFmpeg command
+        cmd = ['ffmpeg', '-y']
+        
+        # Fast input seeking for trim
+        if start_time != '0':
+            cmd.extend(['-ss', start_time])
+        
+        cmd.extend(['-i', str(self.video_path)])
+        
+        # Add additional inputs for images
+        image_inputs = []
+        for img_data in image_settings:
+            img_path = Path('media') / img_data['name']
+            if img_path.exists():
+                cmd.extend(['-i', str(img_path)])
+                image_inputs.append(img_data)
+            else:
+                log(f"Warning: Image not found: {img_path}")
+        
+        if end_time:
+            cmd.extend(['-t', end_time])
+
         # Build filter complex
         vf_filters = []
         
-        # 1. Base scaling to ensure consistency (optional, but good for stability)
-        # vf_filters.append("scale=trunc(iw/2)*2:trunc(ih/2)*2")
-
-        # 2. Add timeline-based filters from markers
+        # 1. Timeline-based effect filters
         for marker in effect_markers:
             etype = marker['type']
             s = marker['start_time']
@@ -90,52 +110,70 @@ class VideoProcessor:
             elif etype == 'blur':
                 vf_filters.append(f"gblur=sigma=5:enable='{enable}'")
             elif etype == 'glitch':
-                # RGB Shift + jitter
                 vf_filters.append(f"rgbashift=rh=4:gh=-4:enable='{enable}'")
             elif etype == 'vhs':
-                # Noise + Color bleed + subtle blur
                 vf_filters.append(f"noise=alls=15:allf=t+u,hue=s=0.4,gblur=sigma=1:enable='{enable}'")
             elif etype == 'neon':
-                # Edge detect + neon colors
                 vf_filters.append(f"edgedetect=low=0.1:high=0.4,hue=h=120:s=2:enable='{enable}'")
             elif etype == 'vignette':
                 vf_filters.append(f"vignette='PI/4':enable='{enable}'")
             elif etype == 'cinematic':
-                # Add black bars top and bottom
                 vf_filters.append(f"drawbox=y=0:h=ih*0.1:t=fill:c=black:enable='{enable}'")
                 vf_filters.append(f"drawbox=y=ih*0.9:h=ih*0.1:t=fill:c=black:enable='{enable}'")
             elif etype == 'vibrance':
                 vf_filters.append(f"vibrance=intensity=0.8:enable='{enable}'")
             elif etype == 'shake':
-                # Random crop/pan for shake effect
                 vf_filters.append(f"crop=w=iw-40:h=ih-40:x='20+20*sin(2*PI*t*10)':y='20+20*cos(2*PI*t*13)':enable='{enable}',scale={self.width}:{self.height}")
             elif etype == 'pixelate':
-                # Pixelate using scale down and scale up with neighbor flags
-                # This is tricky with 'enable' in a single filter string, so we use a sub-filter or boxblur as fallback
-                # For single pass with 'enable', boxblur is safer
                 vf_filters.append(f"boxblur=20:enable='{enable}'")
             elif etype == 'zoom':
-                # Zoom is tricky with 'enable'. We use a scale/crop chain.
-                # Since scale doesn't support 'enable', we use the 'zoompan' filter if possible, 
-                # or just fallback to the segmented approach for zoom specifically if needed.
-                # Actually, we can use the 'boxblur' trick or 'overlay' trick but for a single pass 
-                # let's use a slightly simplified approach or stick to the others.
-                # For now, we'll implement zoom using zoompan which is single-pass compatible.
                 vf_filters.append(f"zoompan=z='if({enable},1.2,1)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={self.width}x{self.height}:enable='{enable}'")
 
-        # Build FFmpeg command
-        cmd = ['ffmpeg', '-y']
-        
-        # Fast input seeking for trim
-        if start_time != '0':
-            cmd.extend(['-ss', start_time])
-        
-        cmd.extend(['-i', str(self.video_path)])
-        
-        if end_time:
-            cmd.extend(['-t', end_time])
-
+        # 2. Add image overlay filters
+        # Use filter_complex for multiple inputs
+        filter_complex = []
         if vf_filters:
+            # Join video filters and label result [v_base]
+            filter_complex.append("[0:v]" + ",".join(vf_filters) + "[v_base]")
+            last_v = "[v_base]"
+        else:
+            last_v = "[0:v]"
+            
+        overlay_count = 0
+        for i, img_data in enumerate(image_inputs):
+            # i+1 is the input index (0 is video)
+            input_label = f"[{i+1}:v]"
+            
+            for marker in img_data.get('markers', []):
+                output_label = f"[v_ov{overlay_count}]"
+                
+                s = marker['start_time']
+                e = marker['end_time']
+                x_pct = marker.get('x', 50)
+                y_pct = marker.get('y', 50)
+                scale_factor = marker.get('scale', 1.0)
+                
+                # Proper centering: main_w*x_pct/100 - overlay_w/2
+                x_pos = f"(main_w*{x_pct}/100-overlay_w/2)"
+                y_pos = f"(main_h*{y_pct}/100-overlay_h/2)"
+                
+                enable = f"between(t,{s},{e})"
+                
+                # Scale image based on video width and scale factor
+                # Use a unique scaled label per overlay instance
+                scaled_marker_label = f"[img_s_ov{overlay_count}]"
+                target_w = f"({self.width}*0.4*{scale_factor})"
+                filter_complex.append(f"{input_label}scale=w='{target_w}':h='-1'{scaled_marker_label}")
+                
+                filter_complex.append(f"{last_v}{scaled_marker_label}overlay=x='{x_pos}':y='{y_pos}':enable='{enable}'{output_label}")
+                last_v = output_label
+                overlay_count += 1
+
+        if filter_complex:
+            cmd.extend(['-filter_complex', ";".join(filter_complex)])
+            # Map the last result
+            cmd.extend(['-map', last_v, '-map', '0:a?'])
+        elif vf_filters:
             cmd.extend(['-vf', ",".join(vf_filters)])
 
         cmd.extend([

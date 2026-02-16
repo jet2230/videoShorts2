@@ -473,16 +473,47 @@
             position: relative;
             background: #000;
             border-radius: 12px;
-            overflow: hidden;
+            overflow: visible; /* Changed from hidden to see if it helps */
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
             max-height: 70vh;
             aspect-ratio: 9/16;
+            border: 1px solid #333;
+        }
+
+        #imageOverlay {
+            border: 1px solid rgba(255, 0, 0, 0.3); /* Debug border */
         }
 
         .video-wrapper video {
             width: 100%;
             height: 100%;
             object-fit: contain;
+        }
+
+        #imageOverlay img {
+            width: 100%;
+            height: auto;
+            display: block;
+            box-shadow: 0 0 30px rgba(0,0,0,0.5);
+            border: 2px solid #00ff9d; /* Bright green border for visibility */
+            border-radius: 4px;
+            cursor: move;
+            pointer-events: auto;
+        }
+
+        .image-resize-handle {
+            position: absolute;
+            width: 15px;
+            height: 15px;
+            background: #00ff9d;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            bottom: -7px;
+            right: -7px;
+            cursor: nwse-resize;
+            z-index: 100;
+            pointer-events: auto;
+            box-shadow: 0 0 5px rgba(0,0,0,0.5);
         }
 
         .video-info {
@@ -555,6 +586,31 @@
             display: flex;
             align-items: center;
             gap: 10px;
+            overflow: hidden; /* Prevent buttons from being pushed out */
+        }
+
+        .timeline-track-wrapper {
+            flex: 1;
+            overflow-x: auto;
+            overflow-y: visible;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(0, 255, 157, 0.6) rgba(255, 255, 255, 0.05);
+            min-width: 0;
+            position: relative;
+        }
+
+        .timeline-track-wrapper::-webkit-scrollbar {
+            height: 6px;
+        }
+
+        .timeline-track-wrapper::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 3px;
+        }
+
+        .timeline-track-wrapper::-webkit-scrollbar-thumb {
+            background: rgba(0, 255, 157, 0.3);
+            border-radius: 3px;
         }
 
         .timeline-effect-btn {
@@ -670,8 +726,9 @@
             border-radius: 6px;
             overflow: visible;
             cursor: pointer;
-            flex: 1;
-            min-width: 0;
+            width: 100%;
+            min-width: 100%;
+            transition: width 0.3s ease;
         }
 
         .timeline-video {
@@ -959,6 +1016,9 @@
         .effect-marker.zoom { background: rgba(162, 155, 254, 0.3); box-shadow: 0 0 8px rgba(162, 155, 254, 0.6); border-color: #a29bfe; }
         .effect-marker.zoom::before { color: #a29bfe; }
 
+        .effect-marker.image { background: rgba(255, 255, 0, 0.3); box-shadow: 0 0 8px rgba(255, 255, 0, 0.6); border-color: #ffff00; }
+        .effect-marker.image::before { content: '🖼️'; color: #ffff00; }
+
         .trim-handle:hover {
             background: #ffff00;
         }
@@ -989,47 +1049,6 @@
 
         .trim-handle.end::after {
             border-bottom: 6px solid #000;
-        }
-
-        .timeline-magnifier {
-            position: absolute;
-            width: 250px;
-            height: 90px;
-            background: #1a1a2e;
-            border: 3px solid #00ff9d;
-            border-radius: 10px;
-            pointer-events: none;
-            opacity: 0;
-            transition: opacity 0.15s ease;
-            z-index: 100;
-            overflow: hidden;
-            box-shadow: 0 6px 30px rgba(0, 255, 157, 0.5);
-            transform: translateX(-50%);
-        }
-
-        .timeline-magnifier.visible {
-            opacity: 1;
-        }
-
-        .magnifier-canvas {
-            width: 100%;
-            height: 100%;
-            display: block;
-        }
-
-        .magnifier-time {
-            position: absolute;
-            bottom: 5px;
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 13px;
-            color: #00ff9d;
-            background: rgba(0, 0, 0, 0.9);
-            padding: 4px 12px;
-            border-radius: 6px;
-            font-weight: bold;
-            white-space: nowrap;
-            border: 1px solid #00ff9d;
         }
 
         .action-bar {
@@ -1274,6 +1293,7 @@
         <div class="preview-area">
             <div class="video-wrapper">
                 <video id="mainVideo" controls></video>
+                <div id="imageOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2147483647 !important; display: block !important;"></div>
             </div>
             <div class="video-info" id="videoInfo">
                 Loading video info...
@@ -1285,7 +1305,18 @@
                         <span> / </span>
                         <span id="timelineDuration">00:00</span>
                     </div>
-                    <button class="clear-all-btn" onclick="clearAllEffects()" title="Remove all effect markers">🗑️ Clear All</button>
+                    <div style="display: flex; gap: 8px; margin-left: auto; align-items: center; margin-top: -38px;">
+                        <div class="checkbox-item" style="padding: 4px 10px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); margin-bottom: 0; display: flex; align-items: center; gap: 5px;">
+                            <span style="font-size: 11px; white-space: nowrap;">🔍 Zoom</span>
+                            <select id="timelineZoomLevel" onchange="toggleTimelineZoom()" style="background: #333; color: #fff; border: 1px solid #555; border-radius: 4px; font-size: 11px; padding: 2px;">
+                                <option value="1">1x</option>
+                                <option value="2">2x</option>
+                                <option value="4">4x</option>
+                                <option value="8">8x</option>
+                            </select>
+                        </div>
+                        <button class="clear-all-btn" onclick="clearAllEffects()" title="Remove all effect markers" style="margin-top: 0; margin-left: 0;">🗑️ Clear All</button>
+                    </div>
                 </div>
                 <div class="face-tracking-indicator" id="faceTrackingIndicator" style="display: none;">
                     👤 Face Tracking
@@ -1295,25 +1326,23 @@
                         📥
                         <span class="tooltip">Intro</span>
                     </button>
-                    <div class="timeline-track" id="timelineTrack">
-                        <div class="timeline-video"></div>
-                        <div class="timeline-audio" id="audioTrack">
-                            <canvas class="waveform-canvas" id="waveformCanvas"></canvas>
+                    <div class="timeline-track-wrapper">
+                        <div class="timeline-track" id="timelineTrack">
+                            <div class="timeline-video"></div>
+                            <div class="timeline-audio" id="audioTrack">
+                                <canvas class="waveform-canvas" id="waveformCanvas"></canvas>
+                            </div>
+                            <div class="timeline-trim" id="trimRegion">
+                                <div class="trim-handle start" id="trimStart"></div>
+                                <div class="trim-handle end" id="trimEnd"></div>
+                            </div>
+                            <div class="timeline-playhead" id="playhead"></div>
                         </div>
-                        <div class="timeline-trim" id="trimRegion">
-                            <div class="trim-handle start" id="trimStart"></div>
-                            <div class="trim-handle end" id="trimEnd"></div>
-                        </div>
-                        <div class="timeline-playhead" id="playhead"></div>
                     </div>
                     <button class="timeline-effect-btn outro-btn" onclick="togglePanel('outro')" data-panel="outro">
                         📤
                         <span class="tooltip">Outro</span>
                     </button>
-                </div>
-                <div class="timeline-magnifier" id="magnifier">
-                    <canvas class="magnifier-canvas" id="magnifierCanvas"></canvas>
-                    <div class="magnifier-time" id="magnifierTime">00:00</div>
                 </div>
             </div>
         </div>
@@ -1324,10 +1353,16 @@
                 📝
                 <span class="tooltip">Subtitles</span>
             </button>
-            <button class="tool-btn" onclick="togglePanel('audio')" data-panel="audio">
-                🎵
-                <span class="tooltip">Audio</span>
-            </button>
+            <div style="display: flex; gap: 10px; flex-direction: row-reverse; align-items: center;">
+                <button class="tool-btn" onclick="togglePanel('audio')" data-panel="audio">
+                    🎵
+                    <span class="tooltip">Audio</span>
+                </button>
+                <button class="tool-btn" onclick="togglePanel('images')" data-panel="images">
+                    🖼️
+                    <span class="tooltip">Images</span>
+                </button>
+            </div>
             <button class="tool-btn" onclick="togglePanel('broll')" data-panel="broll">
                 🎞️
                 <span class="tooltip">B-Roll</span>
@@ -1704,6 +1739,18 @@
         </div>
     </div>
 
+    <!-- Images Panel -->
+    <div class="tool-panel right" id="panel-images">
+        <button class="close-panel" onclick="closePanel('images')">×</button>
+        <h3><span class="icon">🖼️</span> Overlay Images</h3>
+        <div class="file-upload" onclick="document.getElementById('imageFile').click()">
+            <input type="file" id="imageFile" accept="image/*" multiple onchange="handleImageUpload(this)">
+            <div class="icon">🖼️</div>
+            <div class="text">Upload images</div>
+        </div>
+        <div id="imageList" style="margin-top: 15px;"></div>
+    </div>
+
     <!-- B-Roll Panel -->
     <div class="tool-panel right" id="panel-broll">
         <button class="close-panel" onclick="closePanel('broll')">×</button>
@@ -1811,12 +1858,11 @@
         const playhead = document.getElementById('playhead');
         const audioTrack = document.getElementById('audioTrack');
         const waveformCanvas = document.getElementById('waveformCanvas');
-        const magnifier = document.getElementById('magnifier');
-        const magnifierCanvas = document.getElementById('magnifierCanvas');
-        const magnifierTime = document.getElementById('magnifierTime');
 
         let audioFile = null;
         let brollFiles = [];
+        let imageFiles = [];
+        let imageMarkers = [];
         let currentPanel = null;
         let isDraggingStart = false;
         let isDraggingEnd = false;
@@ -1861,7 +1907,40 @@
             document.getElementById('currentTime').textContent = formatTime(video.currentTime);
             updatePlayhead();
             checkEffectMarkers(); // Check if we've crossed any effect markers
+            checkImageMarkers(); // Check if we've crossed any image markers
+            
+            // Auto-scroll timeline to keep playhead in view when zoomed
+            const zoomLevel = parseFloat(document.getElementById('timelineZoomLevel')?.value || 1);
+            if (zoomLevel > 1) {
+                const wrapper = document.querySelector('.timeline-track-wrapper');
+                const head = document.getElementById('playhead');
+                const headRect = head.getBoundingClientRect();
+                const wrapperRect = wrapper.getBoundingClientRect();
+                
+                if (headRect.right > wrapperRect.right - 50 || headRect.left < wrapperRect.left + 50) {
+                    const scrollTarget = (video.currentTime / video.duration) * timelineTrack.scrollWidth - wrapper.clientWidth / 2;
+                    wrapper.scrollTo({ left: scrollTarget, behavior: 'smooth' });
+                }
+            }
         });
+
+        function toggleTimelineZoom() {
+            const zoomLevel = parseFloat(document.getElementById('timelineZoomLevel').value);
+            const track = document.getElementById('timelineTrack');
+            
+            if (zoomLevel > 1) {
+                track.classList.add('zoomed');
+                track.style.width = (zoomLevel * 100) + '%';
+            } else {
+                track.classList.remove('zoomed');
+                track.style.width = '100%';
+            }
+            
+            // Redraw waveform and update all markers after transition
+            setTimeout(() => {
+                drawWaveform();
+            }, 300);
+        }
 
         // Spacebar to play/pause
         document.addEventListener('keydown', (e) => {
@@ -2153,102 +2232,7 @@
             });
         }
 
-        // Magnifier hover
-        timelineTrack.addEventListener('mousemove', (e) => {
-            const rect = timelineTrack.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const percent = Math.max(0, Math.min(1, x / rect.width));
-            const time = percent * (video.duration || 1);
-
-            // Position magnifier above the timeline (using absolute positioning)
-            magnifier.style.left = `${x}px`;
-            magnifier.style.bottom = `60px`;
-            magnifier.classList.add('visible');
-
-            // Update time display
-            magnifierTime.textContent = formatTime(time);
-
-            // Draw magnified view
-            drawMagnifiedView(x, percent);
-        });
-
-        timelineTrack.addEventListener('mouseleave', () => {
-            magnifier.classList.remove('visible');
-        });
-
         // Draw magnified view in magnifier
-        function drawMagnifiedView(x, percent) {
-            const canvas = magnifierCanvas;
-            const ctx = canvas.getContext('2d');
-
-            canvas.width = 250;
-            canvas.height = 90;
-
-            // Clear and draw background
-            ctx.fillStyle = '#1a1a2e';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Draw magnified waveform section
-            if (waveformPeaks.length > 0) {
-                const samplesToShow = 100;
-                const startIndex = Math.floor(percent * waveformPeaks.length) - samplesToShow / 2;
-                const barWidth = canvas.width / samplesToShow;
-
-                ctx.fillStyle = '#00ff9d';
-
-                for (let i = 0; i < samplesToShow; i++) {
-                    const peakIndex = startIndex + i;
-                    if (peakIndex >= 0 && peakIndex < waveformPeaks.length) {
-                        const peak = waveformPeaks[peakIndex];
-                        const barHeight = Math.max(2, peak * canvas.height * 0.75);
-                        const y = (canvas.height - barHeight) / 2;
-
-                        ctx.fillRect(i * barWidth, y, Math.ceil(barWidth), barHeight);
-                    }
-                }
-            } else {
-                // Draw placeholder waveform if not loaded yet
-                ctx.fillStyle = 'rgba(0, 255, 157, 0.5)';
-                for (let i = 0; i < 100; i++) {
-                    const barHeight = Math.random() * 30 + 5;
-                    const y = (canvas.height - barHeight) / 2;
-                    ctx.fillRect(i * (canvas.width / 100), y, canvas.width / 100 + 1, barHeight);
-                }
-            }
-
-            // Draw fine frame markers
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
-            ctx.lineWidth = 1;
-
-            for (let i = 0; i < 25; i++) {
-                const markerX = (i / 25) * canvas.width;
-                ctx.beginPath();
-                ctx.moveTo(markerX, 0);
-                ctx.lineTo(markerX, canvas.height);
-                ctx.stroke();
-            }
-
-            // Draw center cursor line
-            ctx.strokeStyle = '#00ff9d';
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.moveTo(canvas.width / 2, 0);
-            ctx.lineTo(canvas.width / 2, canvas.height);
-            ctx.stroke();
-
-            // Draw time brackets
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-            ctx.font = '10px monospace';
-            ctx.textAlign = 'center';
-
-            const time = percent * (video.duration || 1);
-            const startTime = Math.max(0, time - 0.5);
-            const endTime = Math.min(video.duration || 1, time + 0.5);
-
-            ctx.fillText(formatTime(startTime), 35, canvas.height - 12);
-            ctx.fillText(formatTime(endTime), canvas.width - 35, canvas.height - 12);
-        }
-
         // Extract waveform when video loads
         video.addEventListener('loadeddata', () => {
             extractWaveform();
@@ -2285,22 +2269,62 @@
         });
 
         // Handle audio upload
-        function handleAudioUpload(input) {
+        async function handleAudioUpload(input) {
             if (input.files && input.files[0]) {
-                audioFile = input.files[0];
-                document.getElementById('audioFilename').textContent = audioFile.name;
-                input.closest('.file-upload').classList.add('has-file');
-                audioTrack.style.display = 'block';
+                const file = input.files[0];
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                try {
+                    showNotification(`Uploading ${file.name}...`, 'info');
+                    const response = await fetch('/api/upload-media', { // We can reuse the same upload endpoint
+                        method: 'POST',
+                        body: formData
+                    });
+                    const result = await response.json();
+                    
+                    if (result.filename) {
+                        audioFile = file;
+                        document.getElementById('audioFilename').textContent = result.filename;
+                        input.closest('.file-upload').classList.add('has-file');
+                        audioTrack.style.display = 'block';
+                        showNotification(`${file.name} uploaded successfully`, 'success');
+                    }
+                } catch (error) {
+                    console.error('Audio upload error:', error);
+                    showNotification(`Error uploading ${file.name}`, 'error');
+                }
             }
         }
 
         // Handle B-roll upload
-        function handleBrollUpload(input) {
+        async function handleBrollUpload(input) {
             if (input.files) {
                 for (let file of input.files) {
-                    brollFiles.push(file);
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    
+                    try {
+                        showNotification(`Uploading ${file.name}...`, 'info');
+                        const response = await fetch('/api/upload-media', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        const result = await response.json();
+                        
+                        if (result.filename) {
+                            brollFiles.push({
+                                file: file,
+                                name: result.filename
+                            });
+                            updateBrollList();
+                            showNotification(`${file.name} uploaded successfully`, 'success');
+                        }
+                    } catch (error) {
+                        console.error('B-roll upload error:', error);
+                        showNotification(`Error uploading ${file.name}`, 'error');
+                    }
                 }
-                updateBrollList();
             }
         }
 
@@ -2324,6 +2348,204 @@
         function removeBroll(index) {
             brollFiles.splice(index, 1);
             updateBrollList();
+        }
+
+        // Handle image upload
+        async function handleImageUpload(input) {
+            if (input.files) {
+                for (let file of input.files) {
+                    // Check if image with same name already exists in our list
+                    if (imageFiles.some(img => img.name === file.name)) {
+                        console.log(`Image ${file.name} already in list, skipping upload.`);
+                        continue;
+                    }
+
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    
+                    try {
+                        showNotification(`Uploading ${file.name}...`, 'info');
+                        const response = await fetch('/api/upload-media', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        
+                        const result = await response.json();
+                        
+                        if (result.filename) {
+                            imageFiles.push({
+                                file: file, // Keep local file for preview
+                                id: 'img_' + Math.random().toString(36).substr(2, 9),
+                                name: result.filename, // Use the filename returned by server
+                                serverPath: result.filename
+                            });
+                            updateImageList();
+                            showNotification(`${file.name} uploaded successfully`, 'success');
+                        } else {
+                            showNotification(`Failed to upload ${file.name}: ${result.error}`, 'error');
+                        }
+                    } catch (error) {
+                        console.error('Upload error:', error);
+                        showNotification(`Error uploading ${file.name}`, 'error');
+                    }
+                }
+            }
+        }
+
+        // Update image list
+        function updateImageList() {
+            const container = document.getElementById('imageList');
+            container.innerHTML = '';
+
+            imageFiles.forEach((img, index) => {
+                const item = document.createElement('div');
+                item.className = 'broll-item';
+                item.style.flexDirection = 'column';
+                item.style.alignItems = 'stretch';
+                item.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div class="info">🖼️ ${img.name}</div>
+                        <button class="remove" onclick="removeImage(${index})">✕</button>
+                    </div>
+                    <button class="action-btn secondary" style="margin-top: 5px; padding: 5px; font-size: 11px;" onclick="addImageToTimeline(${index})">
+                        ➕ Add to Timeline
+                    </button>
+                `;
+                container.appendChild(item);
+            });
+        }
+
+        // Remove image
+        function removeImage(index) {
+            const img = imageFiles[index];
+            // Remove markers associated with this image
+            imageMarkers = imageMarkers.filter(m => {
+                if (m.imageId === img.id) {
+                    if (m.element) m.element.remove();
+                    if (m.tooltip) m.tooltip.remove();
+                    return false;
+                }
+                return true;
+            });
+            imageFiles.splice(index, 1);
+            updateImageList();
+        }
+
+        // Add image to timeline
+        function addImageToTimeline(imageIndex) {
+            const img = imageFiles[imageIndex];
+            if (selectedTimelinePosition === null) {
+                showNotification('Click on the timeline first to set position', 'error');
+                return;
+            }
+
+            const videoDuration = video.duration || 1;
+            const duration = 5; // Default 5 seconds
+            const start = selectedTimelinePosition;
+            const end = Math.min(1, start + (duration / videoDuration));
+
+            const markerId = 'imgmarker_' + Math.random().toString(36).substr(2, 9);
+            
+            const markerData = {
+                id: markerId,
+                imageId: img.id,
+                imageName: img.name,
+                start: start,
+                end: end,
+                duration: duration,
+                posX: 50, // Default center X percentage
+                posY: 50, // Default center Y percentage
+                scale: 1.0 // Default scale
+            };
+
+            imageMarkers.push(markerData);
+            createImageMarker(markerData);
+            showNotification(`Image "${img.name}" added to timeline`, 'success');
+            
+            // Manually trigger check to show it immediately
+            checkImageMarkers();
+        }
+
+        // Create image marker on timeline
+        function createImageMarker(markerData) {
+            const marker = document.createElement('div');
+            marker.className = `effect-marker image`;
+            marker.id = markerData.id;
+            marker.style.left = `${markerData.start * 100}%`;
+            marker.style.width = `${(markerData.end - markerData.start) * 100}%`;
+
+            const tooltip = document.createElement('div');
+            tooltip.className = 'effect-marker-tooltip';
+            tooltip.textContent = `🖼️ ${markerData.imageName} (${markerData.duration}s)`;
+            tooltip.style.position = 'fixed';
+            tooltip.style.zIndex = '100000';
+            document.body.appendChild(tooltip);
+
+            const updateTooltipPosition = () => {
+                const rect = marker.getBoundingClientRect();
+                tooltip.style.left = `${rect.left + rect.width / 2}px`;
+                tooltip.style.top = `${rect.top - 35}px`;
+                tooltip.style.transform = 'translateX(-50%)';
+            };
+
+            window.addEventListener('resize', updateTooltipPosition);
+            setTimeout(updateTooltipPosition, 0);
+
+            // Double click to remove
+            tooltip.addEventListener('dblclick', () => {
+                if (confirm(`Remove image "${markerData.imageName}" from timeline?`)) {
+                    removeImageMarker(markerData.id);
+                }
+            });
+
+            // Resizing and dragging logic (similar to effect markers but simplified for now)
+            // For now, let's just make it draggable
+            let isDragging = false;
+            let dragStartX = 0;
+            let dragStartLeft = 0;
+
+            marker.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                dragStartX = e.clientX;
+                dragStartLeft = parseFloat(marker.style.left) || 0;
+                e.preventDefault();
+                document.body.style.cursor = 'move';
+            });
+
+            const handleMouseMove = (e) => {
+                if (!isDragging) return;
+                const rect = timelineTrack.getBoundingClientRect();
+                const deltaX = e.clientX - dragStartX;
+                const deltaPercent = (deltaX / rect.width) * 100;
+                const newLeft = Math.max(0, Math.min(100 - parseFloat(marker.style.width), dragStartLeft + deltaPercent));
+                marker.style.left = `${newLeft}%`;
+                markerData.start = newLeft / 100;
+                markerData.end = markerData.start + (parseFloat(marker.style.width) / 100);
+                updateTooltipPosition();
+            };
+
+            const handleMouseUp = () => {
+                isDragging = false;
+                document.body.style.cursor = '';
+            };
+
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+
+            markerData.element = marker;
+            markerData.tooltip = tooltip;
+            timelineTrack.appendChild(marker);
+        }
+
+        // Remove image marker
+        function removeImageMarker(markerId) {
+            const index = imageMarkers.findIndex(m => m.id === markerId);
+            if (index !== -1) {
+                const markerData = imageMarkers[index];
+                if (markerData.element) markerData.element.remove();
+                if (markerData.tooltip) markerData.tooltip.remove();
+                imageMarkers.splice(index, 1);
+            }
         }
 
         // Preview changes
@@ -2591,7 +2813,7 @@
                 }
             };
 
-            // Function to update tooltip text with new duration
+            // Update tooltip text with new duration
             const updateTooltipText = () => {
                 const positionData = effectPositions[effectType];
                 if (positionData) {
@@ -2599,14 +2821,6 @@
                     tooltip.textContent = `${getEffectDisplayName(effectType)} (${durationSeconds}s)`;
                 }
             };
-
-            // Hide magnifier when hovering over marker or tooltip
-            const hideMagnifier = () => {
-                magnifier.classList.remove('visible');
-            };
-
-            marker.addEventListener('mouseenter', hideMagnifier);
-            tooltip.addEventListener('mouseenter', hideMagnifier);
 
             timelineTrack.appendChild(marker);
 
@@ -2713,7 +2927,140 @@
             }
         }
 
-        // Apply all active effects to the video
+        // Check if playhead has crossed any image markers
+        function checkImageMarkers() {
+            if (!video.duration) return;
+            const currentPercent = video.currentTime / video.duration;
+            const overlay = document.getElementById('imageOverlay');
+            if (!overlay) return;
+
+            let activeMarker = null;
+            for (let i = imageMarkers.length - 1; i >= 0; i--) {
+                const marker = imageMarkers[i];
+                if (currentPercent >= (marker.start - 0.015) && currentPercent <= (marker.end + 0.015)) {
+                    activeMarker = marker;
+                    break;
+                }
+            }
+
+            if (activeMarker) {
+                // If same marker already active, don't re-render unless content is missing
+                if (overlay.dataset.activeMarkerId === activeMarker.id && overlay.innerHTML !== '') return;
+                
+                overlay.dataset.activeMarkerId = activeMarker.id;
+                overlay.innerHTML = ''; 
+
+                const img = imageFiles.find(i => i.id === activeMarker.imageId);
+                
+                const container = document.createElement('div');
+                container.id = 'overlayContainer';
+                container.style.cssText = `position:absolute;left:${activeMarker.posX}%;top:${activeMarker.posY}%;transform:translate(-50%,-50%);width:${activeMarker.scale * 40}%;z-index:10000;border:2px solid #00ff9d;background:rgba(0,0,0,0.2);min-width:100px;min-height:100px;pointer-events:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#00ff9d;font-size:12px;text-align:center;overflow:visible;`;
+                
+                const infoText = document.createElement('div');
+                infoText.innerHTML = `<b>${activeMarker.imageName}</b><br>Loading...`;
+                container.appendChild(infoText);
+                overlay.appendChild(container);
+
+                const imgEl = document.createElement('img');
+                imgEl.style.cssText = 'width:100%;height:auto;display:block;';
+                
+                const handle = document.createElement('div');
+                handle.className = 'image-resize-handle';
+                handle.style.cssText = 'position:absolute;width:20px;height:20px;background:#00ff9d;border:2px solid #fff;border-radius:50%;bottom:-10px;right:-10px;cursor:nwse-resize;z-index:10001;pointer-events:auto;box-shadow:0 0 10px rgba(0,0,0,0.5);';
+
+                const renderImage = (src) => {
+                    imgEl.onload = () => {
+                        container.innerHTML = '';
+                        container.appendChild(imgEl);
+                        container.appendChild(handle);
+                    };
+                    imgEl.onerror = () => {
+                        infoText.innerHTML = `<span style="color:#ff4444">Error loading image</span>`;
+                    };
+                    imgEl.src = src;
+                };
+
+                if (!img) {
+                    infoText.innerHTML = `<b>Image Missing</b>`;
+                } else if (img.file) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => renderImage(e.target.result);
+                    reader.onerror = (e) => { 
+                        console.error("FileReader error:", e);
+                        // Fallback to serverPath if FileReader fails
+                        if (img.serverPath) {
+                            renderImage(`/media/${img.serverPath}`);
+                        } else {
+                            infoText.innerHTML = "Read Error"; 
+                        }
+                    };
+                    try {
+                        reader.readAsDataURL(img.file);
+                    } catch (err) {
+                        console.error("Error reading file object:", err);
+                        if (img.serverPath) {
+                            renderImage(`/media/${img.serverPath}`);
+                        } else {
+                            infoText.innerHTML = "Read Error";
+                        }
+                    }
+                } else if (img.serverPath) {
+                    renderImage(`/media/${img.serverPath}`);
+                }
+
+                // Dragging and Resizing
+                let isDragging = false;
+                let isResizing = false;
+                let startScale = activeMarker.scale;
+                let startX = 0;
+
+                const onMove = (e) => {
+                    if (isResizing) {
+                        const deltaX = e.clientX - startX;
+                        activeMarker.scale = Math.max(0.1, Math.min(5.0, startScale + (deltaX / 200)));
+                        container.style.width = `${activeMarker.scale * 40}%`;
+                    } else if (isDragging) {
+                        const rect = overlay.getBoundingClientRect();
+                        activeMarker.posX = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+                        activeMarker.posY = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+                        container.style.left = `${activeMarker.posX}%`;
+                        container.style.top = `${activeMarker.posY}%`;
+                    }
+                };
+
+                const onUp = () => { 
+                    isDragging = false; 
+                    isResizing = false;
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', onUp);
+                    document.body.style.cursor = '';
+                };
+
+                container.onmousedown = (e) => {
+                    if (e.target === handle || e.target.classList.contains('image-resize-handle')) { 
+                        isResizing = true; 
+                        startScale = activeMarker.scale; 
+                        startX = e.clientX; 
+                        document.body.style.cursor = 'nwse-resize';
+                    } else { 
+                        isDragging = true; 
+                        document.body.style.cursor = 'move';
+                    }
+                    
+                    document.addEventListener('mousemove', onMove);
+                    document.addEventListener('mouseup', onUp);
+                    
+                    e.preventDefault(); 
+                    e.stopPropagation();
+                };
+
+            } else {
+                if (overlay.dataset.activeMarkerId !== '') {
+                    overlay.innerHTML = '';
+                    overlay.dataset.activeMarkerId = '';
+                }
+            }
+        }
         function applyVideoEffects() {
             // Check if face tracking is enabled and preserve its transform
             const faceTrackingEnabled = document.getElementById('faceTracking').checked;
@@ -3244,6 +3591,16 @@
                 },
                 effect_markers: effectMarkersData,
                 broll: brollFiles.map(f => f.name),
+                images: imageFiles.map(img => ({
+                    name: img.name,
+                    markers: imageMarkers.filter(m => m.imageId === img.id).map(m => ({
+                        start_time: m.start * (video.duration || 1),
+                        end_time: m.end * (video.duration || 1),
+                        x: m.posX,
+                        y: m.posY,
+                        scale: m.scale
+                    }))
+                })),
                 output_dir: 'edited_shorts' // Export to edited_shorts folder
             };
 
@@ -3284,6 +3641,7 @@
             progressText.textContent = 'Starting...';
 
             try {
+                console.log('Sending export request...');
                 // Start the export
                 const response = await fetch('/api/process-edit', {
                     method: 'POST',
@@ -3297,20 +3655,22 @@
                 });
 
                 const result = await response.json();
+                console.log('Export response:', result);
 
                 if (result.edit_id) {
                     editId = result.edit_id;
                     // Poll for status updates
                     await pollEditStatus(result.edit_id, progressBar, progressText, modal);
                 } else {
+                    console.error('Export failed to start:', result.error);
                     modal.classList.remove('visible');
-                    showNotification('Failed to start export', 'error');
+                    showNotification('Failed to start export: ' + (result.error || 'Unknown error'), 'error');
                 }
 
             } catch (error) {
                 modal.classList.remove('visible');
                 console.error('Processing error:', error);
-                showNotification('Failed to process video', 'error');
+                showNotification('Failed to process video: ' + error.message, 'error');
                 isExporting = false;
                 editId = null;
                 updateExportButton();
@@ -3319,16 +3679,19 @@
 
         // Poll for edit status
         async function pollEditStatus(id, progressBar, progressText, modal) {
+            console.log(`Starting status polling for ${id}...`);
             statusCheckInterval = setInterval(async () => {
                 try {
                     const response = await fetch(`/api/process-edit/${id}/status`);
                     
                     if (!response.ok) {
                         const errorData = await response.json();
+                        console.error('Status poll error response:', errorData);
                         throw new Error(errorData.error || `Server error: ${response.status}`);
                     }
                     
                     const status = await response.json();
+                    // Optional: console.log('Status update:', status.status);
 
                     // Parse progress from logs if available
                     if (status.log) {
@@ -3500,6 +3863,17 @@
             document.getElementById('faceZoomValue').textContent = '1.5x';
             document.getElementById('faceSmoothing').value = 'medium';
 
+            // Reset zoom toggle
+            const zoomLevelSelect = document.getElementById('timelineZoomLevel');
+            if (zoomLevelSelect) {
+                zoomLevelSelect.value = "1";
+                const track = document.getElementById('timelineTrack');
+                if (track) {
+                    track.classList.remove('zoomed');
+                    track.style.width = '100%';
+                }
+            }
+
             // Uncheck face tracking explicitly and hide its UI elements
             const faceTrackingCheckbox = document.getElementById('faceTracking');
             faceTrackingCheckbox.checked = false;
@@ -3527,10 +3901,17 @@
 
             audioFile = null;
             brollFiles = [];
+            imageFiles = [];
+            imageMarkers.forEach(m => {
+                if (m.element) m.element.remove();
+                if (m.tooltip) m.tooltip.remove();
+            });
+            imageMarkers = [];
             document.getElementById('audioFilename').textContent = '';
             document.querySelector('#panel-audio .file-upload').classList.remove('has-file');
             audioTrack.style.display = 'none';
             updateBrollList();
+            updateImageList();
 
             // Remove all effect markers from the DOM and clear all data
             for (const effectType of Object.keys(effectMarkers)) {
@@ -3617,7 +3998,19 @@
                     faceZoomLevel: document.getElementById('faceZoomLevel').value,
                     faceSmoothing: document.getElementById('faceSmoothing').value
                 },
-                effectMarkers: effectMarkersData
+                effectMarkers: effectMarkersData,
+                images: imageFiles.map(img => ({
+                    id: img.id,
+                    name: img.name,
+                    markers: imageMarkers.filter(m => m.imageId === img.id).map(m => ({
+                        start: m.start,
+                        end: m.end,
+                        duration: m.duration,
+                        posX: m.posX,
+                        posY: m.posY,
+                        scale: m.scale
+                    }))
+                }))
             };
         }
 
@@ -3731,6 +4124,45 @@
 
                 effectMarkersData = settings.effectMarkers;
                 updateTimeline();
+            }
+
+            // Apply images
+            if (settings.images && Array.isArray(settings.images)) {
+                // Clear existing images and markers
+                imageMarkers.forEach(m => {
+                    if (m.element) m.element.remove();
+                    if (m.tooltip) m.tooltip.remove();
+                });
+                imageFiles = [];
+                imageMarkers = [];
+
+                settings.images.forEach(imgData => {
+                    const img = {
+                        id: imgData.id,
+                        name: imgData.name,
+                        serverPath: imgData.name // Restore serverPath for preview
+                    };
+                    imageFiles.push(img);
+
+                    if (imgData.markers) {
+                        imgData.markers.forEach(markerData => {
+                            const marker = {
+                                id: 'imgmarker_' + Math.random().toString(36).substr(2, 9),
+                                imageId: img.id,
+                                imageName: img.name,
+                                start: markerData.start,
+                                end: markerData.end,
+                                duration: markerData.duration,
+                                posX: markerData.posX || 50,
+                                posY: markerData.posY || 50,
+                                scale: markerData.scale || 1.0
+                            };
+                            imageMarkers.push(marker);
+                            createImageMarker(marker);
+                        });
+                    }
+                });
+                updateImageList();
             }
 
             resetVideoTransform();
