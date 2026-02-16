@@ -54,6 +54,7 @@ class VideoProcessor:
         effect_markers = settings.get('effect_markers', [])
         image_settings = settings.get('images', [])
         global_effects = settings.get('effects', {})
+        lighting = settings.get('lighting', {})
 
         log("Starting optimized video processing...")
 
@@ -94,6 +95,20 @@ class VideoProcessor:
         # Build filter complex
         vf_filters = []
         
+        # 0. Global Lighting adjustments
+        if lighting:
+            b = (float(lighting.get('brightness', 100)) - 100) / 100.0
+            c = float(lighting.get('contrast', 100)) / 100.0
+            s = float(lighting.get('saturation', 100)) / 100.0
+            exp = float(lighting.get('exposure', 0))
+            
+            # Use eq filter for brightness, contrast, saturation
+            vf_filters.append(f"eq=brightness={b}:contrast={c}:saturation={s}")
+            
+            # Use exposure filter
+            if exp != 0:
+                vf_filters.append(f"exposure=exposure={exp}")
+
         # 1. Timeline-based effect filters
         for marker in effect_markers:
             etype = marker['type']
@@ -152,6 +167,7 @@ class VideoProcessor:
                 x_pct = marker.get('x', 50)
                 y_pct = marker.get('y', 50)
                 scale_factor = marker.get('scale', 1.0)
+                stretch_width = marker.get('stretch_width', False)
                 
                 # Proper centering: main_w*x_pct/100 - overlay_w/2
                 x_pos = f"(main_w*{x_pct}/100-overlay_w/2)"
@@ -162,7 +178,11 @@ class VideoProcessor:
                 # Scale image based on video width and scale factor
                 # Use a unique scaled label per overlay instance
                 scaled_marker_label = f"[img_s_ov{overlay_count}]"
-                target_w = f"({self.width}*0.4*{scale_factor})"
+                if stretch_width:
+                    target_w = str(self.width)
+                else:
+                    target_w = f"({self.width}*0.4*{scale_factor})"
+                
                 filter_complex.append(f"{input_label}scale=w='{target_w}':h='-1'{scaled_marker_label}")
                 
                 filter_complex.append(f"{last_v}{scaled_marker_label}overlay=x='{x_pos}':y='{y_pos}':enable='{enable}'{output_label}")

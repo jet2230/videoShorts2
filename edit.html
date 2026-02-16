@@ -156,7 +156,7 @@
             overflow-y: auto;
             scrollbar-width: thin;
             scrollbar-color: rgba(0, 255, 157, 0.6) rgba(255, 255, 255, 0.05);
-            z-index: 1000;
+            z-index: 2000;
             opacity: 0;
             visibility: hidden;
             transition: all 0.3s ease;
@@ -1240,18 +1240,23 @@
             <button class="action-btn secondary" onclick="resetAll()">↺ Reset</button>
             <button class="action-btn secondary" onclick="previewChanges()">👁️ Preview</button>
             <button class="action-btn primary" id="exportBtn" onclick="applyChanges()">🎬 Export</button>
-            <button class="back-btn" onclick="window.history.back()">← Back</button>
         </div>
     </div>
 
     <div class="notification" id="notification"></div>
 
     <!-- Save Preset Box -->
-    <div id="savePresetBox" style="display: none; position: fixed; background: rgba(20, 20, 30, 0.98); border: 1px solid #444; border-radius: 8px; padding: 10px; z-index: 99999; min-width: 200px; box-shadow: 0 8px 32px rgba(0,0,0,0.5);">
-        <input type="text" id="presetNameInput" placeholder="Preset name..." style="width: 100%; padding: 8px; background: #333; border: 1px solid #555; border-radius: 4px; color: #fff; margin-bottom: 8px; box-sizing: border-box;">
-        <div style="display: flex; gap: 5px;">
-            <button onclick="savePreset()" style="flex: 1; padding: 8px; background: #00ff9d; border: none; border-radius: 4px; color: #000; font-weight: bold; cursor: pointer;">Save</button>
-            <button onclick="toggleSaveInput()" style="flex: 1; padding: 8px; background: #555; border: none; border-radius: 4px; color: #fff; cursor: pointer;">Cancel</button>
+    <div id="savePresetBox" style="display: none; position: fixed; background: rgba(20, 20, 30, 0.98); border: 1px solid #444; border-radius: 8px; padding: 15px; z-index: 99999; min-width: 300px; box-shadow: 0 8px 32px rgba(0,0,0,0.5);">
+        <h4 style="margin-bottom: 10px; color: #00ff9d; font-size: 14px;">💾 Save Preset</h4>
+        <input type="text" id="presetNameInput" placeholder="Preset name..." style="width: 100%; padding: 10px; background: #333; border: 1px solid #555; border-radius: 4px; color: #fff; margin-bottom: 10px; box-sizing: border-box; outline: none;">
+        <div style="display: flex; gap: 8px; margin-bottom: 15px;">
+            <button onclick="savePreset()" style="flex: 1; padding: 10px; background: #00ff9d; border: none; border-radius: 4px; color: #000; font-weight: bold; cursor: pointer; transition: transform 0.1s;" onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform='scale(1)'">Save</button>
+            <button onclick="toggleSaveInput()" style="flex: 1; padding: 10px; background: #555; border: none; border-radius: 4px; color: #fff; cursor: pointer;">Cancel</button>
+        </div>
+        
+        <div style="border-top: 1px solid #444; padding-top: 10px;">
+            <p style="font-size: 11px; color: #888; margin-bottom: 8px;">Existing Presets (click to overwrite):</p>
+            <div id="savePresetsList" style="max-height: 200px; overflow-y: auto; scrollbar-width: thin;"></div>
         </div>
     </div>
 
@@ -1287,13 +1292,18 @@
                 ✨
                 <span class="tooltip">Effects</span>
             </button>
+            <button class="tool-btn" onclick="togglePanel('lighting')" data-panel="lighting">
+                💡
+                <span class="tooltip">Lighting</span>
+            </button>
         </div>
 
         <!-- Preview Area -->
         <div class="preview-area">
             <div class="video-wrapper">
                 <video id="mainVideo" controls></video>
-                <div id="imageOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2147483647 !important; display: block !important;"></div>
+                <div id="imageOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10 !important; display: block !important;"></div>
+                <div id="logoOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9 !important; display: block !important;"></div>
             </div>
             <div class="video-info" id="videoInfo">
                 Loading video info...
@@ -1314,6 +1324,10 @@
                                 <option value="4">4x</option>
                                 <option value="8">8x</option>
                             </select>
+                        </div>
+                        <div class="checkbox-item" style="padding: 4px 10px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); margin-bottom: 0; display: flex; align-items: center; gap: 5px;">
+                            <span style="font-size: 11px; white-space: nowrap;">🏢 Logo</span>
+                            <input type="checkbox" id="logoEnabled" onchange="toggleLogoVisibility()" style="width: 14px; height: 14px;">
                         </div>
                         <button class="clear-all-btn" onclick="clearAllEffects()" title="Remove all effect markers" style="margin-top: 0; margin-left: 0;">🗑️ Clear All</button>
                     </div>
@@ -1360,6 +1374,10 @@
             <button class="tool-btn" onclick="togglePanel('images')" data-panel="images">
                 🖼️
                 <span class="tooltip">Images</span>
+            </button>
+            <button class="tool-btn" onclick="togglePanel('logo')" data-panel="logo">
+                🏢
+                <span class="tooltip">Logo</span>
             </button>
             <button class="tool-btn" onclick="togglePanel('broll')" data-panel="broll">
                 🎞️
@@ -1689,6 +1707,68 @@
         </div>
     </div>
 
+    <!-- Lighting Panel -->
+    <div class="tool-panel left" id="panel-lighting">
+        <button class="close-panel" onclick="closePanel('lighting')">×</button>
+        <h3><span class="icon">💡</span> Lighting & Color</h3>
+        
+        <div class="control-group">
+            <label>Brightness</label>
+            <div class="range-wrapper">
+                <input type="range" id="lightBrightness" min="50" max="150" value="100" oninput="updateLightingPreview(); document.getElementById('valBrightness').textContent = this.value + '%'">
+                <span class="value" id="valBrightness">100%</span>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>Contrast</label>
+            <div class="range-wrapper">
+                <input type="range" id="lightContrast" min="50" max="150" value="100" oninput="updateLightingPreview(); document.getElementById('valContrast').textContent = this.value + '%'">
+                <span class="value" id="valContrast">100%</span>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>Exposure</label>
+            <div class="range-wrapper">
+                <input type="range" id="lightExposure" min="-2" max="2" step="0.1" value="0" oninput="updateLightingPreview(); document.getElementById('valExposure').textContent = (this.value > 0 ? '+' : '') + this.value">
+                <span class="value" id="valExposure">0</span>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>Saturation</label>
+            <div class="range-wrapper">
+                <input type="range" id="lightSaturation" min="0" max="200" value="100" oninput="updateLightingPreview(); document.getElementById('valSaturation').textContent = this.value + '%'">
+                <span class="value" id="valSaturation">100%</span>
+            </div>
+        </div>
+
+        <div style="border-top: 1px solid rgba(255,255,255,0.1); margin: 15px 0;"></div>
+        <label style="display: block; font-size: 12px; color: #aaa; margin-bottom: 8px; text-transform: uppercase;">Cinematic Presets</label>
+        
+        <div class="checkbox-group">
+            <label class="checkbox-item" onclick="applyLightingPreset('warm')">
+                <span>🌅 Golden Hour (Warm)</span>
+            </label>
+            <label class="checkbox-item" onclick="applyLightingPreset('cool')">
+                <span>❄️ Cool Mist (Cold)</span>
+            </label>
+            <label class="checkbox-item" onclick="applyLightingPreset('vivid')">
+                <span>🌈 High Vivid</span>
+            </label>
+            <label class="checkbox-item" onclick="applyLightingPreset('dreamy')">
+                <span>✨ Dreamy Glow</span>
+            </label>
+            <label class="checkbox-item" onclick="applyLightingPreset('noir')">
+                <span>🎬 Film Noir</span>
+            </label>
+            <label class="checkbox-item" onclick="applyLightingPreset('reset')" style="background: rgba(255,68,68,0.1);">
+                <span style="color: #ff4444;">↺ Reset Lighting</span>
+            </label>
+        </div>
+    </div>
+
     <!-- Subtitles Panel -->
     <div class="tool-panel right" id="panel-subtitles">
         <button class="close-panel" onclick="closePanel('subtitles')">×</button>
@@ -1747,6 +1827,27 @@
             <div class="text">Add images</div>
         </div>
         <div id="imageList" style="margin-top: 15px;"></div>
+    </div>
+
+    <!-- Logo Panel -->
+    <div class="tool-panel right" id="panel-logo">
+        <button class="close-panel" onclick="closePanel('logo')">×</button>
+        <h3><span class="icon">🏢</span> Logo Settings</h3>
+        <div class="file-upload" onclick="document.getElementById('logoFile').click()">
+            <input type="file" id="logoFile" accept="image/*" onchange="handleLogoUpload(this)">
+            <div class="icon">🏢</div>
+            <div class="text">Add Logo</div>
+        </div>
+        <div id="logoList" style="margin-top: 15px;"></div>
+        <div class="control-group" style="margin-top: 15px;">
+            <label class="checkbox-item" title="Make logo cover the entire width of the video">
+                <input type="checkbox" id="logoStretchWidth" onchange="activeLogo.stretchWidth = this.checked; renderLogo();">
+                <span>Stretch width to video</span>
+            </label>
+        </div>
+        <p style="font-size: 11px; color: #888; margin-top: 10px;">
+            * The logo remains visible throughout the entire video. Toggle it on/off using the checkbox next to the timeline zoom.
+        </p>
     </div>
 
     <!-- B-Roll Panel -->
@@ -1861,6 +1962,16 @@
         let brollFiles = [];
         let imageFiles = [];
         let imageMarkers = [];
+        let logoFiles = [];
+        let activeLogo = {
+            enabled: false,
+            id: null,
+            name: '',
+            posX: 50,
+            posY: 90,
+            scale: 0.5,
+            stretchWidth: false
+        };
         let currentPanel = null;
         let isDraggingStart = false;
         let isDraggingEnd = false;
@@ -2536,6 +2647,103 @@
         }
 
         // Remove image marker
+        // Handle logo upload
+        async function handleLogoUpload(input) {
+            if (input.files && input.files[0]) {
+                const file = input.files[0];
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                try {
+                    showNotification(`Uploading ${file.name}...`, 'info');
+                    const response = await fetch('/api/upload-media', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.filename) {
+                        logoFiles.push({
+                            file: file,
+                            id: 'logo_' + Math.random().toString(36).substr(2, 9),
+                            name: result.filename,
+                            serverPath: result.filename
+                        });
+                        updateLogoList();
+                        showNotification(`${file.name} uploaded successfully`, 'success');
+                    }
+                } catch (error) {
+                    console.error('Logo upload error:', error);
+                    showNotification(`Error uploading ${file.name}`, 'error');
+                }
+            }
+        }
+
+        // Update logo list
+        function updateLogoList() {
+            const container = document.getElementById('logoList');
+            container.innerHTML = '';
+
+            logoFiles.forEach((logo, index) => {
+                const item = document.createElement('div');
+                item.className = 'broll-item';
+                item.style.flexDirection = 'column';
+                item.style.alignItems = 'stretch';
+                if (activeLogo.id === logo.id) {
+                    item.style.border = '2px solid #00ccff';
+                    item.style.background = 'rgba(0, 204, 255, 0.1)';
+                }
+                item.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div class="info">🏢 ${logo.name}</div>
+                        <button class="remove" onclick="removeLogo(${index})">✕</button>
+                    </div>
+                    <button class="action-btn ${activeLogo.id === logo.id ? 'primary' : 'secondary'}" style="margin-top: 5px; padding: 5px; font-size: 11px;" onclick="selectLogo(${index})">
+                        ${activeLogo.id === logo.id ? '✓ Selected' : 'Select Logo'}
+                    </button>
+                `;
+                container.appendChild(item);
+            });
+        }
+
+        // Select logo
+        function selectLogo(index) {
+            const logo = logoFiles[index];
+            activeLogo.id = logo.id;
+            activeLogo.name = logo.name;
+            activeLogo.enabled = true;
+            document.getElementById('logoEnabled').checked = true;
+            updateLogoList();
+            renderLogo();
+        }
+
+        // Toggle logo visibility
+        function toggleLogoVisibility() {
+            activeLogo.enabled = document.getElementById('logoEnabled').checked;
+            if (activeLogo.enabled && !activeLogo.id && logoFiles.length > 0) {
+                // Auto-select first logo if none selected
+                selectLogo(0);
+            } else {
+                renderLogo();
+            }
+        }
+
+        // Remove logo
+        function removeLogo(index) {
+            const logo = logoFiles[index];
+            if (activeLogo.id === logo.id) {
+                activeLogo.id = null;
+                activeLogo.name = '';
+                activeLogo.enabled = false;
+                document.getElementById('logoEnabled').checked = false;
+            }
+            logoFiles.splice(index, 1);
+            updateLogoList();
+            renderLogo();
+        }
+
+        // Remove image marker
         function removeImageMarker(markerId) {
             const index = imageMarkers.findIndex(m => m.id === markerId);
             if (index !== -1) {
@@ -2543,6 +2751,141 @@
                 if (markerData.element) markerData.element.remove();
                 if (markerData.tooltip) markerData.tooltip.remove();
                 imageMarkers.splice(index, 1);
+            }
+        }
+
+        // Render global logo
+        function renderLogo() {
+            const overlay = document.getElementById('logoOverlay');
+            if (!overlay) return;
+
+            if (activeLogo.enabled && activeLogo.id) {
+                if (overlay.dataset.activeLogoId === activeLogo.id && overlay.innerHTML !== '') {
+                    const container = document.getElementById('logoOverlayContainer');
+                    if (container) {
+                        let widthStyle = `${activeLogo.scale * 40}%`;
+                        if (activeLogo.stretchWidth) widthStyle = '100%';
+                        container.style.width = widthStyle;
+                        container.style.left = `${activeLogo.posX}%`;
+                        container.style.top = `${activeLogo.posY}%`;
+                    }
+                    return;
+                }
+                
+                overlay.dataset.activeLogoId = activeLogo.id;
+                overlay.innerHTML = ''; 
+
+                const logo = logoFiles.find(i => i.id === activeLogo.id);
+                if (!logo) return;
+                
+                const container = document.createElement('div');
+                container.id = 'logoOverlayContainer';
+                
+                let widthStyle = `${activeLogo.scale * 40}%`;
+                if (activeLogo.stretchWidth) {
+                    widthStyle = '100%';
+                }
+
+                container.style.cssText = `position:absolute;left:${activeLogo.posX}%;top:${activeLogo.posY}%;transform:translate(-50%,-50%);width:${widthStyle};z-index:50;border:2px solid #00ccff;background:rgba(0,0,0,0.2);min-width:50px;min-height:50px;pointer-events:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#00ccff;font-size:12px;text-align:center;overflow:visible;`;
+                
+                const infoText = document.createElement('div');
+                infoText.innerHTML = `<b>${activeLogo.name}</b><br>Loading...`;
+                container.appendChild(infoText);
+                overlay.appendChild(container);
+
+                const imgEl = document.createElement('img');
+                imgEl.style.cssText = 'width:100%;height:auto;display:block;';
+                
+                const handle = document.createElement('div');
+                handle.className = 'image-resize-handle';
+                handle.style.cssText = 'position:absolute;width:20px;height:20px;background:#00ccff;border:2px solid #fff;border-radius:50%;bottom:-10px;right:-10px;cursor:nwse-resize;z-index:10001;pointer-events:auto;box-shadow:0 0 10px rgba(0,0,0,0.5);';
+
+                const renderImage = (src) => {
+                    imgEl.onload = () => {
+                        container.innerHTML = '';
+                        container.appendChild(imgEl);
+                        container.appendChild(handle);
+                    };
+                    imgEl.onerror = () => {
+                        infoText.innerHTML = `<span style="color:#ff4444">Error loading logo</span>`;
+                    };
+                    imgEl.src = src;
+                };
+
+                if (logo.file) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => renderImage(e.target.result);
+                    reader.onerror = (e) => { 
+                        if (logo.serverPath) {
+                            renderImage(`/media/${logo.serverPath}`);
+                        } else {
+                            infoText.innerHTML = "Read Error"; 
+                        }
+                    };
+                    try {
+                        reader.readAsDataURL(logo.file);
+                    } catch (err) {
+                        if (logo.serverPath) {
+                            renderImage(`/media/${logo.serverPath}`);
+                        } else {
+                            infoText.innerHTML = "Read Error";
+                        }
+                    }
+                } else if (logo.serverPath) {
+                    renderImage(`/media/${logo.serverPath}`);
+                }
+
+                // Dragging and Resizing
+                let isDragging = false;
+                let isResizing = false;
+                let startScale = activeLogo.scale;
+                let startX = 0;
+
+                const onMove = (e) => {
+                    if (isResizing) {
+                        const deltaX = e.clientX - startX;
+                        activeLogo.scale = Math.max(0.1, Math.min(5.0, startScale + (deltaX / 200)));
+                        if (!activeLogo.stretchWidth) {
+                            container.style.width = `${activeLogo.scale * 40}%`;
+                        }
+                    } else if (isDragging) {
+                        const rect = overlay.getBoundingClientRect();
+                        activeLogo.posX = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+                        activeLogo.posY = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+                        container.style.left = `${activeLogo.posX}%`;
+                        container.style.top = `${activeLogo.posY}%`;
+                    }
+                };
+
+                const onUp = () => { 
+                    isDragging = false; 
+                    isResizing = false;
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', onUp);
+                    document.body.style.cursor = '';
+                };
+
+                container.onmousedown = (e) => {
+                    if (e.target === handle || e.target.classList.contains('image-resize-handle')) { 
+                        isResizing = true; 
+                        startScale = activeLogo.scale; 
+                        startX = e.clientX; 
+                        document.body.style.cursor = 'nwse-resize';
+                    } else { 
+                        isDragging = true; 
+                        document.body.style.cursor = 'move';
+                    }
+                    
+                    document.addEventListener('mousemove', onMove);
+                    document.addEventListener('mouseup', onUp);
+                    
+                    e.preventDefault(); 
+                    e.stopPropagation();
+                };
+
+            } else {
+                overlay.innerHTML = '';
+                overlay.dataset.activeLogoId = '';
             }
         }
 
@@ -2935,7 +3278,7 @@
             let activeMarker = null;
             for (let i = imageMarkers.length - 1; i >= 0; i--) {
                 const marker = imageMarkers[i];
-                if (currentPercent >= (marker.start - 0.015) && currentPercent <= (marker.end + 0.015)) {
+                if (currentPercent >= marker.start && currentPercent <= marker.end) {
                     activeMarker = marker;
                     break;
                 }
@@ -2952,7 +3295,7 @@
                 
                 const container = document.createElement('div');
                 container.id = 'overlayContainer';
-                container.style.cssText = `position:absolute;left:${activeMarker.posX}%;top:${activeMarker.posY}%;transform:translate(-50%,-50%);width:${activeMarker.scale * 40}%;z-index:10000;border:2px solid #00ff9d;background:rgba(0,0,0,0.2);min-width:100px;min-height:100px;pointer-events:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#00ff9d;font-size:12px;text-align:center;overflow:visible;`;
+                container.style.cssText = `position:absolute;left:${activeMarker.posX}%;top:${activeMarker.posY}%;transform:translate(-50%,-50%);width:${activeMarker.scale * 40}%;z-index:40;border:2px solid #00ff9d;background:rgba(0,0,0,0.2);min-width:100px;min-height:100px;pointer-events:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#00ff9d;font-size:12px;text-align:center;overflow:visible;`;
                 
                 const infoText = document.createElement('div');
                 infoText.innerHTML = `<b>${activeMarker.imageName}</b><br>Loading...`;
@@ -3136,6 +3479,22 @@
 
             // Apply combined styles
             video.style.transform = transforms.join(' ');
+            
+            // Add lighting effects to filters
+            const b = document.getElementById('lightBrightness')?.value || 100;
+            const c = document.getElementById('lightContrast')?.value || 100;
+            const s = document.getElementById('lightSaturation')?.value || 100;
+            const e = parseFloat(document.getElementById('lightExposure')?.value || 0);
+            
+            // Convert to CSS values
+            filters.push(`brightness(${b}%)`);
+            filters.push(`contrast(${c}%)`);
+            filters.push(`saturate(${s}%)`);
+            if (e !== 0) {
+                // Approximate exposure with brightness/contrast combination for preview
+                filters.push(`brightness(${100 + (e * 20)}%)`);
+            }
+
             video.style.filter = filters.join(' ');
         }
 
@@ -3203,6 +3562,62 @@
             applyVideoEffects();
         }
 
+        // Update lighting preview
+        function updateLightingPreview() {
+            applyVideoEffects();
+        }
+
+        // Apply lighting preset
+        function applyLightingPreset(preset) {
+            console.log('Applying lighting preset:', preset);
+            const b = document.getElementById('lightBrightness');
+            const c = document.getElementById('lightContrast');
+            const e = document.getElementById('lightExposure');
+            const s = document.getElementById('lightSaturation');
+
+            let vals = {};
+
+            switch(preset) {
+                case 'warm':
+                    vals = { b: 105, c: 110, e: 0.2, s: 120 };
+                    break;
+                case 'cool':
+                    vals = { b: 100, c: 105, e: -0.1, s: 90 };
+                    break;
+                case 'vivid':
+                    vals = { b: 110, c: 120, e: 0.3, s: 150 };
+                    break;
+                case 'dreamy':
+                    vals = { b: 115, c: 90, e: 0.5, s: 110 };
+                    break;
+                case 'noir':
+                    vals = { b: 100, c: 130, e: -0.2, s: 0 };
+                    break;
+                case 'reset':
+                    vals = { b: 100, c: 100, e: 0, s: 100 };
+                    break;
+            }
+
+            if (Object.keys(vals).length > 0) {
+                b.value = vals.b;
+                c.value = vals.c;
+                e.value = vals.e;
+                s.value = vals.s;
+
+                // Update labels
+                document.getElementById('valBrightness').textContent = b.value + '%';
+                document.getElementById('valContrast').textContent = c.value + '%';
+                document.getElementById('valExposure').textContent = (e.value > 0 ? '+' : '') + e.value;
+                document.getElementById('valSaturation').textContent = s.value + '%';
+
+                console.log('Preset applied with values:', vals);
+                updateLightingPreview();
+                showNotification(`Applied ${preset} preset`, 'success');
+            } else {
+                console.warn('Unknown preset:', preset);
+            }
+        }
+
         // Preview face tracking effect on the video
         function updateFaceTrackingPreview() {
             applyVideoEffects();
@@ -3219,9 +3634,11 @@
             video.style.transform = 'none';
             video.style.objectFit = 'contain';
             video.style.opacity = '1';
-            video.style.filter = 'none';
             video.style.transition = 'none';
             video.style.transformOrigin = 'center center';
+            
+            // Re-apply any persistent effects including lighting
+            applyVideoEffects();
         }
 
         // Preview video effects (mirror, grayscale, etc.)
@@ -3587,18 +4004,37 @@
                     faceZoomLevel: document.getElementById('faceZoomLevel').value,
                     faceSmoothing: document.getElementById('faceSmoothing').value
                 },
+                lighting: {
+                    brightness: document.getElementById('lightBrightness').value,
+                    contrast: document.getElementById('lightContrast').value,
+                    exposure: document.getElementById('lightExposure').value,
+                    saturation: document.getElementById('lightSaturation').value
+                },
                 effect_markers: effectMarkersData,
                 broll: brollFiles.map(f => f.name),
-                images: imageFiles.map(img => ({
-                    name: img.name,
-                    markers: imageMarkers.filter(m => m.imageId === img.id).map(m => ({
-                        start_time: m.start * (video.duration || 1),
-                        end_time: m.end * (video.duration || 1),
-                        x: m.posX,
-                        y: m.posY,
-                        scale: m.scale
-                    }))
-                })),
+                images: [
+                    ...imageFiles.map(img => ({
+                        name: img.name,
+                        markers: imageMarkers.filter(m => m.imageId === img.id).map(m => ({
+                            start_time: m.start * (video.duration || 1),
+                            end_time: m.end * (video.duration || 1),
+                            x: m.posX,
+                            y: m.posY,
+                            scale: m.scale
+                        }))
+                    })),
+                    ...(activeLogo.enabled && activeLogo.id ? [{
+                        name: activeLogo.name,
+                        markers: [{
+                            start_time: 0,
+                            end_time: video.duration || 1,
+                            x: activeLogo.posX,
+                            y: activeLogo.posY,
+                            scale: activeLogo.scale,
+                            stretch_width: activeLogo.stretchWidth
+                        }]
+                    }] : [])
+                ],
                 output_dir: 'edited_shorts' // Export to edited_shorts folder
             };
 
@@ -3905,11 +4341,28 @@
                 if (m.tooltip) m.tooltip.remove();
             });
             imageMarkers = [];
+            logoFiles = [];
+            logoMarkers.forEach(m => {
+                if (m.element) m.element.remove();
+                if (m.tooltip) m.tooltip.remove();
+            });
+            logoMarkers = [];
             document.getElementById('audioFilename').textContent = '';
             document.querySelector('#panel-audio .file-upload').classList.remove('has-file');
             audioTrack.style.display = 'none';
             updateBrollList();
             updateImageList();
+            updateLogoList();
+
+            // Reset lighting sliders and labels
+            document.getElementById('lightBrightness').value = 100;
+            document.getElementById('lightContrast').value = 100;
+            document.getElementById('lightExposure').value = 0;
+            document.getElementById('lightSaturation').value = 100;
+            document.getElementById('valBrightness').textContent = '100%';
+            document.getElementById('valContrast').textContent = '100%';
+            document.getElementById('valExposure').textContent = '0';
+            document.getElementById('valSaturation').textContent = '100%';
 
             // Remove all effect markers from the DOM and clear all data
             for (const effectType of Object.keys(effectMarkers)) {
@@ -3938,6 +4391,7 @@
 
         // Get current settings
         function getCurrentSettings() {
+            console.log('Gathering current settings...');
             // Build effect markers data with time ranges
             effectMarkersData = [];
             for (const [effectType, positionData] of Object.entries(effectPositions)) {
@@ -3951,7 +4405,7 @@
                 }
             }
 
-            return {
+            const current = {
                 trim: {
                     start: document.getElementById('startTime').value,
                     end: document.getElementById('endTime').value,
@@ -3996,6 +4450,12 @@
                     faceZoomLevel: document.getElementById('faceZoomLevel').value,
                     faceSmoothing: document.getElementById('faceSmoothing').value
                 },
+                lighting: {
+                    brightness: document.getElementById('lightBrightness').value,
+                    contrast: document.getElementById('lightContrast').value,
+                    exposure: document.getElementById('lightExposure').value,
+                    saturation: document.getElementById('lightSaturation').value
+                },
                 effectMarkers: effectMarkersData,
                 images: imageFiles.map(img => ({
                     id: img.id,
@@ -4008,12 +4468,17 @@
                         posY: m.posY,
                         scale: m.scale
                     }))
-                }))
+                })),
+                logoFiles: logoFiles.map(l => ({ id: l.id, name: l.name })),
+                activeLogo: activeLogo
             };
+            console.log('Current settings:', current);
+            return current;
         }
 
         // Apply settings
         function applySettings(settings) {
+            console.log('Applying settings:', settings);
             // Apply trim settings
             if (settings.trim) {
                 document.getElementById('startTime').value = settings.trim.start || '00:00:00';
@@ -4085,6 +4550,22 @@
 
                 // Toggle face tracking options to properly initialize UI and state
                 toggleFaceTrackingOptions();
+            }
+
+            // Apply lighting
+            if (settings.lighting) {
+                const l = settings.lighting;
+                document.getElementById('lightBrightness').value = l.brightness || 100;
+                document.getElementById('lightContrast').value = l.contrast || 100;
+                document.getElementById('lightExposure').value = l.exposure || 0;
+                document.getElementById('lightSaturation').value = l.saturation || 100;
+                
+                document.getElementById('valBrightness').textContent = (l.brightness || 100) + '%';
+                document.getElementById('valContrast').textContent = (l.contrast || 100) + '%';
+                document.getElementById('valExposure').textContent = (l.exposure > 0 ? '+' : '') + (l.exposure || 0);
+                document.getElementById('valSaturation').textContent = (l.saturation || 100) + '%';
+                
+                updateLightingPreview();
             }
 
             // Apply effect markers
@@ -4163,7 +4644,26 @@
                 updateImageList();
             }
 
-            resetVideoTransform();
+            // Apply logos
+            if (settings.logoFiles && Array.isArray(settings.logoFiles)) {
+                logoFiles = settings.logoFiles.map(l => ({
+                    id: l.id,
+                    name: l.name,
+                    serverPath: l.name
+                }));
+                updateLogoList();
+            }
+
+            if (settings.activeLogo) {
+                activeLogo = { ...settings.activeLogo };
+                const toggle = document.getElementById('logoEnabled');
+                if (toggle) toggle.checked = activeLogo.enabled;
+                renderLogo();
+            }
+
+            // Final sync of all visual states
+            applyVideoEffects();
+            updateTimeline();
         }
 
         // Toggle save input box
@@ -4177,10 +4677,11 @@
                 const rect = saveBtn.getBoundingClientRect();
                 saveBox.style.position = 'fixed';
                 saveBox.style.top = (rect.bottom + 5) + 'px';
-                saveBox.style.left = rect.left + 'px';
+                saveBox.style.left = Math.max(10, rect.left - 100) + 'px'; // Shift left a bit more for width
 
                 saveBox.style.display = 'block';
                 loadBox.style.display = 'none';
+                refreshPresetsList();
                 document.getElementById('presetNameInput').focus();
             } else {
                 saveBox.style.display = 'none';
@@ -4213,79 +4714,110 @@
             const key = `videoEditor_${videoPath}`;
             const saved = localStorage.getItem(key);
             const presetsList = document.getElementById('presetsList');
+            const savePresetsList = document.getElementById('savePresetsList');
 
             if (!saved) {
-                presetsList.innerHTML = '<p style="color: #888; text-align: center; padding: 20px;">No saved presets</p>';
+                const emptyMsg = '<p style="color: #888; text-align: center; padding: 20px;">No saved presets</p>';
+                if (presetsList) presetsList.innerHTML = emptyMsg;
+                if (savePresetsList) savePresetsList.innerHTML = emptyMsg;
                 return;
             }
 
             try {
                 const presets = JSON.parse(saved);
+                const hasPresets = Object.keys(presets).length > 0;
 
-                if (Object.keys(presets).length === 0) {
-                    presetsList.innerHTML = '<p style="color: #888; text-align: center; padding: 20px;">No saved presets</p>';
+                if (!hasPresets) {
+                    const emptyMsg = '<p style="color: #888; text-align: center; padding: 20px;">No saved presets</p>';
+                    if (presetsList) presetsList.innerHTML = emptyMsg;
+                    if (savePresetsList) savePresetsList.innerHTML = emptyMsg;
                 } else {
-                    presetsList.innerHTML = '';
+                    if (presetsList) presetsList.innerHTML = '';
+                    if (savePresetsList) savePresetsList.innerHTML = '';
 
                     Object.entries(presets).forEach(([name, data]) => {
-                        const presetDiv = document.createElement('div');
-                        presetDiv.style.cssText = `
-                            background: rgba(255,255,255,0.03);
-                            border: 1px solid #444;
-                            border-radius: 6px;
-                            padding: 12px;
-                            margin-bottom: 8px;
-                        `;
+                        // 1. Create Load List Item
+                        if (presetsList) {
+                            const presetDiv = document.createElement('div');
+                            presetDiv.style.cssText = 'background: rgba(255,255,255,0.03); border: 1px solid #444; border-radius: 6px; padding: 12px; margin-bottom: 8px;';
 
-                        const headerDiv = document.createElement('div');
-                        headerDiv.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;';
+                            const headerDiv = document.createElement('div');
+                            headerDiv.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;';
 
-                        const nameEl = document.createElement('div');
-                        nameEl.style.cssText = 'font-weight: bold; font-size: 14px; color: #00ff9d;';
-                        nameEl.textContent = name;
+                            const nameEl = document.createElement('div');
+                            nameEl.style.cssText = 'font-weight: bold; font-size: 14px; color: #00ff9d;';
+                            nameEl.textContent = name;
 
-                        const buttonsDiv = document.createElement('div');
-                        buttonsDiv.style.cssText = 'display: flex; gap: 6px;';
+                            const buttonsDiv = document.createElement('div');
+                            buttonsDiv.style.cssText = 'display: flex; gap: 6px;';
 
-                        const loadBtn = document.createElement('button');
-                        loadBtn.textContent = 'Load';
-                        loadBtn.style.cssText = 'padding: 4px 12px; background: #00ff9d; border: none; border-radius: 4px; color: #000; font-size: 12px; cursor: pointer; font-weight: bold;';
-                        loadBtn.onclick = () => {
-                            applySettings(data.settings);
-                            toggleLoadPresets();
-                            showNotification(`Preset "${name}" loaded!`, 'success');
-                        };
+                            const loadBtn = document.createElement('button');
+                            loadBtn.textContent = 'Load';
+                            loadBtn.style.cssText = 'padding: 4px 12px; background: #00ff9d; border: none; border-radius: 4px; color: #000; font-size: 12px; cursor: pointer; font-weight: bold;';
+                            loadBtn.onclick = () => {
+                                applySettings(data.settings);
+                                toggleLoadPresets();
+                                showNotification(`Preset "${name}" loaded!`, 'success');
+                            };
 
-                        const deleteBtn = document.createElement('button');
-                        deleteBtn.textContent = '✕';
-                        deleteBtn.style.cssText = 'padding: 4px 8px; background: #ff4444; border: none; border-radius: 4px; color: #fff; font-size: 12px; cursor: pointer;';
-                        deleteBtn.onclick = () => {
-                            if (confirm(`Delete preset "${name}"?`)) {
-                                delete presets[name];
-                                localStorage.setItem(key, JSON.stringify(presets));
-                                refreshPresetsList();
-                                showNotification(`Preset "${name}" deleted`, 'info');
-                            }
-                        };
+                                                    const deleteBtn = document.createElement('button');
+                                                    deleteBtn.textContent = 'Delete';
+                                                    deleteBtn.style.cssText = 'padding: 4px 12px; background: #ff4444; border: none; border-radius: 4px; color: #fff; font-size: 12px; cursor: pointer; font-weight: bold; transition: opacity 0.2s;';
+                                                    deleteBtn.onmouseover = () => deleteBtn.style.opacity = '0.8';
+                                                    deleteBtn.onmouseout = () => deleteBtn.style.opacity = '1';
+                                                    deleteBtn.onclick = (e) => {
+                                                        e.stopPropagation();
+                                                        if (confirm(`Are you sure you want to permanently delete the preset "${name}"?`)) {
+                                                            delete presets[name];
+                                                            localStorage.setItem(key, JSON.stringify(presets));
+                                                            refreshPresetsList();
+                                                            showNotification(`Preset "${name}" has been deleted`, 'info');
+                                                        }
+                                                    };
+                                                        buttonsDiv.appendChild(loadBtn);
+                            buttonsDiv.appendChild(deleteBtn);
+                            headerDiv.appendChild(nameEl);
+                            headerDiv.appendChild(buttonsDiv);
 
-                        buttonsDiv.appendChild(loadBtn);
-                        buttonsDiv.appendChild(deleteBtn);
+                            const dateEl = document.createElement('div');
+                            dateEl.style.cssText = 'font-size: 11px; color: #666;';
+                            const savedDate = new Date(data.savedAt);
+                            dateEl.textContent = `Saved: ${savedDate.toLocaleString()}`;
 
-                        headerDiv.appendChild(nameEl);
-                        headerDiv.appendChild(buttonsDiv);
+                            presetDiv.appendChild(headerDiv);
+                            presetDiv.appendChild(dateEl);
+                            presetsList.appendChild(presetDiv);
+                        }
 
-                        const dateEl = document.createElement('div');
-                        dateEl.style.cssText = 'font-size: 11px; color: #666;';
-                        const savedDate = new Date(data.savedAt);
-                        dateEl.textContent = `Saved: ${savedDate.toLocaleString()}`;
+                        // 2. Create Save List Item (Simplified for quick selection)
+                        if (savePresetsList) {
+                            const saveItem = document.createElement('div');
+                            saveItem.style.cssText = 'padding: 8px 10px; background: rgba(255,255,255,0.05); border: 1px solid #333; border-radius: 4px; margin-bottom: 5px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: background 0.2s;';
+                            saveItem.onmouseover = () => saveItem.style.background = 'rgba(0, 255, 157, 0.1)';
+                            saveItem.onmouseout = () => saveItem.style.background = 'rgba(255,255,255,0.05)';
+                            saveItem.onclick = () => {
+                                document.getElementById('presetNameInput').value = name;
+                                document.getElementById('presetNameInput').focus();
+                            };
 
-                        presetDiv.appendChild(headerDiv);
-                        presetDiv.appendChild(dateEl);
-                        presetsList.appendChild(presetDiv);
+                            const nameSpan = document.createElement('span');
+                            nameSpan.style.cssText = 'font-size: 12px; color: #eee;';
+                            nameSpan.textContent = name;
+
+                            const overwriteLabel = document.createElement('span');
+                            overwriteLabel.style.cssText = 'font-size: 10px; color: #666;';
+                            overwriteLabel.textContent = 'Click to use name';
+
+                            saveItem.appendChild(nameSpan);
+                            saveItem.appendChild(overwriteLabel);
+                            savePresetsList.appendChild(saveItem);
+                        }
                     });
                 }
             } catch (error) {
-                presetsList.innerHTML = '<p style="color: #ff4444; text-align: center; padding: 20px;">Error loading presets</p>';
+                const errMsg = '<p style="color: #ff4444; text-align: center; padding: 20px;">Error loading presets</p>';
+                if (presetsList) presetsList.innerHTML = errMsg;
+                if (savePresetsList) savePresetsList.innerHTML = errMsg;
             }
         }
 
@@ -4309,6 +4841,13 @@
                 }
             } catch (e) {
                 presets = {};
+            }
+
+            // Check if name already exists
+            if (presets[presetName]) {
+                if (!confirm(`A preset named "${presetName}" already exists. Overwrite it?`)) {
+                    return;
+                }
             }
 
             // Add/update the preset
@@ -4352,6 +4891,26 @@
         function loadSettings() {
             toggleLoadPresets();
         }
+
+        // Close presets boxes when clicking outside
+        document.addEventListener('mousedown', (e) => {
+            const saveBox = document.getElementById('savePresetBox');
+            const loadBox = document.getElementById('loadPresetsBox');
+            const saveBtn = document.getElementById('saveBtn');
+            const loadBtn = document.getElementById('loadBtn');
+
+            if (saveBox && saveBox.style.display === 'block') {
+                if (!saveBox.contains(e.target) && !saveBtn.contains(e.target)) {
+                    saveBox.style.display = 'none';
+                }
+            }
+
+            if (loadBox && loadBox.style.display === 'block') {
+                if (!loadBox.contains(e.target) && !loadBtn.contains(e.target)) {
+                    loadBox.style.display = 'none';
+                }
+            }
+        });
     </script>
 </body>
 </html>
