@@ -2188,6 +2188,7 @@
             <label>All Caps:</label>
             <input type="checkbox" id="title-all-caps" checked>
         </div>
+        <button id="reset-title-style-menu" style="margin-top: 5px; padding: 6px; background: #666; color: #fff; border: none; border-radius: 4px; cursor: pointer;">Reset</button>
         <button id="close-title-style-menu" style="margin-top: 5px; padding: 6px; background: #444; color: #fff; border: none; border-radius: 4px; cursor: pointer;">Close</button>
     </div>
 
@@ -6704,16 +6705,17 @@
                 handle.addEventListener('mousedown', (e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    
+
                     const overlay = handle.parentElement;
                     const startY = e.clientY;
                     // Get logical font size from the input directly
                     const fontSizeInput = document.getElementById('title-font-size-input');
                     const startFontSizeLogical = parseFloat(fontSizeInput?.value || 80);
-                    
+                    let finalLogicalSize = startFontSizeLogical;  // Track final logical size
+
                     const onMouseMove = (moveEvent) => {
                         const deltaY = moveEvent.clientY - startY;
-                        
+
                         // Get scale to convert visual drag to logical font size change
                         const previewVideo = document.getElementById('preview-video');
                         const previewHeight = previewVideo.offsetHeight || 500;
@@ -6723,31 +6725,30 @@
                         // Drag down to increase size, up to decrease
                         // Convert change to logical space
                         const logicalDelta = deltaY * scale;
-                        const newSize = Math.max(10, Math.min(300, startFontSizeLogical + logicalDelta / 2));
-                        
+                        finalLogicalSize = Math.max(10, Math.min(300, startFontSizeLogical + logicalDelta / 2));
+
                         // Update the input value (logical)
                         const fontSizeInput = document.getElementById('title-font-size-input');
                         if (fontSizeInput) {
-                            fontSizeInput.value = Math.round(newSize);
+                            fontSizeInput.value = Math.round(finalLogicalSize);
                             // Trigger the change event to update DOM visual style via applyStyles
                             fontSizeInput.dispatchEvent(new Event('change'));
                         }
                     };
-                    
+
                     const onMouseUp = () => {
                         document.removeEventListener('mousemove', onMouseMove);
                         document.removeEventListener('mouseup', onMouseUp);
-                        
-                        // Update the font size input value to match the visual size
-                        const currentSize = parseFloat(document.getElementById('original-title-overlay').style.fontSize);
+
+                        // Use the logical size we tracked, NOT the visual size from DOM
                         const fontSizeInput = document.getElementById('title-font-size-input');
                         if (fontSizeInput) {
-                            fontSizeInput.value = Math.round(currentSize);
+                            fontSizeInput.value = Math.round(finalLogicalSize);
                         }
-                        
-                        // Save the new font size preference
-                        localStorage.setItem('title_font_size', `${currentSize}px`);
-                        
+
+                        // Save the new font size preference (logical)
+                        localStorage.setItem('title_font_size', `${Math.round(finalLogicalSize)}px`);
+
                         // Save to server via applyStyles (if it exists)
                         if (typeof setupTitleStyling === 'function') {
                             // Find the internal applyStyles and call it or just trigger change
@@ -6856,6 +6857,30 @@
 
             document.getElementById('close-title-style-menu').addEventListener('click', () => {
                 menu.style.display = 'none';
+            });
+
+            // Reset button - restore defaults and clear localStorage
+            document.getElementById('reset-title-style-menu').addEventListener('click', () => {
+                // Reset to default values
+                fontSizeInput.value = 80;
+                bgTypeSelect.value = 'gradient';
+                textColorInput.value = '#00ff9d';
+                fontWeightSelect.value = '800';
+                outlineWidthInput.value = 0;
+                outlineColorInput.value = '#000000';
+                allCapsCheckbox.checked = false;
+
+                // Clear localStorage
+                localStorage.removeItem('title_style_fontSize');
+                localStorage.removeItem('title_style_bgType');
+                localStorage.removeItem('title_style_textColor');
+                localStorage.removeItem('title_style_fontWeight');
+                localStorage.removeItem('title_style_outlineWidth');
+                localStorage.removeItem('title_style_outlineColor');
+                localStorage.removeItem('title_style_allCaps');
+                localStorage.removeItem('title_font_size');
+
+                applyStyles();
             });
 
             [fontSizeInput, bgTypeSelect, textColorInput, fontWeightSelect, outlineWidthInput, outlineColorInput, allCapsCheckbox].forEach(el => {
