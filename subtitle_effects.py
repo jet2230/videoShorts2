@@ -154,17 +154,23 @@ class SubtitleEffects:
 
         return res
 
-    def get_progressive_fill_mask(self, width: int, height: int, progress: float) -> Image.Image:
-        """Creates a mask for progressive color fill (left to right)."""
+    def get_progressive_fill_mask(self, width: int, height: int, progress: float, rtl: bool = False) -> Image.Image:
+        """Creates a mask for progressive color fill (left to right by default, right to left for RTL)."""
         mask = Image.new('L', (width, height), 0)
         draw = ImageDraw.Draw(mask)
         fill_width = int(width * progress)
-        draw.rectangle([0, 0, fill_width, height], fill=255)
+        
+        if rtl:
+            # Fill from right to left
+            draw.rectangle([width - fill_width, 0, width, height], fill=255)
+        else:
+            # Fill from left to right
+            draw.rectangle([0, 0, fill_width, height], fill=255)
         return mask
 
-    def apply_3d_shadow(self, draw: ImageDraw.Draw, x: float, y: float, text: str, font: ImageFont.FreeTypeFont, color: Tuple[int, int, int, int]):
+    def apply_3d_shadow(self, draw: ImageDraw.Draw, x: float, y: float, text: str, font: ImageFont.FreeTypeFont, color: Tuple[int, int, int, int], anchor: str = "lm"):
         """Renders multi-layer shadow for 3D effect."""
         shadow_color = (0, 0, 0, 255)
         for i in range(5, 0, -1):
-            draw.text((x + i, y + i), text, fill=shadow_color, font=font, anchor="lm")
-        draw.text((x, y), text, fill=color, font=font, anchor="lm")
+            draw.text((x + i, y + i), text, fill=shadow_color, font=font, anchor=anchor)
+        draw.text((x, y), text, fill=color, font=font, anchor=anchor)

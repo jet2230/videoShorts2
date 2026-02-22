@@ -109,6 +109,29 @@ class UniversalSubtitleRenderer:
         # Pre-calculate word timings
         self.words_by_time = sorted(self.word_timestamps, key=lambda w: w['start'])
         
+        # Detect if text is Arabic (RTL)
+        self.is_rtl = self._is_arabic(self.word_timestamps)
+
+    def _is_arabic(self, word_timestamps: List[Dict]) -> bool:
+        """Detect if the content contains Arabic characters (RTL)."""
+        if not word_timestamps:
+            return False
+            
+        # Sample first few words
+        sample_size = min(20, len(word_timestamps))
+        arabic_chars = 0
+        total_chars = 0
+        
+        for i in range(sample_size):
+            word = word_timestamps[i].get('word', '')
+            total_chars += len(word)
+            # Check for Arabic Unicode range
+            for char in word:
+                if '\u0600' <= char <= '\u06FF' or '\u0750' <= char <= '\u077F' or '\u08A0' <= char <= '\u08FF':
+                    arabic_chars += 1
+                    
+        return arabic_chars > (total_chars * 0.3) if total_chars > 0 else False
+        
         # Pre-calculate title properties to save CPU every frame
         self._title_pre_rendered = False  # Track if title has been pre-rendered
         # Note: We don't call _precalculate_title_properties() here to avoid overhead
@@ -565,9 +588,20 @@ class UniversalSubtitleRenderer:
                     line_width += word_info['width']
                     if i < len(line) - 1: line_width += word_info['space_width']
 
-                if self.settings.get('effect_type') == 'flash': x = self.output_width / 2
-                elif (self.subtitle_position == 'custom' and self.subtitle_left is not None): x = self.subtitle_left - (line_width / 2)
-                else: x = self.output_width / 2 - (line_width / 2)
+                # Calculate line starting X position
+                if self.settings.get('effect_type') == 'flash':
+                    x_center = self.output_width / 2
+                elif (self.subtitle_position == 'custom' and self.subtitle_left is not None):
+                    x_center = self.subtitle_left
+                else:
+                    x_center = self.output_width / 2
+
+                # In RTL mode, the first word of the line (index 0) is the rightmost
+                # We start drawing from the right edge of the line
+                if self.is_rtl:
+                    x = x_center + (line_width / 2)
+                else:
+                    x = x_center - (line_width / 2)
 
                 text_y = y_text + (line_height / 2)
 
@@ -599,51 +633,64 @@ class UniversalSubtitleRenderer:
                     
                     x_off, y_off = effect_mods['offset_x'], effect_mods['offset_y']
                     
+                    # Adjust X position for drawing word (different for LTR vs RTL)
+                    # For RTL, x is the right edge of the current word
+                    draw_x = x + x_off
+                    anchor = "lm" # Left-middle for LTR
+                    if self.is_rtl:
+                        anchor = "rm" # Right-middle for RTL
+                    
                     # Glow (only if glow_layer exists)
                     if glow_layer and word_color == self.text_color and effect_mods['glow_blur'] > 0:
-                        glow_draw.text((x + x_off, text_y + y_off), word_text, fill=self.glow_color + (255,), font=word_font, anchor="lm")
+                        glow_draw.text((draw_x, text_y + y_off), word_text, fill=self.glow_color + (255,), font=word_font, anchor=anchor)
                     
                     # Outline
                     if effect_mods.get('custom_render') and self.settings.get('effect_type') == 'shadow_3d':
-                        self.effects.apply_3d_shadow(overlay_draw, x + x_off, text_y + y_off, word_text, word_font, word_color + (255,))
+                        # Shadow 3D needs anchor update too if it's used
+                        self.effects.apply_3d_shadow(overlay_draw, draw_x, text_y + y_off, word_text, word_font, word_color + (255,), anchor=anchor)
                     else:
                         # Draw outline using native stroke if possible, fallback to loop
                         try:
-                            overlay_draw.text((x + x_off, text_y + y_off), word_text, fill=word_color + (255,), font=word_font, anchor="lm", stroke_width=2, stroke_fill=self.outline_color + (255,))
+                            overlay_draw.text((draw_x, text_y + y_off), word_text, fill=word_color + (255,), font=word_font, anchor=anchor, stroke_width=2, stroke_fill=self.outline_color + (255,))
                         except TypeError:
                             offsets = [(-2,-2), (2,-2), (-2,2), (2,2)]
                             for dx, dy in offsets:
-                                overlay_draw.text((x + x_off + dx, text_y + y_off + dy), word_text, fill=self.outline_color + (255,), font=word_font, anchor="lm")
+                                overlay_draw.text((draw_x + dx, text_y + y_off + dy), word_text, fill=self.outline_color + (255,), font=word_font, anchor=anchor)
                     
                     # Dynamic Box
                     if self.settings.get('effect_type') == 'dynamic_box' and is_highlighted:
-                        bbox = overlay_draw.textbbox((x + x_off, text_y + y_off), word_text, font=word_font, anchor="lm")
+                        bbox = overlay_draw.textbbox((draw_x, text_y + y_off), word_text, font=word_font, anchor=anchor)
                         pad = 10
                         overlay_draw.rectangle([bbox[0]-pad, bbox[1]-pad, bbox[2]+pad, bbox[3]+pad], fill=self.text_color+(255,))
                         word_color = self._hex_to_rgb(self.settings.get('bgColor', '#000000'))
 
-                    # Progressive Fill
+                    # Progressive Fill (Needs RTL awareness for fill direction)
                     if self.settings.get('effect_type') == 'progressive_fill' and is_highlighted:
-                        overlay_draw.text((x + x_off, text_y + y_off), word_text, fill=self.primary_color + (255,), font=word_font, anchor="lm")
+                        overlay_draw.text((draw_x, text_y + y_off), word_text, fill=self.primary_color + (255,), font=word_font, anchor=anchor)
                         prog = max(0, min(1, (current_time - w_start) / (w_end - w_start)))
-                        bbox = overlay_draw.textbbox((x + x_off, text_y + y_off), word_text, font=word_font, anchor="lm")
+                        bbox = overlay_draw.textbbox((draw_x, text_y + y_off), word_text, font=word_font, anchor=anchor)
                         tw, th = bbox[2]-bbox[0], bbox[3]-bbox[1]
                         if tw > 0 and th > 0:
                             word_layer = Image.new("RGBA", (int(tw)+20, int(th)+20), (0,0,0,0))
                             word_draw = ImageDraw.Draw(word_layer)
-                            word_draw.text((10, 10 + th/2), word_text, fill=word_color+(255,), font=word_font, anchor="lm")
-                            mask = self.effects.get_progressive_fill_mask(word_layer.width, word_layer.height, prog)
+                            # Draw word on layer for masking
+                            word_draw.text((10 if not self.is_rtl else tw + 10, 10 + th/2), word_text, fill=word_color+(255,), font=word_font, anchor=anchor)
+                            mask = self.effects.get_progressive_fill_mask(word_layer.width, word_layer.height, prog, rtl=self.is_rtl)
                             overlay_layer.paste(word_layer, (int(bbox[0])-10, int(bbox[1])-10), mask)
                     else:
                         # Final draw with normalized color
-                        overlay_draw.text((x + x_off, text_y + y_off), word_text, fill=word_color + (255,), font=word_font, anchor="lm")
+                        overlay_draw.text((draw_x, text_y + y_off), word_text, fill=word_color + (255,), font=word_font, anchor=anchor)
                     
                     # Emoji
                     if 'emoji' in effect_mods:
                         emoji_font = self._get_font(int(self.font_size * 1.2), "NotoColorEmoji")
-                        overlay_draw.text((x + x_off, text_y + y_off - line_height), effect_mods['emoji'], fill=(255,255,255,255), font=emoji_font, anchor="mm")
+                        overlay_draw.text((draw_x, text_y + y_off - line_height), effect_mods['emoji'], fill=(255,255,255,255), font=emoji_font, anchor="mm")
 
-                    x += word_info['width'] + word_info['space_width']
+                    # Update X for next word
+                    if self.is_rtl:
+                        x -= (word_info['width'] + word_info['space_width'])
+                    else:
+                        x += (word_info['width'] + word_info['space_width'])
 
                 y_text += line_height
                 words_before_line += len(line)

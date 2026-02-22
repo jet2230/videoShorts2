@@ -2362,6 +2362,27 @@
                 };
             }
 
+            // Helper to detect Arabic text (RTL)
+            _isArabic(words) {
+                if (!words || words.length === 0) return false;
+                let arabicChars = 0;
+                let totalChars = 0;
+                // Sample first 20 words
+                const sample = words.slice(0, 20);
+                for (const word of sample) {
+                    const text = word.text || '';
+                    totalChars += text.length;
+                    for (let i = 0; i < text.length; i++) {
+                        const code = text.charCodeAt(i);
+                        // Check for Arabic Unicode ranges
+                        if ((code >= 0x0600 && code <= 0x06FF) || (code >= 0x0750 && code <= 0x077F) || (code >= 0x08A0 && code <= 0x08FF)) {
+                            arabicChars++;
+                        }
+                    }
+                }
+                return totalChars > 0 ? (arabicChars > totalChars * 0.3) : false;
+            }
+
             // Helper to get effect modifications for a word
             getEffectMods(wordObj, currentTime, wordStart, wordEnd, isHighlighted) {
                 const effectType = this.settings.effect_type || 'none';
@@ -2505,6 +2526,9 @@
                 }
                 if (words.length === 0) return;
 
+                // Detect RTL
+                this.isRTL = this._isArabic(words);
+
                 const setWordFont = (wordObj, scaleMultiplier = 1.0) => {
                     const weight = wordObj.bold ? 'bold' : baseFontWeight;
                     const style = wordObj.italic ? 'italic' : '';
@@ -2546,8 +2570,7 @@
                 } else startY = canvas.height - (100 * scale) - totalHeight;
 
                 ctx.textBaseline = 'middle';
-                ctx.textAlign = 'center';
-
+                
                 let globalWordCounter = 0;
                 for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
                     const line = lines[lineIndex];
@@ -2580,7 +2603,15 @@
                     }
 
                     // Pass 2: Words
-                    let currentX = xPosStart;
+                    let currentX;
+                    if (this.isRTL) {
+                        currentX = xPosStart + lineTextWidth;
+                        ctx.textAlign = 'right';
+                    } else {
+                        currentX = xPosStart;
+                        ctx.textAlign = 'left';
+                    }
+
                     for (let i = 0; i < line.length; i++) {
                         const wordObj = line[i];
                         const isHighlighted = (globalWordCounter === highlightedWordIndex);
@@ -2599,8 +2630,8 @@
                         const mods = this.getEffectMods(wordObj, currentTime, wStart, wEnd, isHighlighted);
                         if (mods.opacity > 0 && mods.text) {
                             setWordFont(wordObj, mods.scale * (mods.sizeMultiplier || 1.0));
-                            const wordWidth = ctx.measureText(mods.text).width;
-                            const drawX = currentX + (line[i].width / 2) + mods.offsetX;
+                            
+                            const drawX = currentX + mods.offsetX;
                             const drawY = lineY + (lineHeight / 2) + mods.offsetY;
 
                             ctx.globalAlpha = mods.opacity;
@@ -2608,7 +2639,8 @@
                             // Dynamic Box
                             if (effectType === 'dynamic_box' && isHighlighted) {
                                 ctx.fillStyle = this.settings.textColor || '#ffff00';
-                                ctx.fillRect(currentX - 5*scale, lineY, line[i].width + 10*scale, lineHeight);
+                                const boxX = this.isRTL ? currentX - line[i].width - 5*scale : currentX - 5*scale;
+                                ctx.fillRect(boxX, lineY, line[i].width + 10*scale, lineHeight);
                                 mods.color = this.settings.bgColor || '#000000';
                             }
 
@@ -2640,7 +2672,11 @@
                                 ctx.save();
                                 const prog = Math.max(0, Math.min(1, (currentTime - wStart) / (wEnd - wStart)));
                                 ctx.beginPath();
-                                ctx.rect(currentX, lineY, line[i].width * prog, lineHeight);
+                                if (this.isRTL) {
+                                    ctx.rect(currentX - line[i].width * prog, lineY, line[i].width * prog, lineHeight);
+                                } else {
+                                    ctx.rect(currentX, lineY, line[i].width * prog, lineHeight);
+                                }
                                 ctx.clip();
                                 ctx.fillStyle = mods.color;
                                 ctx.fillText(mods.text, drawX, drawY);
@@ -2658,7 +2694,12 @@
                             ctx.globalAlpha = 1.0;
                             ctx.shadowBlur = 0;
                         }
-                        currentX += line[i].width + spaceWidth;
+                        
+                        if (this.isRTL) {
+                            currentX -= (line[i].width + spaceWidth);
+                        } else {
+                            currentX += (line[i].width + spaceWidth);
+                        }
                         globalWordCounter++;
                     }
                 }
