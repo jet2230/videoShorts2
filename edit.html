@@ -1236,6 +1236,11 @@
             }
         }
     </style>
+
+    <!-- MediaPipe Face Detection -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection@0.4/face_detection.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3/drawing_utils.js" crossorigin="anonymous"></script>
 </head>
 <body>
     <div class="header">
@@ -1304,6 +1309,7 @@
         <div class="preview-area">
             <div class="video-wrapper">
                 <video id="mainVideo" controls></video>
+                <canvas id="outlineCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 11 !important; display: none !important;"></canvas>
                 <div id="imageOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10 !important; display: block !important;"></div>
                 <div id="logoOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9 !important; display: block !important;"></div>
             </div>
@@ -1692,6 +1698,21 @@
                         <option value="10">10 seconds</option>
                         <option value="custom">Custom...</option>
                     </select>
+                </div>
+                <label class="checkbox-item effect-with-preview">
+                    <input type="checkbox" id="effectOutline" data-effect="outline" onchange="toggleEffectPreview(this, 'outline')">
+                    <span>✏️ Speaker Outline</span>
+                    <button class="effect-preview-btn" onclick="previewVideoEffect('outline')" style="display: none;">👁️</button>
+                </label>
+                <div class="effect-duration-options" id="durationOutline" style="display: none;">
+                    <select class="duration-select" onchange="updateEffectDuration('outline', this.value)">
+                        <option value="10">10 seconds</option>
+                        <option value="30">30 seconds</option>
+                        <option value="60">1 minute</option>
+                        <option value="all">Full Video</option>
+                        <option value="custom">Custom...</option>
+                    </select>
+                    <input type="number" id="customOutline" class="custom-duration-input" style="display: none;" placeholder="Seconds" min="1" max="300">
                 </div>
             </div>
         </div>
@@ -2093,6 +2114,10 @@
         // Sync CSS animations with video play/pause
         video.addEventListener('play', () => {
             video.style.animationPlayState = 'running';
+            // Start outline face detection if active
+            if (activeEffects.has('outline')) {
+                processVideoForFaceDetection();
+            }
         });
         video.addEventListener('pause', () => {
             video.style.animationPlayState = 'paused';
@@ -2416,6 +2441,10 @@
         window.addEventListener('resize', () => {
             if (waveformPeaks.length > 0) {
                 drawWaveform();
+            }
+            // Redraw outline if active
+            if (activeEffects.has('outline')) {
+                drawSpeakerOutline();
             }
         });
 
@@ -3312,7 +3341,8 @@
                 'grayscale': '🖤 Grayscale',
                 'sepia': '🟤 Sepia Tone',
                 'blur': '💨 Blur Background',
-                'zoom': '🔍 Zoom Effect'
+                'zoom': '🔍 Zoom Effect',
+                'outline': '✏️ Speaker Outline'
             };
             return names[effectType] || effectType;
         }
@@ -3560,6 +3590,9 @@
                         // Closest CSS filter without complex shaders
                         filters.push('blur(4px) contrast(2) brightness(1.1)');
                         break;
+                    case 'outline':
+                        // Outline is handled separately via canvas overlay
+                        break;
                 }
             }
 
@@ -3594,6 +3627,174 @@
             }
 
             video.style.filter = filters.join(' ');
+
+            // Handle outline effect separately with canvas overlay
+            updateOutlineEffect();
+        }
+
+        // Outline effect variables
+        let outlineAnimationId = null;
+        let faceDetection = null;
+        let lastFacePosition = null; // Store last known face position for smooth tracking
+        let faceDetectionInitialized = false;
+
+        // Initialize MediaPipe Face Detection
+        async function initializeFaceDetection() {
+            if (faceDetectionInitialized) return;
+
+            try {
+                faceDetection = new FaceDetection({locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection@0.4/${file}`;
+                }});
+
+                faceDetection.setOptions({
+                    model: 'short',  // 'short' for close-range, 'full' for longer range
+                    minDetectionConfidence: 0.5
+                });
+
+                faceDetection.onResults(onFaceDetectionResults);
+                faceDetectionInitialized = true;
+                console.log('Face detection initialized');
+            } catch (error) {
+                console.error('Failed to initialize face detection:', error);
+            }
+        }
+
+        // Handle face detection results
+        function onFaceDetectionResults(results) {
+            const canvas = document.getElementById('outlineCanvas');
+            const ctx = canvas.getContext('2d');
+
+            if (!canvas || !activeEffects.has('outline')) return;
+
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Outline style
+            ctx.strokeStyle = '#00ff9d';
+            ctx.lineWidth = Math.max(3, canvas.width / 150);
+            ctx.shadowColor = '#00ff9d';
+            ctx.shadowBlur = 15;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            if (results.detections && results.detections.length > 0) {
+                // Get the first detected face
+                const detection = results.detections[0];
+                const bbox = detection.boundingBox;
+
+                // Calculate face position in canvas coordinates
+                const video = document.getElementById('mainVideo');
+                const rect = video.getBoundingClientRect();
+
+                // Get the video's actual display size
+                const displayWidth = rect.width;
+                const displayHeight = rect.height;
+
+                // MediaPipe returns normalized coordinates (0-1)
+                const faceX = bbox.xCenter * displayWidth;
+                const faceY = bbox.yCenter * displayHeight;
+                const faceWidth = bbox.width * displayWidth;
+                const faceHeight = bbox.height * displayHeight;
+
+                // Store for smooth tracking
+                lastFacePosition = {
+                    x: faceX,
+                    y: faceY,
+                    width: faceWidth,
+                    height: faceHeight,
+                    displayWidth,
+                    displayHeight
+                };
+
+                // Draw outline around detected face
+                drawFaceOutline(ctx, faceX, faceY, faceWidth, faceHeight, displayWidth, displayHeight);
+            } else if (lastFacePosition) {
+                // Use last known position if no face detected this frame (smoother tracking)
+                drawFaceOutline(ctx, lastFacePosition.x, lastFacePosition.y,
+                              lastFacePosition.width, lastFacePosition.height,
+                              lastFacePosition.displayWidth, lastFacePosition.displayHeight);
+            }
+
+            // Continue detection loop
+            if (!video.paused && activeEffects.has('outline')) {
+                outlineAnimationId = requestAnimationFrame(() => processVideoForFaceDetection());
+            }
+        }
+
+        // Draw outline around face and shoulders
+        function drawFaceOutline(ctx, faceX, faceY, faceWidth, faceHeight, displayWidth, displayHeight) {
+            // Calculate outline dimensions based on face position
+            const headRadius = Math.max(faceWidth, faceHeight) * 0.55;
+            const headCenterY = faceY;
+            const shoulderY = faceY + headRadius * 1.8;
+            // Make shoulders more proportional to face width
+            const shoulderWidth = headRadius * 1.6; // Reduced from 2.5
+
+            ctx.beginPath();
+
+            // Draw head outline (ellipse)
+            ctx.ellipse(faceX, headCenterY, headRadius, headRadius * 1.25, 0, 0, Math.PI * 2);
+
+            // Draw shoulder curve
+            const leftShoulderX = faceX - shoulderWidth;
+            const rightShoulderX = faceX + shoulderWidth;
+
+            // Curve from left side of head to left shoulder
+            ctx.moveTo(faceX - headRadius * 0.7, headCenterY + headRadius * 0.6);
+            ctx.quadraticCurveTo(leftShoulderX, shoulderY - headRadius * 0.3, leftShoulderX, shoulderY);
+
+            // Shoulder line across
+            ctx.quadraticCurveTo(faceX, shoulderY + headRadius * 0.2, rightShoulderX, shoulderY);
+
+            // Right side back to head
+            ctx.quadraticCurveTo(rightShoulderX, shoulderY - headRadius * 0.3,
+                               faceX + headRadius * 0.7, headCenterY + headRadius * 0.6);
+
+            ctx.stroke();
+        }
+
+        // Process video frame for face detection
+        async function processVideoForFaceDetection() {
+            if (!faceDetection || !activeEffects.has('outline')) return;
+
+            const video = document.getElementById('mainVideo');
+            const canvas = document.getElementById('outlineCanvas');
+
+            if (!video || !canvas) return;
+
+            // Set canvas size
+            const rect = video.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+
+            // Send video frame to face detection
+            await faceDetection.send({image: video});
+        }
+
+        // Update outline effect visibility and drawing
+        async function updateOutlineEffect() {
+            const canvas = document.getElementById('outlineCanvas');
+            const hasOutline = activeEffects.has('outline');
+
+            if (hasOutline) {
+                canvas.style.display = 'block';
+                await initializeFaceDetection();
+                processVideoForFaceDetection();
+            } else {
+                canvas.style.display = 'none';
+                if (outlineAnimationId) {
+                    cancelAnimationFrame(outlineAnimationId);
+                    outlineAnimationId = null;
+                }
+                lastFacePosition = null; // Reset face position
+            }
+        }
+
+        // Draw speaker outline on canvas (fallback - deprecated, use face detection)
+        function drawSpeakerOutline() {
+            // This function is now handled by processVideoForFaceDetection
+            processVideoForFaceDetection();
         }
 
         // Toggle face tracking options visibility
@@ -3877,7 +4078,8 @@
             video.style.opacity = '1';
             video.style.transition = 'none';
             video.style.transformOrigin = 'center center';
-            
+            video.style.boxShadow = 'none';
+
             // Re-apply any persistent effects including lighting
             applyVideoEffects();
         }
@@ -3889,6 +4091,9 @@
 
             const duration = 2; // 2 second preview
             showNotification(`Previewing ${effectType} effect...`, 'info');
+
+            // Track if outline was only added for preview
+            let outlinePreviewOnly = false;
 
             // Play from current position for preview
             const currentTime = video.currentTime;
@@ -3936,6 +4141,19 @@
                     case 'pixelate':
                         video.style.filter = 'blur(8px) contrast(1.5)';
                         break;
+                    case 'outline':
+                        // Preview: show canvas outline with face detection
+                        initializeFaceDetection().then(() => {
+                            const canvas = document.getElementById('outlineCanvas');
+                            canvas.style.display = 'block';
+                            // Temporarily add to active effects for preview
+                            if (!activeEffects.has('outline')) {
+                                outlinePreviewOnly = true;
+                            }
+                            activeEffects.add('outline');
+                            processVideoForFaceDetection();
+                        });
+                        break;
                     case 'slowmo':
                         video.playbackRate = 0.5;
                         break;
@@ -3949,6 +4167,10 @@
                     video.pause();
                     video.playbackRate = 1.0;
                     video.classList.remove('shake-animation');
+                    // Remove outline if it was only for preview
+                    if (outlinePreviewOnly) {
+                        activeEffects.delete('outline');
+                    }
                     // After preview, re-apply persistent effects
                     applyVideoEffects();
                     video.currentTime = currentTime;
