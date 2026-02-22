@@ -59,22 +59,22 @@ class UniversalSubtitleRenderer:
         # Rendering settings (always 1080x1920 vertical)
         self.output_width = 1080
         self.output_height = 1920
-        self.font_size = int(settings.get('fontSize', 80))
-        self.font_name = settings.get('fontName', 'Arial')
+        self.font_size = int(settings.get('fontSize') or 80)
+        self.font_name = settings.get('fontName') or 'Arial'
         
         # Convert hex colors to RGB tuples for PIL
-        self.text_color = self._hex_to_rgb(settings.get('textColor', '#ffff00'))
-        self.primary_color = self._hex_to_rgb(settings.get('primaryColor', '#ffffff'))
-        self.past_color = self._hex_to_rgb(settings.get('pastColor', '#808080'))
-        self.outline_color = self._hex_to_rgb(settings.get('outlineColor', '#000000'))
+        self.text_color = self._hex_to_rgb(settings.get('textColor') or '#ffff00')
+        self.primary_color = self._hex_to_rgb(settings.get('primaryColor') or '#ffffff')
+        self.past_color = self._hex_to_rgb(settings.get('pastColor') or '#808080')
+        self.outline_color = self._hex_to_rgb(settings.get('outlineColor') or '#000000')
         
         # Glow settings
-        self.glow_color = self._hex_to_rgb(settings.get('glowColor', '#ffff00'))
-        self.glow_blur = int(settings.get('glowBlur', 0))
-        
+        self.glow_color = self._hex_to_rgb(settings.get('glowColor') or '#ffff00')
+        self.glow_blur = int(settings.get('glowBlur') or 0)
+
         # Background settings
-        self.bg_color = self._hex_to_rgb(settings.get('bgColor', '#000000'))
-        self.bg_opacity = float(settings.get('bgOpacity', 0.63))
+        self.bg_color = self._hex_to_rgb(settings.get('bgColor') or '#000000')
+        self.bg_opacity = float(settings.get('bgOpacity') or 0.63)
         
         # Font and property caches
         self._font_path_cache = {}
@@ -95,15 +95,16 @@ class UniversalSubtitleRenderer:
         self.subtitle_v_align = settings.get('subtitle_v_align', 'bottom')
 
         # Title styling
-        self.title_font_size_pref = int(settings.get('title_font_size', self.font_size * 0.6))
-        self.title_bg_type = settings.get('title_bg_type', 'gradient')
-        self.title_text_color = self._hex_to_rgb(settings.get('title_text_color', '#00ff9d'))
-        self.title_font_weight = str(settings.get('title_font_weight', '800'))
-        self.title_outline_width = float(settings.get('title_outline_width', 0))
-        self.title_outline_color = self._hex_to_rgb(settings.get('title_outline_color', '#000000'))
-        self.title_all_caps = settings.get('title_all_caps', True)
-        self.show_title = settings.get('show_title', False)
-        self.title_text = settings.get('title', 'Theme Title')
+        title_font_size = settings.get('title_font_size') or (self.font_size * 0.6)
+        self.title_font_size_pref = int(title_font_size)
+        self.title_bg_type = settings.get('title_bg_type') or 'gradient'
+        self.title_text_color = self._hex_to_rgb(settings.get('title_text_color') or '#00ff9d')
+        self.title_font_weight = str(settings.get('title_font_weight') or '800')
+        self.title_outline_width = float(settings.get('title_outline_width') or 0)
+        self.title_outline_color = self._hex_to_rgb(settings.get('title_outline_color') or '#000000')
+        self.title_all_caps = settings.get('title_all_caps') is not False
+        self.show_title = settings.get('show_title') is True
+        self.title_text = settings.get('title') or 'Theme Title'
 
         # Pre-calculate word timings
         self.words_by_time = sorted(self.word_timestamps, key=lambda w: w['start'])
