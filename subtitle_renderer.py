@@ -75,8 +75,7 @@ class UniversalSubtitleRenderer:
         # Background settings
         self.bg_color = self._hex_to_rgb(settings.get('bgColor') or '#000000')
         self.bg_opacity = float(settings.get('bgOpacity') or 0.63)
-        
-        # Font and property caches
+        self._title_pre_rendered = False  # Track if title has been pre-rendered
         self._font_path_cache = {}
         self._font_obj_cache = {}
         
@@ -730,7 +729,11 @@ class UniversalSubtitleRenderer:
     def _get_font(self, size: int, font_name: str = None) -> ImageFont.FreeTypeFont:
         """Get font with fallbacks and multi-level caching."""
         if font_name is None: font_name = self.font_name
-        
+
+        # Force Arabic-compatible font for RTL text if default Arial is requested
+        if getattr(self, 'is_rtl', False) and font_name.startswith('Arial'):
+            font_name = 'DejaVu Sans:style=Bold' if 'Bold' in font_name else 'DejaVu Sans'
+
         # 1. Check object cache first (fastest)
         cache_key = (font_name, size)
         if cache_key in self._font_obj_cache:
@@ -761,12 +764,16 @@ class UniversalSubtitleRenderer:
             
             if not font_path:
                 fallbacks = [
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                    "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
                     "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
                     "/usr/share/fonts/liberation-sans-fonts/LiberationSans-Regular.ttf",
                     "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
                 ]
-                if ":Bold" in font_name:
+                if ":Bold" in font_name or 'Bold' in font_name:
                     fallbacks = [
+                        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                        "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans-Bold.ttf",
                         "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
                         "/usr/share/fonts/liberation-sans-fonts/LiberationSans-Bold.ttf"
                     ] + fallbacks

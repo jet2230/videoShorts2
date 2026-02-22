@@ -3320,7 +3320,7 @@ def encode_canvas_karaoke():
             return jsonify({'error': 'Folder not found'}), 404
 
         # Get video file
-        video_files = list(folder.glob('*.mp4'))
+        video_files = list(folder.glob('*.mp4')) + list(folder.glob('*.mkv')) + list(folder.glob('*.webm'))
         if not video_files:
             return jsonify({'error': 'No video file found'}), 404
         video_file = video_files[0]
@@ -3672,7 +3672,7 @@ def export_canvas_karaoke():
                     return
 
                 # Get video file
-                video_files = list(folder.glob('*.mp4'))
+                video_files = list(folder.glob('*.mp4')) + list(folder.glob('*.mkv')) + list(folder.glob('*.webm'))
                 if not video_files:
                     with canvas_karaoke_lock:
                         canvas_karaoke_progress[jid] = {'status': 'error', 'error': 'No video file found', 'complete': False}
