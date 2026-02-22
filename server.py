@@ -3808,13 +3808,15 @@ def export_canvas_karaoke():
                 if 'bgColor' not in final_render_settings: final_render_settings['bgColor'] = '#000000'
                 if 'bgOpacity' not in final_render_settings: final_render_settings['bgOpacity'] = 0.63
                 
-                final_render_settings.update({
-                    'show_title': settings_dict.get('show_title', False),
-                    'title': theme_title
-                })
-                
-                # Merge in saved adjustments (overrides incoming if present)
+                # Merge in saved adjustments first
                 final_render_settings.update(adjust_settings)
+
+                # Apply user's explicit show_title choice (overrides saved setting)
+                if 'show_title' in settings_dict:
+                    final_render_settings['show_title'] = settings_dict['show_title']
+
+                # Also ensure title is set
+                final_render_settings['title'] = theme_title
                 
                 # Ensure title fields are robustly set from either source (handle camelCase from UI)
                 mapping = {

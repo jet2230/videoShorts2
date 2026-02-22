@@ -334,6 +334,37 @@ class UniversalSubtitleRenderer:
         words = subtitle_text.split()
         subtitle_words = []
 
+        # First try to match by TEXT content (more robust than time-based matching)
+        # This handles cases where SRT timestamps don't perfectly align with word timestamps
+        if len(words) > 0:
+            # Normalize words for comparison (remove punctuation, lowercase)
+            def normalize_word(w):
+                return w.lower().strip('.,!?;:"\'-')
+
+            normalized_subtitle_words = [normalize_word(w) for w in words]
+
+            # Search through word timestamps to find a matching sequence
+            for i in range(len(self.words_by_time) - len(words) + 1):
+                match = True
+                potential_match = []
+                for j in range(len(words)):
+                    if i + j >= len(self.words_by_time):
+                        match = False
+                        break
+                    ts_word = normalize_word(self.words_by_time[i + j]['word'])
+                    if ts_word != normalized_subtitle_words[j]:
+                        match = False
+                        break
+                    potential_match.append(self.words_by_time[i + j])
+
+                if match and len(potential_match) == len(words):
+                    # Found a text match! Verify it's reasonably close in time
+                    first_word_time = potential_match[0]['start']
+                    # Allow up to 30 seconds difference (handles theme SRT timestamp offsets)
+                    if abs(first_word_time - subtitle_start) <= 30:
+                        return potential_match
+
+        # Fallback: Try time-based matching
         # Find all word timestamps within the subtitle time range
         for word_ts in self.words_by_time:
             if word_ts['start'] >= subtitle_start - 0.1 and word_ts['end'] <= subtitle_end + 0.1:
@@ -548,8 +579,9 @@ class UniversalSubtitleRenderer:
                     # Effect modifications
                     w_start = subtitle_start
                     w_end = subtitle_end
-                    if highlighted_index != -1 and j < len(subtitle_word_timestamps):
-                        ts = subtitle_word_timestamps[j]
+                    word_index = words_before_line + j
+                    if highlighted_index != -1 and word_index < len(subtitle_word_timestamps):
+                        ts = subtitle_word_timestamps[word_index]
                         w_start, w_end = ts['start'], ts['end']
                     
                     effect_mods = self.effects.apply_word_effect(word_info, current_time, w_start, w_end, is_highlighted)

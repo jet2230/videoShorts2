@@ -3137,7 +3137,7 @@
                 subtitle_v_align: verticalAlign,
                 subtitle_top: customPosition ? customPosition.top : null,
                 subtitle_left: customPosition ? customPosition.centerX : null,
-                show_title: document.getElementById('title-toggle')?.checked || localStorage.getItem('show_title') === 'true',
+                show_title: document.getElementById('title-toggle')?.checked ?? false,
                 title_font_size: parseInt(document.getElementById('title-font-size-input')?.value || '20'),
                 title_bg_type: document.getElementById('title-bg-type')?.value || 'gradient',
                 title_text_color: document.getElementById('title-text-color')?.value || '#00ff9d',
