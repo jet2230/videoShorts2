@@ -37,7 +37,7 @@ class SubtitleEffects:
         self.audio_levels = settings.get('audio_levels', None) # Optional volume data
         self.base_time = settings.get('base_time', 0.0) # Start time of the segment
         
-    def apply_word_effect(self, word_info: Dict, current_time: float, word_start: float, word_end: float, is_highlighted: bool = False) -> Dict:
+    def apply_word_effect(self, word_info: Dict, current_time: float, word_start: Optional[float], word_end: Optional[float], is_highlighted: bool = False) -> Dict:
         """
         Calculates modifications to a word's properties based on the active effect.
         Returns a dict with updated: scale, offset_x, offset_y, opacity, color, text, etc.
@@ -54,15 +54,20 @@ class SubtitleEffects:
             'custom_render': False # If True, the effect handles its own rendering
         }
         
-        word_duration = word_end - word_start
         highlight_color = self.settings.get('textColor', '#ffff00')
         primary_color = self.settings.get('primaryColor', '#ffffff')
         
         progress = 0
-        if word_duration > 0:
-            progress = (current_time - word_start) / word_duration
-        
-        is_active = (0 <= progress <= 1) or is_highlighted
+        is_active = is_highlighted
+
+        if word_start is not None and word_end is not None:
+            word_duration = word_end - word_start
+            if word_duration > 0:
+                progress = (current_time - word_start) / word_duration
+            
+            # Use timing to determine if active if not already flagged by is_highlighted
+            if 0 <= progress <= 1:
+                is_active = True
         
         if is_active:
             res['color'] = highlight_color

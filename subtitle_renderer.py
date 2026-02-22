@@ -360,30 +360,34 @@ class UniversalSubtitleRenderer:
                 if match and len(potential_match) == len(words):
                     # Found a text match! Verify it's reasonably close in time
                     first_word_time = potential_match[0]['start']
-                    # Allow up to 30 seconds difference (handles theme SRT timestamp offsets)
-                    if abs(first_word_time - subtitle_start) <= 30:
+                    # Allow up to 5 seconds difference (handles small theme SRT timestamp offsets)
+                    if abs(first_word_time - subtitle_start) <= 5:
                         return potential_match
 
         # Fallback: Try time-based matching
-        # Find all word timestamps within the subtitle time range
+        # Find all word timestamps that overlap with the subtitle time range
         for word_ts in self.words_by_time:
-            if word_ts['start'] >= subtitle_start - 0.1 and word_ts['end'] <= subtitle_end + 0.1:
+            # Overlap check: word starts before subtitle ends AND word ends after subtitle starts
+            if word_ts['start'] < subtitle_end - 0.05 and word_ts['end'] > subtitle_start + 0.05:
                 subtitle_words.append(word_ts)
 
         # Fallback match by word count
         if len(subtitle_words) < len(words):
             subtitle_words = []
             for i, word_ts in enumerate(self.words_by_time):
-                if word_ts['start'] >= subtitle_start - 0.5:
+                if abs(word_ts['start'] - subtitle_start) < 2.0:
                     for j in range(len(words)):
                         if i + j < len(self.words_by_time):
-                            subtitle_words.append(self.words_by_time[i + j])
+                            ts = self.words_by_time[i + j]
+                            # Only include if it's not too far past the subtitle end
+                            if ts['start'] < subtitle_end + 2.0:
+                                subtitle_words.append(ts)
                     break
 
         return subtitle_words[:len(words)]
 
-    def get_words_at_time_for_subtitle(self, current_time: float, subtitle_data: str, subtitle_start: float, subtitle_end: float) -> Tuple[List[Dict], int]:
-        """Get word list and highlighted word index for current time within a subtitle."""
+    def get_words_at_time_for_subtitle(self, current_time: float, subtitle_data: str, subtitle_start: float, subtitle_end: float) -> Tuple[List[Dict], int, List[Dict]]:
+        """Get word list, highlighted word index, and timestamps for current time within a subtitle."""
         if '<' in subtitle_data or '&' in subtitle_data:
             words_info = self.parse_subtitle_html(subtitle_data)
         else:
@@ -430,7 +434,7 @@ class UniversalSubtitleRenderer:
                 'sizeMultiplier': word_obj.get('sizeMultiplier', 1.0)
             })
 
-        return colored_words, highlighted_index
+        return colored_words, highlighted_index, subtitle_word_timestamps
 
     def render_frame(self, frame: np.ndarray, current_time: float, subtitle_text: str, subtitle_start: float = None, subtitle_end: float = None, subtitle_seq: int = None) -> np.ndarray:
         """Render subtitles on a video frame."""
@@ -479,9 +483,7 @@ class UniversalSubtitleRenderer:
             # Get words and timestamps
             subtitle_word_timestamps = []
             if subtitle_start is not None and subtitle_end is not None:
-                colored_words, highlighted_index = self.get_words_at_time_for_subtitle(current_time, subtitle_data, subtitle_start, subtitle_end)
-                plain_text = ' '.join([w['text'] for w in colored_words])
-                subtitle_word_timestamps = self.get_words_for_subtitle(subtitle_start, subtitle_end, plain_text)
+                colored_words, highlighted_index, subtitle_word_timestamps = self.get_words_at_time_for_subtitle(current_time, subtitle_data, subtitle_start, subtitle_end)
             else:
                 colored_words, highlighted_index = self.get_words_at_time(current_time, subtitle_text)
 
@@ -577,10 +579,10 @@ class UniversalSubtitleRenderer:
                     is_highlighted = (words_before_line + j) == highlighted_index
                     
                     # Effect modifications
-                    w_start = subtitle_start
-                    w_end = subtitle_end
+                    w_start = None
+                    w_end = None
                     word_index = words_before_line + j
-                    if highlighted_index != -1 and word_index < len(subtitle_word_timestamps):
+                    if word_index < len(subtitle_word_timestamps):
                         ts = subtitle_word_timestamps[word_index]
                         w_start, w_end = ts['start'], ts['end']
                     
