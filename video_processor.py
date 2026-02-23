@@ -53,6 +53,8 @@ class VideoProcessor:
         trim_settings = settings.get('trim', {})
         effect_markers = settings.get('effect_markers', [])
         image_settings = settings.get('images', [])
+        broll_markers = settings.get('broll_markers', [])
+        audio_settings = settings.get('audio', {})
         global_effects = settings.get('effects', {})
         lighting = settings.get('lighting', {})
         animations = settings.get('animations', {})
@@ -82,15 +84,42 @@ class VideoProcessor:
         
         cmd.extend(['-i', str(self.video_path)])
         
+        input_index = 1
+        
         # Add additional inputs for images
         image_inputs = []
         for img_data in image_settings:
             img_path = Path('media') / img_data['name']
             if img_path.exists():
                 cmd.extend(['-i', str(img_path)])
+                img_data['input_index'] = input_index
                 image_inputs.append(img_data)
+                input_index += 1
             else:
                 log(f"Warning: Image not found: {img_path}")
+        
+        # Add additional inputs for B-roll
+        broll_inputs = []
+        for marker in broll_markers:
+            broll_path = Path('media') / marker['name']
+            if broll_path.exists():
+                cmd.extend(['-i', str(broll_path)])
+                marker['input_index'] = input_index
+                broll_inputs.append(marker)
+                input_index += 1
+            else:
+                log(f"Warning: B-roll clip not found: {broll_path}")
+        
+        # Add additional input for custom audio
+        custom_audio_index = None
+        if audio_settings.get('file'):
+            audio_path = Path('media') / audio_settings['file']
+            if audio_path.exists():
+                cmd.extend(['-i', str(audio_path)])
+                custom_audio_index = input_index
+                input_index += 1
+            else:
+                log(f"Warning: Audio file not found: {audio_path}")
         
         if end_time:
             cmd.extend(['-t', end_time])
@@ -210,9 +239,28 @@ class VideoProcessor:
             last_v = "[0:v]"
             
         overlay_count = 0
+        
+        # 2. Add B-roll overlays
+        for i, marker in enumerate(broll_inputs):
+            input_label = f"[{marker['input_index']}:v]"
+            output_label = f"[v_br{overlay_count}]"
+            
+            s = marker['start_time']
+            e = marker['end_time']
+            enable = f"between(t,{s},{e})"
+            
+            # Scale B-roll to match main video dimensions (fullscreen)
+            filter_complex.append(f"{input_label}scale={self.width}:{self.height}{output_label}")
+            
+            # Overlay B-roll over main video when enabled
+            final_ov_label = f"[v_ov{overlay_count}]"
+            filter_complex.append(f"{last_v}{output_label}overlay=enable='{enable}'{final_ov_label}")
+            last_v = final_ov_label
+            overlay_count += 1
+            
+        # 3. Add image overlay filters
         for i, img_data in enumerate(image_inputs):
-            # i+1 is the input index (0 is video)
-            input_label = f"[{i+1}:v]"
+            input_label = f"[{img_data['input_index']}:v]"
             
             for marker in img_data.get('markers', []):
                 output_label = f"[v_ov{overlay_count}]"
@@ -231,7 +279,6 @@ class VideoProcessor:
                 enable = f"between(t,{s},{e})"
                 
                 # Scale image based on video width and scale factor
-                # Use a unique scaled label per overlay instance
                 scaled_marker_label = f"[img_s_ov{overlay_count}]"
                 if stretch_width:
                     target_w = str(self.width)
@@ -244,10 +291,26 @@ class VideoProcessor:
                 last_v = output_label
                 overlay_count += 1
 
+        # 4. Handle Audio Mixing
+        orig_vol = float(audio_settings.get('originalVolume', 100)) / 100.0
+        custom_vol = float(audio_settings.get('volume', 100)) / 100.0
+        
+        last_a = "0:a"
+        if custom_audio_index is not None:
+            # Apply volume to original and custom audio then mix
+            filter_complex.append(f"[0:a]volume={orig_vol}[a_orig]")
+            filter_complex.append(f"[{custom_audio_index}:a]volume={custom_vol}[a_custom]")
+            filter_complex.append(f"[a_orig][a_custom]amix=inputs=2:duration=first[a_mixed]")
+            last_a = "[a_mixed]"
+        else:
+            # Just apply volume to original audio
+            filter_complex.append(f"[0:a]volume={orig_vol}[a_orig]")
+            last_a = "[a_orig]"
+
         if filter_complex:
             cmd.extend(['-filter_complex', ";".join(filter_complex)])
             # Map the last result
-            cmd.extend(['-map', last_v, '-map', '0:a?'])
+            cmd.extend(['-map', last_v, '-map', last_a])
         elif vf_filters:
             cmd.extend(['-vf', ",".join(vf_filters)])
 

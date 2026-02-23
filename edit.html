@@ -1309,6 +1309,7 @@
         <div class="preview-area">
             <div class="video-wrapper">
                 <video id="mainVideo" controls></video>
+                <video id="brollOverlayVideo" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 12 !important; display: none; object-fit: cover;" muted></video>
                 <canvas id="outlineCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 11 !important; display: none !important;"></canvas>
                 <div id="imageOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10 !important; display: block !important;"></div>
                 <div id="logoOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9 !important; display: block !important;"></div>
@@ -1332,6 +1333,10 @@
                                 <option value="4">4x</option>
                                 <option value="8">8x</option>
                             </select>
+                        </div>
+                        <div class="checkbox-item" id="audioMasterToggle" style="padding: 4px 10px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); margin-bottom: 0; display: flex; align-items: center; gap: 5px; display: none !important;">
+                            <span style="font-size: 11px; white-space: nowrap;">🎵 Audio</span>
+                            <input type="checkbox" id="audioEnabled" onchange="toggleAudioMaster()" style="width: 14px; height: 14px;" checked>
                         </div>
                         <div class="checkbox-item" id="logoMasterToggle" style="padding: 4px 10px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); margin-bottom: 0; display: flex; align-items: center; gap: 5px; display: none !important;">
                             <span style="font-size: 11px; white-space: nowrap;">🏢 Logo</span>
@@ -1834,6 +1839,11 @@
                     <span class="value" id="valFlashIntensity" style="min-width: 20px;">5</span>
                 </div>
             </div>
+
+            <label class="checkbox-item" id="anim-outline" style="margin-top: 10px;">
+                <input type="checkbox" id="animOutline" onchange="toggleAnimation('outline')">
+                <span>✏️ Global Speaker Outline</span>
+            </label>
         </div>
         <p style="font-size: 11px; color: #888; margin-top: 10px;">
             * Animations are applied globally throughout the video.
@@ -2030,7 +2040,9 @@
         const waveformCanvas = document.getElementById('waveformCanvas');
 
         let audioFile = null;
+        let previewAudio = new Audio();
         let brollFiles = [];
+        let brollMarkers = [];
         let imageFiles = [];
         let imageMarkers = [];
         let logoFiles = [];
@@ -2045,10 +2057,12 @@
         };
         let currentLightingPreset = null;
         let activeAnimations = {
-            cameraGlare: false
+            cameraGlare: false,
+            outline: false
         };
         let animationToggles = {
-            cameraGlare: true // Whether the specific toggle in the header is ON
+            cameraGlare: true, // Whether the specific toggle in the header is ON
+            outline: true
         };
         let currentPanel = null;
         let isDraggingStart = false;
@@ -2095,6 +2109,7 @@
             updatePlayhead();
             checkEffectMarkers(); // Check if we've crossed any effect markers
             checkImageMarkers(); // Check if we've crossed any image markers
+            checkBrollMarkers(); // Check if we've crossed any b-roll markers
             
             // Auto-scroll timeline to keep playhead in view when zoomed
             const zoomLevel = parseFloat(document.getElementById('timelineZoomLevel')?.value || 1);
@@ -2114,13 +2129,31 @@
         // Sync CSS animations with video play/pause
         video.addEventListener('play', () => {
             video.style.animationPlayState = 'running';
-            // Start outline face detection if active
-            if (activeEffects.has('outline')) {
+            // Start outline face detection if active (global or timeline)
+            const isGlobalOutline = activeAnimations.outline && animationToggles.outline !== false;
+            if (activeEffects.has('outline') || isGlobalOutline) {
                 processVideoForFaceDetection();
+            }
+            if (audioFile && document.getElementById('audioEnabled').checked) {
+                previewAudio.currentTime = video.currentTime;
+                previewAudio.play().catch(e => console.warn('Audio play failed:', e));
             }
         });
         video.addEventListener('pause', () => {
             video.style.animationPlayState = 'paused';
+            previewAudio.pause();
+        });
+        
+        video.addEventListener('seeking', () => {
+            previewAudio.currentTime = video.currentTime;
+        });
+        
+        video.addEventListener('seeked', () => {
+            previewAudio.currentTime = video.currentTime;
+        });
+        
+        video.addEventListener('ratechange', () => {
+            previewAudio.playbackRate = video.playbackRate;
         });
 
         function toggleTimelineZoom() {
@@ -2442,8 +2475,9 @@
             if (waveformPeaks.length > 0) {
                 drawWaveform();
             }
-            // Redraw outline if active
-            if (activeEffects.has('outline')) {
+            // Redraw outline if active (global or timeline)
+            const isGlobalOutline = activeAnimations.outline && animationToggles.outline !== false;
+            if (activeEffects.has('outline') || isGlobalOutline) {
                 drawSpeakerOutline();
             }
         });
@@ -2463,12 +2497,17 @@
 
         // Audio volume slider
         document.getElementById('audioVolume').addEventListener('input', (e) => {
-            document.getElementById('audioVolumeValue').textContent = `${e.target.value}%`;
+            const vol = e.target.value;
+            document.getElementById('audioVolumeValue').textContent = `${vol}%`;
+            previewAudio.volume = Math.min(1.0, vol / 100);
         });
 
         // Original audio volume slider
         document.getElementById('originalAudioVolume').addEventListener('input', (e) => {
-            document.getElementById('originalAudioVolumeValue').textContent = `${e.target.value}%`;
+            const vol = e.target.value;
+            document.getElementById('originalAudioVolumeValue').textContent = `${vol}%`;
+            const video = document.getElementById('mainVideo');
+            if (video) video.volume = Math.min(1.0, vol / 100);
         });
 
         // Handle audio upload
@@ -2491,6 +2530,13 @@
                         document.getElementById('audioFilename').textContent = result.filename;
                         input.closest('.file-upload').classList.add('has-file');
                         audioTrack.style.display = 'block';
+                        document.getElementById('audioMasterToggle').style.setProperty('display', 'flex', 'important');
+                        document.getElementById('audioEnabled').checked = true;
+                        
+                        previewAudio.src = URL.createObjectURL(file);
+                        const vol = document.getElementById('audioVolume').value;
+                        previewAudio.volume = Math.min(1.0, vol / 100);
+                        
                         showNotification(`${file.name} uploaded successfully`, 'success');
                     }
                 } catch (error) {
@@ -2539,13 +2585,159 @@
             brollFiles.forEach((file, index) => {
                 const item = document.createElement('div');
                 item.className = 'broll-item';
+                item.style.display = 'flex';
+                item.style.alignItems = 'center';
+                item.style.gap = '5px';
+                item.style.marginBottom = '5px';
                 item.innerHTML = `
-                    <div class="info">🎬 ${file.name}</div>
+                    <div class="info" style="flex: 1;">🎬 ${file.name}</div>
+                    <button class="add-btn" onclick="addBrollToTimeline(${index})" style="background: var(--bg-color); border: 1px solid var(--border-color); color: #fff; padding: 2px 5px; border-radius: 3px; cursor: pointer; font-size: 11px;">Add to Timeline</button>
                     <button class="remove" onclick="removeBroll(${index})">✕</button>
                 `;
                 container.appendChild(item);
             });
         }
+
+        // Add B-roll to timeline
+        function addBrollToTimeline(index) {
+            const file = brollFiles[index];
+            const startPos = selectedTimelinePosition !== null ? selectedTimelinePosition : (video.currentTime / video.duration);
+            const duration = 5; // Default 5 seconds
+            const endPos = Math.min(1.0, startPos + (duration / video.duration));
+
+            const marker = {
+                id: 'brollmarker_' + Math.random().toString(36).substr(2, 9),
+                brollIndex: index,
+                brollName: file.name,
+                start: startPos,
+                end: endPos,
+                duration: duration
+            };
+            brollMarkers.push(marker);
+            createBrollMarker(marker);
+            showNotification(`Added ${file.name} to timeline`, 'success');
+        }
+
+        // Create marker element for B-roll
+        function createBrollMarker(markerData) {
+            const track = document.getElementById('timelineTrack');
+            
+            const markerEl = document.createElement('div');
+            markerEl.className = 'timeline-marker broll-marker';
+            markerEl.id = markerData.id;
+            markerEl.style.position = 'absolute';
+            markerEl.style.top = '10px'; // Align appropriately
+            markerEl.style.height = '10px';
+            markerEl.style.backgroundColor = '#4a90e2'; // Distinct blue color for B-roll
+            markerEl.style.border = '1px solid #2c3e50';
+            markerEl.style.borderRadius = '3px';
+            markerEl.style.cursor = 'move';
+            markerEl.style.zIndex = '15';
+
+            // Set position and width
+            const startPercent = markerData.start * 100;
+            const widthPercent = (markerData.end - markerData.start) * 100;
+            markerEl.style.left = `${startPercent}%`;
+            markerEl.style.width = `${widthPercent}%`;
+
+            // Tooltip
+            const tooltip = document.createElement('div');
+            tooltip.className = 'marker-tooltip';
+            tooltip.innerHTML = `🎬 ${markerData.brollName}<br><span style="font-size: 10px; opacity: 0.8;">[B-Roll Segment] Drag to move</span><br><button onclick="removeBrollMarker('${markerData.id}')" style="margin-top: 5px; background: #e74c3c; border: none; color: white; padding: 2px 5px; border-radius: 3px; cursor: pointer; font-size: 10px;">Remove</button>`;
+            markerEl.appendChild(tooltip);
+
+            // Dragging logic
+            let isDragging = false;
+            let startX;
+            
+            markerEl.addEventListener('mousedown', (e) => {
+                if (e.target.tagName === 'BUTTON') return;
+                isDragging = true;
+                startX = e.clientX;
+                markerEl.classList.add('dragging');
+                e.stopPropagation(); // Prevent timeline click
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                const rect = track.getBoundingClientRect();
+                let newLeft = e.clientX - rect.left;
+                
+                // Bounds check
+                newLeft = Math.max(0, Math.min(newLeft, rect.width - markerEl.offsetWidth));
+                
+                // Convert to percentage and update marker data
+                const newStartPercent = newLeft / rect.width;
+                const durationPercent = markerData.end - markerData.start;
+                
+                markerData.start = newStartPercent;
+                markerData.end = newStartPercent + durationPercent;
+                
+                markerEl.style.left = `${newStartPercent * 100}%`;
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (isDragging) {
+                    isDragging = false;
+                    markerEl.classList.remove('dragging');
+                    applyVideoEffects(); // Force preview update
+                }
+            });
+
+            // Make resizable
+            const resizeHandle = document.createElement('div');
+            resizeHandle.style.position = 'absolute';
+            resizeHandle.style.right = '0';
+            resizeHandle.style.top = '0';
+            resizeHandle.style.width = '5px';
+            resizeHandle.style.height = '100%';
+            resizeHandle.style.cursor = 'ew-resize';
+            
+            resizeHandle.addEventListener('mousedown', (e) => {
+                e.stopPropagation();
+                let isResizing = true;
+                const initialWidth = markerEl.offsetWidth;
+                const initialX = e.clientX;
+                
+                const moveHandler = (moveEvent) => {
+                    if (!isResizing) return;
+                    const rect = track.getBoundingClientRect();
+                    const diff = moveEvent.clientX - initialX;
+                    const newWidth = Math.max(10, initialWidth + diff); // Minimum width 10px
+                    
+                    // Convert to percentage
+                    const widthPercent = newWidth / rect.width;
+                    markerData.end = Math.min(1.0, markerData.start + widthPercent);
+                    markerEl.style.width = `${(markerData.end - markerData.start) * 100}%`;
+                };
+                
+                const upHandler = () => {
+                    isResizing = false;
+                    document.removeEventListener('mousemove', moveHandler);
+                    document.removeEventListener('mouseup', upHandler);
+                    applyVideoEffects();
+                };
+                
+                document.addEventListener('mousemove', moveHandler);
+                document.addEventListener('mouseup', upHandler);
+            });
+            
+            markerEl.appendChild(resizeHandle);
+            track.appendChild(markerEl);
+            markerData.element = markerEl;
+            markerData.tooltip = tooltip;
+        }
+
+        // Remove B-roll marker
+        window.removeBrollMarker = function(id) {
+            const index = brollMarkers.findIndex(m => m.id === id);
+            if (index > -1) {
+                const marker = brollMarkers[index];
+                if (marker.element) marker.element.remove();
+                if (marker.tooltip) marker.tooltip.remove();
+                brollMarkers.splice(index, 1);
+            }
+        };
 
         // Remove B-roll
         function removeBroll(index) {
@@ -2834,6 +3026,26 @@
                 selectLogo(0);
             } else {
                 renderLogo();
+            }
+        }
+
+        // Toggle global audio inclusion
+        function toggleAudioMaster() {
+            const isEnabled = document.getElementById('audioEnabled').checked;
+            const audioTrack = document.getElementById('audioTrack');
+            if (audioTrack) {
+                audioTrack.style.opacity = isEnabled ? '1' : '0.5';
+            }
+            previewAudio.muted = !isEnabled;
+            
+            // If video is playing, sync audio state immediately
+            if (!video.paused) {
+                if (isEnabled && audioFile) {
+                    previewAudio.currentTime = video.currentTime;
+                    previewAudio.play().catch(e => console.warn('Audio play failed:', e));
+                } else {
+                    previewAudio.pause();
+                }
             }
         }
 
@@ -3512,6 +3724,57 @@
                 }
             }
         }
+
+        // Check if playhead has crossed any b-roll markers
+        function checkBrollMarkers() {
+            if (!video.duration) return;
+            const currentPercent = video.currentTime / video.duration;
+            const brollVideo = document.getElementById('brollOverlayVideo');
+            if (!brollVideo) return;
+
+            let activeMarker = null;
+            for (let i = brollMarkers.length - 1; i >= 0; i--) {
+                const marker = brollMarkers[i];
+                if (currentPercent >= marker.start && currentPercent <= marker.end) {
+                    activeMarker = marker;
+                    break;
+                }
+            }
+
+            if (activeMarker) {
+                const brollUrl = '/media/' + encodeURIComponent(activeMarker.brollName);
+                if (brollVideo.dataset.activeMarkerId !== activeMarker.id) {
+                    brollVideo.dataset.activeMarkerId = activeMarker.id;
+                    brollVideo.src = brollUrl;
+                    brollVideo.style.display = 'block';
+                }
+
+                // Calculate where we are in the broll segment
+                const segmentDuration = (activeMarker.end - activeMarker.start) * video.duration;
+                const timeInSegment = (currentPercent - activeMarker.start) * video.duration;
+
+                // Loop if broll is shorter than segment, or just let it play
+                // A simple approach is just syncing currentTime for seek, but broll might be shorter.
+                // We'll just let it play and only seek if the difference is too large (to avoid jitter).
+                if (Math.abs(brollVideo.currentTime - timeInSegment) > 0.5) {
+                    brollVideo.currentTime = timeInSegment % (brollVideo.duration || segmentDuration || 1);
+                }
+
+                if (!video.paused && brollVideo.paused) {
+                    brollVideo.play().catch(e => console.warn('Broll play failed:', e));
+                } else if (video.paused && !brollVideo.paused) {
+                    brollVideo.pause();
+                }
+            } else {
+                if (brollVideo.dataset.activeMarkerId) {
+                    brollVideo.style.display = 'none';
+                    brollVideo.pause();
+                    brollVideo.dataset.activeMarkerId = '';
+                    brollVideo.src = '';
+                }
+            }
+        }
+
         function applyVideoEffects() {
             // Ensure flash keyframes are generated
             if (typeof updateFlashIntensityDisplay === 'function') {
@@ -3546,6 +3809,9 @@
                         if (!video.paused) {
                             video.style.animationPlayState = 'running';
                         }
+                        break;
+                    case 'outline':
+                        // Handled via updateOutlineEffect below
                         break;
                     case 'mirror':
                         transforms.push('scaleX(-1)');
@@ -3589,9 +3855,6 @@
                     case 'pixelate':
                         // Closest CSS filter without complex shaders
                         filters.push('blur(4px) contrast(2) brightness(1.1)');
-                        break;
-                    case 'outline':
-                        // Outline is handled separately via canvas overlay
                         break;
                 }
             }
@@ -3665,7 +3928,10 @@
             const canvas = document.getElementById('outlineCanvas');
             const ctx = canvas.getContext('2d');
 
-            if (!canvas || !activeEffects.has('outline')) return;
+            const isGlobalOutline = activeAnimations.outline && animationToggles.outline !== false;
+            const hasOutline = activeEffects.has('outline') || isGlobalOutline;
+
+            if (!canvas || !hasOutline) return;
 
             // Clear canvas
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -3678,37 +3944,49 @@
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
 
+            const videoElement = document.getElementById('mainVideo');
+
             if (results.detections && results.detections.length > 0) {
                 // Get the first detected face
                 const detection = results.detections[0];
                 const bbox = detection.boundingBox;
 
                 // Calculate face position in canvas coordinates
-                const video = document.getElementById('mainVideo');
-                const rect = video.getBoundingClientRect();
+                const rect = videoElement.getBoundingClientRect();
 
                 // Get the video's actual display size
                 const displayWidth = rect.width;
                 const displayHeight = rect.height;
 
                 // MediaPipe returns normalized coordinates (0-1)
-                const faceX = bbox.xCenter * displayWidth;
-                const faceY = bbox.yCenter * displayHeight;
-                const faceWidth = bbox.width * displayWidth;
-                const faceHeight = bbox.height * displayHeight;
+                const targetX = bbox.xCenter * displayWidth;
+                const targetY = bbox.yCenter * displayHeight;
+                const targetWidth = bbox.width * displayWidth;
+                const targetHeight = bbox.height * displayHeight;
 
-                // Store for smooth tracking
-                lastFacePosition = {
-                    x: faceX,
-                    y: faceY,
-                    width: faceWidth,
-                    height: faceHeight,
-                    displayWidth,
-                    displayHeight
-                };
+                if (!lastFacePosition) {
+                    // Store initial position
+                    lastFacePosition = {
+                        x: targetX,
+                        y: targetY,
+                        width: targetWidth,
+                        height: targetHeight,
+                        displayWidth,
+                        displayHeight
+                    };
+                } else {
+                    // Smooth tracking (lerp) for fluid motion
+                    const lerpFactor = 0.2; // Adjust for smoothness vs responsiveness
+                    lastFacePosition.x += (targetX - lastFacePosition.x) * lerpFactor;
+                    lastFacePosition.y += (targetY - lastFacePosition.y) * lerpFactor;
+                    lastFacePosition.width += (targetWidth - lastFacePosition.width) * lerpFactor;
+                    lastFacePosition.height += (targetHeight - lastFacePosition.height) * lerpFactor;
+                    lastFacePosition.displayWidth = displayWidth;
+                    lastFacePosition.displayHeight = displayHeight;
+                }
 
-                // Draw outline around detected face
-                drawFaceOutline(ctx, faceX, faceY, faceWidth, faceHeight, displayWidth, displayHeight);
+                // Draw modern tracking bracket around detected face
+                drawFaceOutline(ctx, lastFacePosition.x, lastFacePosition.y, lastFacePosition.width, lastFacePosition.height, displayWidth, displayHeight);
             } else if (lastFacePosition) {
                 // Use last known position if no face detected this frame (smoother tracking)
                 drawFaceOutline(ctx, lastFacePosition.x, lastFacePosition.y,
@@ -3717,46 +3995,75 @@
             }
 
             // Continue detection loop
-            if (!video.paused && activeEffects.has('outline')) {
+            if (videoElement && !videoElement.paused && hasOutline) {
                 outlineAnimationId = requestAnimationFrame(() => processVideoForFaceDetection());
             }
         }
 
-        // Draw outline around face and shoulders
+        // Draw modern tracking bracket around face
         function drawFaceOutline(ctx, faceX, faceY, faceWidth, faceHeight, displayWidth, displayHeight) {
-            // Calculate outline dimensions based on face position
-            const headRadius = Math.max(faceWidth, faceHeight) * 0.55;
-            const headCenterY = faceY;
-            const shoulderY = faceY + headRadius * 1.8;
-            // Make shoulders more proportional to face width
-            const shoulderWidth = headRadius * 1.6; // Reduced from 2.5
+            // Box dimensions around the face
+            const boxWidth = faceWidth * 1.5;
+            const boxHeight = faceHeight * 1.8;
+            const x = faceX - boxWidth / 2;
+            const y = faceY - boxHeight / 2.5; // Offset slightly up to account for head shape
+
+            // Corner bracket size
+            const cornerSize = Math.max(15, boxWidth * 0.15);
 
             ctx.beginPath();
 
-            // Draw head outline (ellipse)
-            ctx.ellipse(faceX, headCenterY, headRadius, headRadius * 1.25, 0, 0, Math.PI * 2);
+            // Top Left Bracket
+            ctx.moveTo(x, y + cornerSize);
+            ctx.lineTo(x, y);
+            ctx.lineTo(x + cornerSize, y);
 
-            // Draw shoulder curve
-            const leftShoulderX = faceX - shoulderWidth;
-            const rightShoulderX = faceX + shoulderWidth;
+            // Top Right Bracket
+            ctx.moveTo(x + boxWidth - cornerSize, y);
+            ctx.lineTo(x + boxWidth, y);
+            ctx.lineTo(x + boxWidth, y + cornerSize);
 
-            // Curve from left side of head to left shoulder
-            ctx.moveTo(faceX - headRadius * 0.7, headCenterY + headRadius * 0.6);
-            ctx.quadraticCurveTo(leftShoulderX, shoulderY - headRadius * 0.3, leftShoulderX, shoulderY);
+            // Bottom Right Bracket
+            ctx.moveTo(x + boxWidth, y + boxHeight - cornerSize);
+            ctx.lineTo(x + boxWidth, y + boxHeight);
+            ctx.lineTo(x + boxWidth - cornerSize, y + boxHeight);
 
-            // Shoulder line across
-            ctx.quadraticCurveTo(faceX, shoulderY + headRadius * 0.2, rightShoulderX, shoulderY);
-
-            // Right side back to head
-            ctx.quadraticCurveTo(rightShoulderX, shoulderY - headRadius * 0.3,
-                               faceX + headRadius * 0.7, headCenterY + headRadius * 0.6);
+            // Bottom Left Bracket
+            ctx.moveTo(x + cornerSize, y + boxHeight);
+            ctx.lineTo(x, y + boxHeight);
+            ctx.lineTo(x, y + boxHeight - cornerSize);
 
             ctx.stroke();
+
+            // Draw center target crosshair
+            ctx.beginPath();
+            ctx.lineWidth = Math.max(1, ctx.lineWidth * 0.5);
+            ctx.globalAlpha = 0.6;
+            
+            const crosshairSize = 6;
+            
+            // Horizontal ticks
+            ctx.moveTo(x - crosshairSize, faceY);
+            ctx.lineTo(x + crosshairSize, faceY);
+            ctx.moveTo(x + boxWidth - crosshairSize, faceY);
+            ctx.lineTo(x + boxWidth + crosshairSize, faceY);
+            
+            // Vertical ticks
+            ctx.moveTo(faceX, y - crosshairSize);
+            ctx.lineTo(faceX, y + crosshairSize);
+            ctx.moveTo(faceX, y + boxHeight - crosshairSize);
+            ctx.lineTo(faceX, y + boxHeight + crosshairSize);
+
+            ctx.stroke();
+            ctx.globalAlpha = 1.0;
         }
 
         // Process video frame for face detection
         async function processVideoForFaceDetection() {
-            if (!faceDetection || !activeEffects.has('outline')) return;
+            const isGlobalOutline = activeAnimations.outline && animationToggles.outline !== false;
+            const hasOutline = activeEffects.has('outline') || isGlobalOutline;
+
+            if (!faceDetection || !hasOutline) return;
 
             const video = document.getElementById('mainVideo');
             const canvas = document.getElementById('outlineCanvas');
@@ -3775,7 +4082,9 @@
         // Update outline effect visibility and drawing
         async function updateOutlineEffect() {
             const canvas = document.getElementById('outlineCanvas');
-            const hasOutline = activeEffects.has('outline');
+            // Check both timeline effect and global animation
+            const isGlobalOutline = activeAnimations.outline && animationToggles.outline !== false;
+            const hasOutline = activeEffects.has('outline') || isGlobalOutline;
 
             if (hasOutline) {
                 canvas.style.display = 'block';
@@ -3945,7 +4254,8 @@
 
             // Display names mapping
             const displayNames = {
-                cameraGlare: '✨ Camera Flash'
+                cameraGlare: '✨ Camera Flash',
+                outline: '✏️ Speaker Outline'
             };
 
             // Add a toggle for each active animation
@@ -4434,7 +4744,7 @@
                     style: document.getElementById('subtitleStyle').value
                 },
                 audio: {
-                    file: audioFile ? audioFile.name : null,
+                    file: (audioFile && document.getElementById('audioEnabled').checked) ? audioFile.name : null,
                     volume: document.getElementById('audioVolume').value,
                     originalVolume: document.getElementById('originalAudioVolume').value,
                     keep_original: true // Always keep original audio
@@ -4487,8 +4797,14 @@
                             return [anim, true];
                         })
                 ),
+                animationToggles: animationToggles,
                 effect_markers: effectMarkersData,
                 broll: brollFiles.map(f => f.name),
+                broll_markers: brollMarkers.map(m => ({
+                    name: m.brollName,
+                    start_time: m.start * (video.duration || 1),
+                    end_time: m.end * (video.duration || 1)
+                })),
                 images: [
                     ...imageFiles.map(img => ({
                         name: img.name,
@@ -4774,17 +5090,6 @@
             document.getElementById('faceZoomValue').textContent = '1.5x';
             document.getElementById('faceSmoothing').value = 'medium';
 
-            // Reset zoom toggle
-            const zoomLevelSelect = document.getElementById('timelineZoomLevel');
-            if (zoomLevelSelect) {
-                zoomLevelSelect.value = "1";
-                const track = document.getElementById('timelineTrack');
-                if (track) {
-                    track.classList.remove('zoomed');
-                    track.style.width = '100%';
-                }
-            }
-
             // Uncheck face tracking explicitly and hide its UI elements
             const faceTrackingCheckbox = document.getElementById('faceTracking');
             faceTrackingCheckbox.checked = false;
@@ -4811,7 +5116,14 @@
             });
 
             audioFile = null;
+            previewAudio.pause();
+            previewAudio.src = '';
             brollFiles = [];
+            brollMarkers.forEach(m => {
+                if (m.element) m.element.remove();
+                if (m.tooltip) m.tooltip.remove();
+            });
+            brollMarkers = [];
             imageFiles = [];
             imageMarkers.forEach(m => {
                 if (m.element) m.element.remove();
@@ -4824,9 +5136,19 @@
                 if (m.tooltip) m.tooltip.remove();
             });
             logoMarkers = [];
+            activeLogo = {
+                enabled: false,
+                id: null,
+                name: '',
+                posX: 50,
+                posY: 90,
+                scale: 0.5,
+                stretchWidth: false
+            };
             document.getElementById('audioFilename').textContent = '';
             document.querySelector('#panel-audio .file-upload').classList.remove('has-file');
             audioTrack.style.display = 'none';
+            document.getElementById('audioMasterToggle').style.setProperty('display', 'none', 'important');
             updateBrollList();
             updateImageList();
             updateLogoList();
@@ -4850,8 +5172,14 @@
             }
 
             // Reset animations
-            activeAnimations = { cameraGlare: false };
-            animationToggles = { cameraGlare: true };
+            activeAnimations = { 
+                cameraGlare: false,
+                outline: false
+            };
+            animationToggles = { 
+                cameraGlare: true,
+                outline: true
+            };
             document.querySelectorAll('[id^="anim"]').forEach(el => {
                 if (el.type === 'checkbox') el.checked = false;
                 if (el.classList.contains('checkbox-item')) el.classList.remove('active');
@@ -4913,6 +5241,7 @@
                     style: document.getElementById('subtitleStyle').value
                 },
                 audio: {
+                    file: (audioFile && document.getElementById('audioEnabled').checked) ? audioFile.name : null,
                     volume: document.getElementById('audioVolume').value,
                     originalVolume: document.getElementById('originalAudioVolume').value
                 },
@@ -4966,6 +5295,14 @@
                 })),
                 logoFiles: logoFiles.map(l => ({ id: l.id, name: l.name })),
                 activeLogo: activeLogo,
+                brollFiles: brollFiles.map(f => ({ name: f.name })),
+                brollMarkers: brollMarkers.map(m => ({
+                    brollIndex: m.brollIndex,
+                    brollName: m.brollName,
+                    start: m.start,
+                    end: m.end,
+                    duration: m.duration
+                })),
                 animations: activeAnimations,
                 animationToggles: animationToggles
             };
@@ -5007,6 +5344,20 @@
                 document.getElementById('audioVolumeValue').textContent = (settings.audio.volume || 100) + '%';
                 document.getElementById('originalAudioVolume').value = settings.audio.originalVolume || 50;
                 document.getElementById('originalAudioVolumeValue').textContent = (settings.audio.originalVolume || 50) + '%';
+                
+                if (settings.audio.file) {
+                    // For loaded projects, we don't have the File object, but we have the server path
+                    audioFile = { name: settings.audio.file };
+                    previewAudio.src = `/media/${encodeURIComponent(settings.audio.file)}`;
+                    const vol = settings.audio.volume || 100;
+                    previewAudio.volume = Math.min(1.0, vol / 100);
+                    
+                    document.getElementById('audioFilename').textContent = settings.audio.file;
+                    document.querySelector('#panel-audio .file-upload').classList.add('has-file');
+                    document.getElementById('audioTrack').style.display = 'block';
+                    document.getElementById('audioMasterToggle').style.setProperty('display', 'flex', 'important');
+                    document.getElementById('audioEnabled').checked = true;
+                }
             }
 
             // Apply intro
@@ -5151,6 +5502,33 @@
                     }
                 });
                 updateImageList();
+            }
+
+            // Apply B-roll
+            if (settings.brollFiles && Array.isArray(settings.brollFiles)) {
+                brollFiles = settings.brollFiles.map(f => ({ name: f.name }));
+                
+                brollMarkers.forEach(m => {
+                    if (m.element) m.element.remove();
+                    if (m.tooltip) m.tooltip.remove();
+                });
+                brollMarkers = [];
+
+                if (settings.brollMarkers && Array.isArray(settings.brollMarkers)) {
+                    settings.brollMarkers.forEach(m => {
+                        const marker = {
+                            id: 'brollmarker_' + Math.random().toString(36).substr(2, 9),
+                            brollIndex: m.brollIndex,
+                            brollName: m.brollName,
+                            start: m.start,
+                            end: m.end,
+                            duration: m.duration
+                        };
+                        brollMarkers.push(marker);
+                        createBrollMarker(marker);
+                    });
+                }
+                updateBrollList();
             }
 
             // Apply logos
