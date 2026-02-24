@@ -44,10 +44,15 @@
 
         .container {
             display: grid;
-            grid-template-columns: 7fr 3fr;
+            grid-template-columns: 1fr auto;
             gap: 20px;
             max-width: 1800px;
             margin: 0 auto;
+        }
+
+        .preview-panel {
+            min-width: 350px;
+            max-width: 500px;
         }
 
         .panel {
@@ -71,6 +76,12 @@
             overflow: hidden;
             aspect-ratio: 16/9;
             margin-bottom: 16px;
+            max-height: 70vh;
+            width: 100%;
+            max-width: 100%;
+            margin-left: auto;
+            margin-right: auto;
+            display: block;
         }
 
         .buffer-info {
@@ -483,18 +494,26 @@
         /* Theme clip preview - 9:16 aspect ratio for YouTube Shorts */
         .preview-wrapper {
             aspect-ratio: 9/16;
+            height: 500px;
             max-height: 500px;
+            width: fit-content !important;
+            background: #000;
+            display: block;
+            margin: 0 auto 16px auto;
         }
 
         video {
             width: 100%;
             height: 100%;
             object-fit: contain;
+            display: block;
         }
 
         /* Preview video should crop to fill the 9:16 frame */
         #preview-video {
-            object-fit: cover;
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover !important;
         }
 
         /* Universal Subtitle Canvas */
@@ -615,7 +634,7 @@
         }
 
         .shorts-crop-area {
-            width: 56.25%;
+            width: 31.64%; /* 9:16 crop inside a 16:9 wrapper = (9/16)/(16/9) = 31.64% */
             height: 100%;
             border: 3px solid rgba(0, 255, 157, 0.8);
             background: rgba(0, 255, 157, 0.1);
@@ -1743,7 +1762,7 @@
         </div>
 
         <!-- Right Panel: Theme Clip Preview + Subtitle Editor -->
-        <div class="panel" style="position: relative;">
+        <div class="panel preview-panel" style="position: relative;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
                 <h2 style="margin: 0; color: #00ff9d; font-size: 16px;">🎬 LIVE Subtitle Preview (WYSIWYG)</h2>
             </div>
@@ -2194,6 +2213,30 @@
     </div>
 
     <script>
+        // Helper to adjust wrapper aspect ratio to match video
+        function updateWrapperAspect(video) {
+            const wrapper = video.parentElement;
+            if (wrapper && wrapper.classList.contains('video-wrapper')) {
+                const videoAspect = video.videoWidth / video.videoHeight;
+                
+                if (wrapper.classList.contains('preview-wrapper')) {
+                    // Shorts preview is strictly 9:16
+                    wrapper.style.aspectRatio = '9/16';
+                } else {
+                    // Original video matches content
+                    wrapper.style.aspectRatio = videoAspect.toString();
+                    
+                    // Update shorts-crop-area width relative to its parent wrapper
+                    const cropArea = wrapper.querySelector('.shorts-crop-area');
+                    if (cropArea) {
+                        const shortsAspect = 9/16;
+                        const cropWidthPercent = (shortsAspect / videoAspect) * 100;
+                        cropArea.style.width = `${Math.min(100, cropWidthPercent)}%`;
+                    }
+                }
+            }
+        }
+
         // State
         let themeData = null;
         let fullVideoDuration = 0;  // Full video duration
@@ -3952,6 +3995,7 @@
                     return new Promise((resolve, reject) => {
                         video.addEventListener('loadedmetadata', () => {
                             fullVideoDuration = video.duration;
+                            updateWrapperAspect(video); // Adjust pane width
                             resolve();
                         }, { once: true });
 
@@ -3989,6 +4033,9 @@
 
                         // Set video position to theme start time
                         originalVideo.currentTime = startSeconds;
+                        
+                        // Re-update aspect ratio just in case reload with range is different
+                        updateWrapperAspect(originalVideo);
 
                         resolve();
                     }, { once: true });
