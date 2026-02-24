@@ -104,6 +104,7 @@ class UniversalSubtitleRenderer:
         self.title_all_caps = settings.get('title_all_caps') is not False
         self.show_title = settings.get('show_title') is True
         self.title_text = settings.get('title') or 'Theme Title'
+        self.title_top = settings.get('title_top') # Custom Title Y
 
         # Pre-calculate word timings
         self.words_by_time = sorted(self.word_timestamps, key=lambda w: w['start'])
@@ -171,14 +172,17 @@ class UniversalSubtitleRenderer:
         self.resolved_title_font = title_font
         self.resolved_font_size = curr_size  # Store the actual font size used
         
-        # Get bounding box for the background relative to center top (y=80)
-        bbox = draw.textbbox((self.output_width / 2, 80), title, font=title_font, anchor="mt")
+        # Determine Title Y position (default 150 center)
+        ui_title_center_y = self.title_top if self.title_top is not None else 150
+        
+        # Get bounding box for the background relative to center
+        # 'mm' anchor ensures the center of the text is at ui_title_center_y
+        bbox = draw.textbbox((self.output_width / 2, ui_title_center_y), title, font=title_font, anchor="mm")
         padding = 20
         bg_bbox = [bbox[0] - padding, bbox[1] - padding/2, bbox[2] + padding, bbox[3] + padding/2]
         
         # Create a dedicated title surface
-        surface_height = int(bg_bbox[3] + 50)
-        self.title_surface = Image.new("RGBA", (self.output_width, surface_height), (0, 0, 0, 0))
+        self.title_surface = Image.new("RGBA", (self.output_width, self.output_height), (0, 0, 0, 0))
         s_draw = ImageDraw.Draw(self.title_surface)
         
         # Draw background on surface
@@ -188,33 +192,29 @@ class UniversalSubtitleRenderer:
         elif self.title_bg_type == 'solid':
             s_draw.rounded_rectangle(bg_bbox, radius=8, fill=(0, 0, 0, 230), outline=(50, 50, 50, 255), width=2)
             
-        # Draw outline manually (more reliable than PIL's stroke_width)
+        # Draw outline manually
         if self.title_outline_width > 0:
             outline_color = self.title_outline_color + (255,)
-
-            # Scale outline width proportionally to font size scaling
-            # This matches the preview behavior where both scale together
             font_scale_ratio = self.resolved_font_size / self.title_font_size_pref
             scaled_outline_width = self.title_outline_width * font_scale_ratio
             stroke_pixels = int(round(scaled_outline_width))
 
-            # Draw outline in 8 directions around text
             for dx, dy in [(-1,-1), (0,-1), (1,-1), (-1,0), (1,0), (-1,1), (0,1), (1,1)]:
                 s_draw.text(
-                    (self.output_width / 2 + dx * stroke_pixels, 80 + dy * stroke_pixels),
+                    (self.output_width / 2 + dx * stroke_pixels, ui_title_center_y + dy * stroke_pixels),
                     title,
                     fill=outline_color,
                     font=title_font,
-                    anchor="mt"
+                    anchor="mm"
                 )
 
         # Draw main text on top
         s_draw.text(
-            (self.output_width / 2, 80),
+            (self.output_width / 2, ui_title_center_y),
             title,
             fill=self.title_text_color + (255,),
             font=title_font,
-            anchor="mt"
+            anchor="mm"
         )
         
     def _hex_to_rgb(self, hex_color: str) -> Tuple[int, int, int]:
@@ -484,6 +484,12 @@ class UniversalSubtitleRenderer:
         pil_image = pil_image.convert("RGBA")
         overlay_layer = Image.new("RGBA", pil_image.size, (0, 0, 0, 0))
         overlay_draw = ImageDraw.Draw(overlay_layer)
+        
+        # Coordinate scaling: Map UI pixels (1080x1920) to actual frame pixels
+        scale_x = pil_image.width / 1080
+        scale_y = pil_image.height / 1920
+        # Use average scale for font to preserve aspect ratio
+        font_scale = (scale_x + scale_y) / 2
 
         # Glow layer only if blur > 0
         glow_layer = None
@@ -498,7 +504,12 @@ class UniversalSubtitleRenderer:
 
         # 2. Render pre-rendered title surface
         if has_title and hasattr(self, 'title_surface'):
-            overlay_layer.paste(self.title_surface, (0, 0), self.title_surface)
+            # Scale title surface to match current frame scaling
+            if pil_image.size != self.title_surface.size:
+                scaled_title = self.title_surface.resize(pil_image.size, Image.LANCZOS)
+                overlay_layer.paste(scaled_title, (0, 0), scaled_title)
+            else:
+                overlay_layer.paste(self.title_surface, (0, 0), self.title_surface)
 
         # 2. Render subtitles if they exist
         if has_subs:
@@ -541,17 +552,17 @@ class UniversalSubtitleRenderer:
             if current_line: lines.append(current_line)
 
             # Layout
-            line_height = int(self.font_size * 1.2)
+            line_height = int(self.font_size * 1.2 * font_scale)
             total_height = len(lines) * line_height
 
             if self.settings.get('effect_type') == 'flash':
-                startY = (self.output_height - line_height) / 2
+                startY = (pil_image.height - line_height) / 2
             elif self.subtitle_position == 'custom' and self.subtitle_left is not None and self.subtitle_top is not None:
-                startY = self.subtitle_top - (total_height / 2)
+                startY = (self.subtitle_top * scale_y) - (total_height / 2)
             else:
-                if self.subtitle_position == 'top': startY = 100
-                elif self.subtitle_position == 'middle': startY = (self.output_height - total_height) / 2
-                else: startY = self.output_height - 100 - total_height
+                if self.subtitle_position == 'top': startY = 100 * scale_y
+                elif self.subtitle_position == 'middle': startY = (pil_image.height - total_height) / 2
+                else: startY = pil_image.height - (100 * scale_y) - total_height
 
             # Pass 1: Background boxes
             y_copy = startY
@@ -565,11 +576,11 @@ class UniversalSubtitleRenderer:
                         if i < len(line) - 1: line_width += word_info['space_width']
 
                     if self.settings.get('effect_type') == 'flash' or self.settings.get('effect_type') == 'dynamic_box':
-                        xCenter = self.output_width / 2
+                        xCenter = pil_image.width / 2
                     elif (self.subtitle_position == 'custom' and self.subtitle_left is not None):
-                        xCenter = self.subtitle_left
+                        xCenter = self.subtitle_left * scale_x
                     else:
-                        xCenter = self.output_width / 2
+                        xCenter = pil_image.width / 2
 
                     if self.settings.get('effect_type') != 'dynamic_box':
                         overlay_draw.rectangle(
@@ -589,11 +600,11 @@ class UniversalSubtitleRenderer:
 
                 # Calculate line starting X position
                 if self.settings.get('effect_type') == 'flash':
-                    x_center = self.output_width / 2
+                    x_center = pil_image.width / 2
                 elif (self.subtitle_position == 'custom' and self.subtitle_left is not None):
-                    x_center = self.subtitle_left
+                    x_center = self.subtitle_left * scale_x
                 else:
-                    x_center = self.output_width / 2
+                    x_center = pil_image.width / 2
 
                 # In RTL mode, the first word of the line (index 0) is the rightmost
                 # We start drawing from the right edge of the line
@@ -808,7 +819,7 @@ class UniversalSubtitleRenderer:
         if self.cap: self.cap.release()
 
 
-def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_path, output_path, start_time, end_time, settings, progress_callback=None):
+def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_path, output_path, start_time, end_time, settings, progress_callback=None, is_already_trimmed=False):
     with open(word_timestamps_path, 'r') as f:
         word_timestamps = json.load(f).get('words', [])
     if not word_timestamps: return False
@@ -838,49 +849,82 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
     import tempfile, shutil
     temp_dir = Path(tempfile.mkdtemp(prefix='short_renderer_'))
     
-    # Extract segment and RESIZE to vertical in one go (much faster than OpenCV per-frame)
-    temp_segment = temp_dir / "segment.mp4"
-    logger.info(f"Extracting and resizing segment {start_time}-{end_time} to vertical {renderer.output_width}x{renderer.output_height}...")
+    abs_output_path = str(Path(output_path).absolute())
+    abs_srt_path = str(Path(subtitle_srt_path).absolute())
+    logger.info(f"Final Render Pass: input={video_path}, srt={abs_srt_path}, output={abs_output_path}")
     
-    # FFmpeg filter for vertical crop/scale
-    vf_filter = f"scale={renderer.output_width}:{renderer.output_height}:force_original_aspect_ratio=increase,crop={renderer.output_width}:{renderer.output_height}:(iw-ow)/2:(ih-oh)/2"
+    # Use a unique temporary output path to avoid 'Output same as Input' errors
+    temp_output_path = temp_dir / f"final_render_{os.getpid()}.mp4"
+
+    # If the video is already trimmed (segment), we don't need to extract it again
+    if is_already_trimmed:
+        temp_segment = Path(video_path).absolute()
+        logger.info(f"Video already trimmed. Skipping extraction. Using: {temp_segment}")
+    else:
+        # Extract segment and RESIZE to vertical in one go (much faster than OpenCV per-frame)
+        temp_segment = temp_dir / "segment.mp4"
+        logger.info(f"Extracting and resizing segment {start_time}-{end_time} to vertical {renderer.output_width}x{renderer.output_height}...")
+        
+        # FFmpeg filter for vertical crop/scale
+        vf_filter = f"scale={renderer.output_width}:{renderer.output_height}:force_original_aspect_ratio=increase,crop={renderer.output_width}:{renderer.output_height}:(iw-ow)/2:(ih-oh)/2"
+        
+        abs_video_path = str(Path(video_path).absolute())
+
+        extract_cmd = [
+            'ffmpeg', '-y', '-ss', str(start_time), '-i', abs_video_path,
+            '-t', str(end_time - start_time), 
+            '-vf', vf_filter,
+            '-r', str(fps),
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18', 
+            '-c:a', 'aac', '-b:a', '192k',
+            str(temp_segment.absolute())
+        ]
+        subprocess.run(extract_cmd, capture_output=True, check=True)
     
-    extract_cmd = [
-        'ffmpeg', '-y', '-ss', str(start_time), '-i', str(video_path),
-        '-t', str(end_time - start_time), 
-        '-vf', vf_filter,
-        '-r', str(fps),
-        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18', 
-        '-c:a', 'aac', '-b:a', '192k',
-        str(temp_segment)
-    ]
-    subprocess.run(extract_cmd, capture_output=True, check=True)
-    
-    segment_renderer = UniversalSubtitleRenderer(str(temp_segment), word_timestamps, settings, formatting)
+    segment_renderer = UniversalSubtitleRenderer(str(temp_segment.absolute()), word_timestamps, settings, formatting)
     
     # FFmpeg Pipe
-    ffmpeg_cmd = [
-        'ffmpeg', '-y',
-        '-f', 'rawvideo',
-        '-vcodec', 'rawvideo',
-        '-s', f'{renderer.output_width}x{renderer.output_height}',
-        '-pix_fmt', 'bgr24',
-        '-r', str(fps),
-        '-i', '-',
-        '-ss', str(start_time),
-        '-i', str(video_path), 
-        '-t', str(end_time - start_time),
-        '-map', '0:v:0', '-map', '1:a:0?', 
-        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
-        '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', 
-        str(output_path)
-    ]
+    # If already trimmed, input is just temp_segment, no seeking/duration needed for second input
+    if is_already_trimmed:
+        ffmpeg_cmd = [
+            'ffmpeg', '-y', '-loglevel', 'error',
+            '-f', 'rawvideo', '-vcodec', 'rawvideo',
+            '-s', f'{renderer.output_width}x{renderer.output_height}', '-pix_fmt', 'bgr24', '-r', str(fps),
+            '-i', '-',
+            '-i', str(temp_segment.absolute()), # For audio
+            '-map', '0:v:0', '-map', '1:a:0?', 
+            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+            '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', 
+            str(temp_output_path.absolute())
+        ]
+    else:
+        abs_video_path = str(Path(video_path).absolute())
+        ffmpeg_cmd = [
+            'ffmpeg', '-y', '-loglevel', 'error',
+            '-f', 'rawvideo', '-vcodec', 'rawvideo',
+            '-s', f'{renderer.output_width}x{renderer.output_height}', '-pix_fmt', 'bgr24', '-r', str(fps),
+            '-i', '-',
+            '-ss', str(start_time), '-i', abs_video_path, # For audio
+            '-t', str(end_time - start_time),
+            '-map', '0:v:0', '-map', '1:a:0?', 
+            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+            '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', 
+            str(temp_output_path.absolute())
+        ]
     
     process = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
 
-    # Pre-compute outside the loop for performance
-    import re
-    is_theme_srt = bool(re.search(r'theme_\d{3}\.srt$', Path(subtitle_srt_path).name.lower()))
+    # Determine if SRT is relative (starts near 0) or absolute (starts near start_time)
+    # Scan first subtitle to check
+    is_relative_srt = False
+    if subtitles:
+        # If the first subtitle starts before the requested start_time (with some buffer)
+        # then it must be a relative SRT file.
+        if subtitles[0]['start'] < (start_time - 1.0):
+            is_relative_srt = True
+            logger.info("Detected relative SRT timing (starts near 00:00:00)")
+        else:
+            logger.info("Detected absolute SRT timing (matches master video)")
 
     # Build a time-indexed subtitle lookup for O(1) lookup instead of O(n)
     subtitle_index = {}  # Maps frame index to subtitle
@@ -888,43 +932,46 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
 
     try:
         for frame_idx in range(total_frames):
+            # current_time is absolute time in the ORIGINAL video
             current_time = start_time + (frame_idx / fps)
+            # relative_time is time from the start of this segment
+            relative_time = frame_idx / fps
 
             ret, frame = segment_renderer.cap.read()
             if not ret: break
 
-            # Fast subtitle lookup using cache
+            # Use relative lookup for relative SRTs, absolute for others
+            lookup_time = relative_time if is_relative_srt else current_time
+
+            # Fast subtitle lookup
             subtitle_text, subtitle_start, subtitle_end, subtitle_seq = "", None, None, None
 
-            if frame_idx in subtitle_index:
-                # Cached subtitle for this frame
-                sub = subtitle_index[frame_idx]
-                subtitle_text = sub['text']
-                subtitle_seq = sub.get('sequence')
-                s_start = sub['start'] + (start_time if is_theme_srt else 0)
-                s_end = sub['end'] + (start_time if is_theme_srt else 0)
-                subtitle_start, subtitle_end = s_start, s_end
-            else:
-                # Search for subtitle and cache it
-                for sub in subtitles_by_start:
-                    s_start = sub['start'] + (start_time if is_theme_srt else 0)
-                    s_end = sub['end'] + (start_time if is_theme_srt else 0)
+            for sub in subtitles_by_start:
+                if sub['start'] <= lookup_time <= sub['end']:
+                    subtitle_text, subtitle_seq = sub['text'], sub.get('sequence')
+                    # SHIFT relative timestamps to absolute for word-lookup
+                    if is_relative_srt:
+                        subtitle_start, subtitle_end = sub['start'] + start_time, sub['end'] + start_time
+                    else:
+                        subtitle_start, subtitle_end = sub['start'], sub['end']
+                    break
+                elif sub['start'] > lookup_time:
+                    break
 
-                    if s_start <= current_time <= s_end:
-                        subtitle_text, subtitle_seq = sub['text'], sub.get('sequence')
-                        subtitle_start, subtitle_end = s_start, s_end
-
-                        # Cache for nearby frames (subtitle spans multiple frames)
-                        frames_in_sub = int((s_end - s_start) * fps)
-                        for i in range(max(0, frame_idx - 2), min(total_frames, frame_idx + frames_in_sub + 2)):
-                            subtitle_index[i] = sub
-                        break
-
+            # For the renderer, we always use current_time (absolute) 
+            # because the word_timestamps file is always absolute.
             rendered_frame = segment_renderer.render_frame(frame, current_time, subtitle_text, subtitle_start, subtitle_end, subtitle_seq)
-            process.stdin.write(rendered_frame.tobytes())
+            
+            try:
+                process.stdin.write(rendered_frame.tobytes())
+            except (BrokenPipeError, IOError):
+                stdout, stderr = process.communicate()
+                err_msg = stderr.decode() if stderr else "Unknown FFmpeg failure"
+                logger.error(f"FFmpeg Pipe Broken: {err_msg}")
+                raise Exception(f"FFmpeg failed during rendering: {err_msg[:200]}")
             
             if progress_callback and frame_idx % 30 == 0:
-                progress_callback((frame_idx / total_frames) * 95, "rendering", f"Frame {frame_idx}/{total_frames}")
+                progress_callback((frame_idx / total_frames) * 100, "rendering", f"Frame {frame_idx}/{total_frames}")
 
         process.stdin.close()
         stdout, stderr = process.communicate()
@@ -932,6 +979,12 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
         if process.returncode != 0:
             logger.error(f"FFmpeg error: {stderr.decode()}")
             return False
+            
+        # Move successful render to final output
+        if os.path.exists(abs_output_path) and abs_output_path != str(temp_output_path.absolute()):
+            os.remove(abs_output_path)
+        shutil.move(str(temp_output_path.absolute()), abs_output_path)
+        logger.info(f"Final Render Pass complete! File saved to: {abs_output_path}")
             
         return True
     finally:

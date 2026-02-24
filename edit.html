@@ -495,6 +495,50 @@
             object-fit: contain;
         }
 
+        /* CUSTOM VIDEO CONTROLS */
+        .video-controls-overlay {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 10px 20px;
+            border-radius: 30px;
+            z-index: 100;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: auto;
+        }
+
+        .video-wrapper:hover .video-controls-overlay {
+            opacity: 1;
+        }
+
+        .control-btn {
+            background: none;
+            border: none;
+            color: #fff;
+            font-size: 20px;
+            cursor: pointer;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.2s, transform 0.1s;
+        }
+
+        .control-btn:hover {
+            color: #00ff9d;
+            transform: scale(1.1);
+        }
+
+        .control-btn:active {
+            transform: scale(0.95);
+        }
+
         #imageOverlay img {
             width: 100%;
             height: auto;
@@ -596,9 +640,32 @@
         }
         
         /* ARTISTIC VIDEO STYLES */
-        .style-pixels {
-            filter: blur(1.5px) contrast(1.2) !important;
+        .style-pixels video {
+            transform: scale(8) !important;
+            width: 12.5% !important;
+            height: 12.5% !important;
+            object-fit: contain !important;
             image-rendering: pixelated !important;
+            image-rendering: crisp-edges !important;
+            filter: saturate(1.4) contrast(1.2) !important;
+        }
+        .style-pixels {
+            overflow: hidden !important;
+            background: #000;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+        }
+        .style-pixels::after {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            background-image: 
+                linear-gradient(rgba(0,0,0,0.1) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,0,0,0.1) 1px, transparent 1px);
+            background-size: 8px 8px; /* Match the scale factor */
+            z-index: 10;
         }
         .style-paint {
             filter: url(#svg-paint) !important;
@@ -1472,7 +1539,11 @@
         <div class="preview-area">
             <div class="video-wrapper">
                 <div id="videoAnimationContainer" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative;">
-                    <video id="mainVideo" controls style="width: 100%; height: 100%; object-fit: contain;"></video>
+                    <video id="mainVideo" style="width: 100%; height: 100%; object-fit: contain; cursor: pointer;" onclick="togglePlay()"></video>
+                </div>
+                <!-- Custom Video Controls Overlay -->
+                <div class="video-controls-overlay" id="customControls">
+                    <button class="control-btn" id="playPauseBtn" onclick="togglePlay()">▶</button>
                 </div>
                 <video id="brollOverlayVideo" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 12 !important; object-fit: cover;" muted></video>
                 <canvas id="outlineCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 11 !important; display: none !important;"></canvas>
@@ -2096,6 +2167,17 @@
     <div class="tool-panel right" id="panel-subtitles">
         <button class="close-panel" onclick="closePanel('subtitles')">×</button>
         <h3><span class="icon">📝</span> Subtitles</h3>
+        
+        <div class="checkbox-group" style="margin-bottom: 15px;">
+            <label class="checkbox-item" id="anim-reburnSubtitles">
+                <input type="checkbox" id="reburnSubtitles" checked>
+                <span>🔥 Re-burn Subtitles (Top Layer)</span>
+            </label>
+            <p style="font-size: 10px; color: #888; margin-top: 5px; padding-left: 28px;">
+                * If enabled, subtitles and titles are rendered on top of B-roll and images in the final export.
+            </p>
+        </div>
+
         <div class="control-group">
             <label>Sync Offset (seconds)</label>
             <div class="range-wrapper">
@@ -2348,12 +2430,38 @@
                 <strong>${filename}</strong><br>
                 Folder: ${folderNumber || 'N/A'} | Theme: ${themeNumber || 'N/A'}
             `;
+
+            // Auto-check re-burn if it's a theme
+            if (themeNumber) {
+                document.getElementById('reburnSubtitles').checked = true;
+                
+                // FETCH THEME SETTINGS (Start/End times)
+                fetch(`/api/folder/${folderNumber}/themes`)
+                    .then(r => r.json())
+                    .then(data => {
+                        const theme = data.themes.find(t => t.number == themeNumber);
+                        if (theme && theme.start && theme.end) {
+                            console.log("Applying theme trim:", theme.start, theme.end);
+                            document.getElementById('startTime').value = theme.start;
+                            document.getElementById('endTime').value = theme.end;
+                            // Trigger timeline update
+                            if (typeof updateTimeline === 'function') updateTimeline();
+                        }
+                    })
+                    .catch(err => console.warn("Failed to load theme trim settings:", err));
+            }
         }
 
         // Update timeline on video metadata load
         video.addEventListener('loadedmetadata', () => {
             const duration = formatTime(video.duration);
-            document.getElementById('endTime').value = duration;
+            
+            // Only set defaults if NOT a theme
+            if (!themeNumber) {
+                document.getElementById('endTime').value = duration;
+                document.getElementById('startTime').value = "00:00:00";
+            }
+            
             document.getElementById('timelineDuration').textContent = duration;
             updateTimeline();
 
@@ -2385,8 +2493,19 @@
             }
         });
 
+        // Toggle play/pause
+        function togglePlay() {
+            if (video.paused) {
+                video.play().catch(e => console.warn('Play failed:', e));
+            } else {
+                video.pause();
+            }
+        }
+
         // Sync CSS animations with video play/pause
         video.addEventListener('play', () => {
+            const btn = document.getElementById('playPauseBtn');
+            if (btn) btn.textContent = '⏸';
             document.getElementById('videoAnimationContainer').style.animationPlayState = 'running';
             video.style.animationPlayState = 'running';
             // Start outline face detection if active (global or timeline)
@@ -2400,6 +2519,8 @@
             }
         });
         video.addEventListener('pause', () => {
+            const btn = document.getElementById('playPauseBtn');
+            if (btn) btn.textContent = '▶';
             document.getElementById('videoAnimationContainer').style.animationPlayState = 'paused';
             video.style.animationPlayState = 'paused';
             previewAudio.pause();
@@ -5101,6 +5222,8 @@
             }
 
             const settings = {
+                folder_number: folderNumber,
+                theme_number: themeNumber,
                 trim: {
                     start: document.getElementById('startTime').value,
                     end: document.getElementById('endTime').value,
@@ -5111,7 +5234,8 @@
                 reverse: document.getElementById('effectReverse').checked,
                 subtitles: {
                     offset: document.getElementById('subtitleOffset').value,
-                    style: document.getElementById('subtitleStyle').value
+                    style: document.getElementById('subtitleStyle').value,
+                    reburn: document.getElementById('reburnSubtitles').checked
                 },
                 audio: {
                     file: (audioFile && document.getElementById('audioEnabled').checked) ? audioFile.name : null,
@@ -5168,13 +5292,22 @@
                         })
                 ),
                 animationToggles: animationToggles,
+                style: currentVideoStyle,
                 effect_markers: effectMarkersData,
                 broll: brollFiles.map(f => f.name),
-                broll_markers: brollMarkers.map(m => ({
-                    name: m.brollName,
-                    start_time: m.start * (video.duration || 1),
-                    end_time: m.end * (video.duration || 1)
-                })),
+                broll_markers: brollMarkers.map(m => {
+                    // Find the actual transition used in preview or stored in marker
+                    const videoEl = document.getElementById('brollOverlayVideo');
+                    const isActive = videoEl && videoEl.dataset.activeMarkerId === m.id;
+                    const transition = m.transition || (isActive ? videoEl.className.replace('active', '').trim() : 'fade');
+                    
+                    return {
+                        name: m.brollName,
+                        start_time: m.start * (video.duration || 1),
+                        end_time: m.end * (video.duration || 1),
+                        transition: transition
+                    };
+                }),
                 images: [
                     ...imageFiles.map(img => ({
                         name: img.name,
@@ -5291,6 +5424,21 @@
                     // Optional: console.log('Status update:', status.status);
 
                     // Parse progress from logs if available
+                    // Update progress from API-provided percentage if available
+                    if (status.progress !== undefined) {
+                        progressBar.style.width = `${status.progress}%`;
+                        
+                        // Check if there's a stage message in the log that we should show
+                        let stageText = `Processing: ${status.progress}%`;
+                        if (status.log) {
+                            const stageMatch = status.log.match(/STAGE:(.+)/);
+                            if (stageMatch) {
+                                stageText = `${stageMatch[1]} (${status.progress}%)`;
+                            }
+                        }
+                        progressText.textContent = stageText;
+                    }
+
                     if (status.log) {
                         // Find all matches and use the last one
                         const progressMatches = status.log.matchAll(/Processed (\d+)\/(\d+) frames \((\d+)%\) \| ETA: (\d+)m (\d+)s \| Complete by: ([\d:]+)/g);
@@ -5335,7 +5483,11 @@
                             modal.classList.remove('visible');
                         }, 500);
 
-                        showNotification('Video exported successfully to edited_shorts!', 'success');
+                        const exportMsg = status.output_path ? 
+                            `Video exported to: ${status.output_path}` : 
+                            'Video exported successfully to edited_shorts!';
+                            
+                        showNotification(exportMsg, 'success');
                         isExporting = false;
                         editId = null;
                         updateExportButton();
@@ -5598,6 +5750,8 @@
             }
 
             const current = {
+                folder_number: folderNumber,
+                theme_number: themeNumber,
                 trim: {
                     start: document.getElementById('startTime').value,
                     end: document.getElementById('endTime').value,
@@ -5608,7 +5762,8 @@
                 reverse: document.getElementById('effectReverse').checked,
                 subtitles: {
                     offset: document.getElementById('subtitleOffset').value,
-                    style: document.getElementById('subtitleStyle').value
+                    style: document.getElementById('subtitleStyle').value,
+                    reburn: document.getElementById('reburnSubtitles').checked
                 },
                 audio: {
                     file: (audioFile && document.getElementById('audioEnabled').checked) ? audioFile.name : null,

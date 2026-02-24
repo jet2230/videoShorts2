@@ -160,7 +160,7 @@
             position: absolute;
             top: 20px;
             left: 50%;
-            transform: translateX(-50%);
+            transform: translate(-50%, -50%); /* Center-weighted anchor */
             background: linear-gradient(to bottom, rgba(0, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0.4) 100%);
             color: #00ff9d;
             padding: 10px 24px;
@@ -174,7 +174,7 @@
             text-align: center;
             pointer-events: auto;
             border: 2px solid rgba(0, 255, 157, 0.4);
-            cursor: text;
+            cursor: move; /* Changed from text to move */
             text-transform: uppercase;
             letter-spacing: 1.5px;
             text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
@@ -186,7 +186,7 @@
         .title-overlay:hover {
             background: rgba(0, 0, 0, 0.85);
             border-color: rgba(0, 255, 157, 0.8);
-            transform: translateX(-50%) translateY(-2px);
+            transform: translate(-50%, -50%) scale(1.02);
             box-shadow: 0 6px 20px rgba(0, 255, 157, 0.2);
         }
 
@@ -195,6 +195,7 @@
             background: rgba(0, 0, 0, 0.9);
             border-color: #00ff9d;
             box-shadow: 0 0 20px rgba(0, 255, 157, 0.3);
+            transform: translate(-50%, -50%);
         }
 
         .title-text {
@@ -2319,6 +2320,7 @@
         // Position mode: 'global' (all subtitles) or 'current' (individual subtitle)
         let positionMode = 'global';
         let globalPosition = 'bottom'; // Default global position for all subtitles
+        let titleTop = 150; // Default logical center Y for title (1080x1920 space)
         let karaokeEnabled = true; // Karaoke word highlighting (default: enabled)
         let wordTimestamps = null; // Word timestamps for preview karaoke effect
 
@@ -3180,6 +3182,7 @@
                 subtitle_top: customPosition ? customPosition.top : null,
                 subtitle_left: customPosition ? customPosition.centerX : null,
                 show_title: document.getElementById('title-toggle')?.checked ?? false,
+                title_top: titleTop,
                 title_font_size: parseInt(document.getElementById('title-font-size-input')?.value || '20'),
                 title_bg_type: document.getElementById('title-bg-type')?.value || 'gradient',
                 title_text_color: document.getElementById('title-text-color')?.value || '#00ff9d',
@@ -3310,6 +3313,7 @@
                         titleOutlineWidth: document.getElementById('title-outline-width')?.value || 0,
                         titleOutlineColor: document.getElementById('title-outline-color')?.value,
                         titleAllCaps: document.getElementById('title-all-caps')?.checked,
+                        titleTop: titleTop,
                         showTitle: localStorage.getItem('show_title') === 'true'
                     })
                 });
@@ -3426,6 +3430,9 @@
                 }
                 if (data.title_outline_color) document.getElementById('title-outline-color').value = data.title_outline_color;
                 if (data.title_all_caps !== undefined && data.title_all_caps !== null) document.getElementById('title-all-caps').checked = data.title_all_caps;
+                if (data.title_top !== undefined && data.title_top !== null) {
+                    titleTop = data.title_top;
+                }
                 if (data.show_title !== undefined && data.show_title !== null) {
                     document.getElementById('title-toggle').checked = data.show_title;
                     localStorage.setItem('show_title', data.show_title);
@@ -6804,6 +6811,8 @@
 
                 overlays.forEach(overlay => {
                     if (!overlay) return;
+                    // titleTop is center Y in logical 1920 space
+                    overlay.style.top = `${Math.round(titleTop * (previewHeight / 1920))}px`;
                     overlay.style.fontSize = fontSize;
                     overlay.style.color = textColor;
                     overlay.style.fontWeight = fontWeight;
@@ -6946,8 +6955,9 @@
                 // Load word timestamps for preview highlighting
                 loadWordTimestamps();
                 
-                // Initialize title resizing and styling
+                // Initialize title resizing, dragging and styling
                 setupTitleResizing();
+                setupTitleDragging();
                 setupTitleStyling();
                 
                 // Initialize collapsible sections from localStorage
@@ -6963,6 +6973,53 @@
             document.getElementById('loading').classList.add('hidden');
             document.getElementById('error').textContent = 'Missing folder or theme number';
             document.getElementById('error').classList.remove('hidden');
+        }
+
+        // Title dragging logic
+        function setupTitleDragging() {
+            const overlays = [document.getElementById('original-title-overlay'), document.getElementById('preview-title-overlay')];
+            let isDragging = false;
+            let startY = 0;
+            let startTop = 0;
+
+            overlays.forEach(overlay => {
+                if (!overlay) return;
+                overlay.addEventListener('mousedown', (e) => {
+                    if (e.target.classList.contains('resize-handle') || e.target.classList.contains('style-handle')) return;
+                    
+                    isDragging = true;
+                    startY = e.clientY;
+                    startTop = titleTop;
+                    
+                    e.preventDefault();
+                    e.stopPropagation();
+                });
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+
+                const deltaY = e.clientY - startY;
+                const previewVideo = document.getElementById('preview-video');
+                const previewHeight = previewVideo.offsetHeight || 500;
+                const scale = 1920 / previewHeight;
+
+                // Update logical titleTop
+                titleTop = Math.max(0, Math.min(1920, startTop + (deltaY * scale)));
+                
+                // Update UI immediately (top is now center due to CSS transform)
+                overlays.forEach(overlay => {
+                    if (overlay) overlay.style.top = `${Math.round(titleTop / scale)}px`;
+                });
+            });
+
+            document.addEventListener('mouseup', async () => {
+                if (isDragging) {
+                    isDragging = false;
+                    // Save to server
+                    await saveGlobalPosition(globalPosition);
+                }
+            });
         }
 
         function toggleSection(id) {
