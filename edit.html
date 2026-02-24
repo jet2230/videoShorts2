@@ -641,49 +641,33 @@
         
         /* ARTISTIC VIDEO STYLES */
         .style-pixels video {
-            transform: scale(8) !important;
-            width: 12.5% !important;
-            height: 12.5% !important;
+            /* High-performance CSS pixelation trick: blur + high contrast */
+            filter: blur(var(--px-blur, 4px)) contrast(var(--px-contrast, 3)) brightness(1.1) saturate(1.2) !important;
             object-fit: contain !important;
-            image-rendering: pixelated !important;
-            image-rendering: crisp-edges !important;
-            filter: saturate(1.4) contrast(1.2) !important;
+            width: 100% !important;
+            height: 100% !important;
         }
         .style-pixels {
             overflow: hidden !important;
             background: #000;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
         }
-        .style-pixels::after {
-            content: "";
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            pointer-events: none;
-            background-image: 
-                linear-gradient(rgba(0,0,0,0.1) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(0,0,0,0.1) 1px, transparent 1px);
-            background-size: 8px 8px; /* Match the scale factor */
-            z-index: 10;
-        }
-        .style-paint {
+        .style-paint video {
             filter: url(#svg-paint) !important;
         }
+        .style-pencil video {
+            filter: url(#svg-pencil-kernel) !important;
+        }
         .style-pencil {
-            filter: url(#svg-pencil) brightness(1.2) contrast(1.1) !important;
+            background: #fff !important;
         }
-        .style-neon {
-            filter: invert(1) hue-rotate(180deg) brightness(1.5) contrast(2) saturate(2) !important;
-            box-shadow: 0 0 50px #ff00ff44 !important;
+        .style-neon video {
+            /* Handled in JS now */
         }
-        .style-poster {
+        .style-poster video {
             filter: url(#svg-posterize) saturate(1.5) !important;
         }
-        .style-retro {
-            filter: sepia(0.3) contrast(1.2) brightness(1.1) !important;
-            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%) !important;
-            background-size: 100% 4px !important;
+        .style-retro video {
+            /* Handled in JS now */
         }
         @keyframes vhs-jitter {
             0% { transform: translate(0,0); }
@@ -2068,30 +2052,84 @@
                 <input type="radio" name="videoStyle" checked>
                 <span>🚫 Original Style</span>
             </label>
+
+            <!-- Pixel Art -->
             <label class="checkbox-item" onclick="applyVideoStyle('pixels')">
                 <input type="radio" name="videoStyle">
                 <span>👾 Pixel Art (8-bit)</span>
             </label>
-            <label class="checkbox-item" onclick="applyVideoStyle('paint')">
+            <div id="stylePixelsControl" style="margin-top: 5px; padding-left: 28px; display: none;">
+                <label style="display: block; font-size: 11px; color: #aaa; margin-bottom: 5px;">Pixel Size</label>
+                <div class="range-wrapper">
+                    <input type="range" id="stylePixelsLevel" min="2" max="16" step="1" value="8" oninput="updateStyleIntensity('pixels', this.value)">
+                    <span class="value" id="valPixelsLevel" style="min-width: 20px;">8</span>
+                </div>
+            </div>
+
+            <!-- Oil Paint -->
+            <label class="checkbox-item" onclick="applyVideoStyle('paint')" style="margin-top: 10px;">
                 <input type="radio" name="videoStyle">
                 <span>🎨 Oil Paint</span>
             </label>
-            <label class="checkbox-item" onclick="applyVideoStyle('pencil')">
+            <div id="stylePaintControl" style="margin-top: 5px; padding-left: 28px; display: none;">
+                <label style="display: block; font-size: 11px; color: #aaa; margin-bottom: 5px;">Smoothness</label>
+                <div class="range-wrapper">
+                    <input type="range" id="stylePaintLevel" min="1" max="10" step="1" value="5" oninput="updateStyleIntensity('paint', this.value)">
+                    <span class="value" id="valPaintLevel" style="min-width: 20px;">5</span>
+                </div>
+            </div>
+
+            <!-- Pencil Sketch -->
+            <label class="checkbox-item" onclick="applyVideoStyle('pencil')" style="margin-top: 10px;">
                 <input type="radio" name="videoStyle">
                 <span>✏️ Pencil Sketch</span>
             </label>
-            <label class="checkbox-item" onclick="applyVideoStyle('neon')">
+            <div id="stylePencilControl" style="margin-top: 5px; padding-left: 28px; display: none;">
+                <label style="display: block; font-size: 11px; color: #aaa; margin-bottom: 5px;">Line Sensitivity</label>
+                <div class="range-wrapper">
+                    <input type="range" id="stylePencilLevel" min="1" max="10" step="1" value="5" oninput="updateStyleIntensity('pencil', this.value)">
+                    <span class="value" id="valPencilLevel" style="min-width: 20px;">5</span>
+                </div>
+            </div>
+
+            <!-- Cyberpunk Neon -->
+            <label class="checkbox-item" onclick="applyVideoStyle('neon')" style="margin-top: 10px;">
                 <input type="radio" name="videoStyle">
                 <span>🌈 Cyberpunk Neon</span>
             </label>
-            <label class="checkbox-item" onclick="applyVideoStyle('poster')">
+            <div id="styleNeonControl" style="margin-top: 5px; padding-left: 28px; display: none;">
+                <label style="display: block; font-size: 11px; color: #aaa; margin-bottom: 5px;">Glow Intensity</label>
+                <div class="range-wrapper">
+                    <input type="range" id="styleNeonLevel" min="1" max="10" step="1" value="5" oninput="updateStyleIntensity('neon', this.value)">
+                    <span class="value" id="valNeonLevel" style="min-width: 20px;">5</span>
+                </div>
+            </div>
+
+            <!-- Posterize -->
+            <label class="checkbox-item" onclick="applyVideoStyle('poster')" style="margin-top: 10px;">
                 <input type="radio" name="videoStyle">
                 <span>🖼️ Posterize</span>
             </label>
-            <label class="checkbox-item" onclick="applyVideoStyle('retro')">
+            <div id="stylePosterControl" style="margin-top: 5px; padding-left: 28px; display: none;">
+                <label style="display: block; font-size: 11px; color: #aaa; margin-bottom: 5px;">Color Levels</label>
+                <div class="range-wrapper">
+                    <input type="range" id="stylePosterLevel" min="2" max="10" step="1" value="5" oninput="updateStyleIntensity('poster', this.value)">
+                    <span class="value" id="valPosterLevel" style="min-width: 20px;">5</span>
+                </div>
+            </div>
+
+            <!-- Retro CRT -->
+            <label class="checkbox-item" onclick="applyVideoStyle('retro')" style="margin-top: 10px;">
                 <input type="radio" name="videoStyle">
                 <span>📺 Retro CRT</span>
             </label>
+            <div id="styleRetroControl" style="margin-top: 5px; padding-left: 28px; display: none;">
+                <label style="display: block; font-size: 11px; color: #aaa; margin-bottom: 5px;">Vintage Tint</label>
+                <div class="range-wrapper">
+                    <input type="range" id="styleRetroLevel" min="1" max="10" step="1" value="5" oninput="updateStyleIntensity('retro', this.value)">
+                    <span class="value" id="valRetroLevel" style="min-width: 20px;">5</span>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -2701,6 +2739,9 @@
             // Highlight selected style in UI
             const radioButtons = document.querySelectorAll('input[name="videoStyle"]');
             const labels = document.querySelectorAll('#panel-style .checkbox-item');
+            const controls = [
+                'Pixels', 'Paint', 'Pencil', 'Neon', 'Poster', 'Retro'
+            ];
             
             const styles = ['none', 'pixels', 'paint', 'pencil', 'neon', 'poster', 'retro'];
             labels.forEach((label, index) => {
@@ -2711,6 +2752,70 @@
                     label.classList.remove('active');
                 }
             });
+
+            // Toggle control visibility
+            controls.forEach(c => {
+                const div = document.getElementById(`style${c}Control`);
+                if (div) div.style.display = 'none';
+            });
+
+            if (styleName !== 'none') {
+                const styleId = styleName.charAt(0).toUpperCase() + styleName.slice(1);
+                const controlDiv = document.getElementById(`style${styleId}Control`);
+                if (controlDiv) controlDiv.style.display = 'block';
+                
+                // Initialize/Update the specific filter logic
+                const val = document.getElementById(`style${styleId}Level`).value;
+                updateStyleIntensity(styleName, val);
+            }
+
+            applyVideoEffects();
+        }
+
+        function updateStyleIntensity(style, val) {
+            // Update the display span
+            const styleId = style.charAt(0).toUpperCase() + style.slice(1);
+            const valSpan = document.getElementById(`val${styleId}Level`);
+            if (valSpan) valSpan.textContent = val;
+
+            const value = parseInt(val);
+
+            // Dynamically update based on level
+            if (style === 'pixels') {
+                const container = document.getElementById('videoAnimationContainer');
+                if (container) {
+                    // Update CSS variable for the grid-mask
+                    const pxSize = value;
+                    container.style.setProperty('--pixel-mask', 
+                        `linear-gradient(rgba(0,0,0,0.2) 1px, transparent 1px), 
+                         linear-gradient(90deg, rgba(0,0,0,0.2) 1px, transparent 1px)`
+                    );
+                    container.style.backgroundSize = `${pxSize}px ${pxSize}px`;
+                    
+                    // Final touch: physically reduce the video quality via its width
+                    const percent = Math.max(10, (100 / pxSize) * 2);
+                    video.style.width = `${percent}%`;
+                    video.style.height = `${percent}%`;
+                    video.style.transform = `scale(${100 / percent})`;
+                    video.style.transformOrigin = 'center center';
+                }
+            } else if (style === 'pencil') {
+                const filter = document.getElementById('svg-pencil-kernel');
+                const convolve = filter.querySelector('feConvolveMatrix');
+                if (convolve) {
+                    // Adjust sensitivity (5 is default)
+                    const sens = value * 1.5;
+                    const center = -(sens * 4);
+                    convolve.setAttribute('kernelMatrix', `0 ${sens} 0 ${sens} ${center} ${sens} 0 ${sens} 0`);
+                }
+            } else if (style === 'paint') {
+                const filter = document.getElementById('svg-paint');
+                const morph = filter.querySelector('feMorphology');
+                if (morph) {
+                    // radius 1-10 (default 2)
+                    morph.setAttribute('radius', Math.max(1, value / 2).toString());
+                }
+            }
 
             applyVideoEffects();
         }
@@ -4209,11 +4314,15 @@
             const faceTrackingEnabled = document.getElementById('faceTracking').checked;
             const faceTrackingZoom = faceTrackingEnabled ? parseFloat(document.getElementById('faceZoomLevel').value) : null;
 
-            // Reset styles
+            // Reset video styles to base state
             video.style.transition = 'none';
             video.style.objectFit = 'contain';
             video.style.transformOrigin = 'center center';
             
+            let transforms = [];
+            let filters = [];
+            let finalScale = 1.0;
+
             // Clear animations from container
             animContainer.classList.remove('shake-animation');
             animContainer.classList.remove('glare-animation');
@@ -4234,6 +4343,26 @@
             
             if (currentVideoStyle && currentVideoStyle !== 'none') {
                 animContainer.classList.add('style-' + currentVideoStyle);
+                
+                // Dynamic overrides for styles with sliders
+                if (currentVideoStyle === 'neon') {
+                    const level = parseInt(document.getElementById('styleNeonLevel').value);
+                    filters.push(`invert(1) hue-rotate(180deg) brightness(${1.0 + level/5}) contrast(${1.5 + level/10}) saturate(${1.5 + level/5})`);
+                    video.style.boxShadow = `0 0 ${level * 10}px #ff00ff44`;
+                } else if (currentVideoStyle === 'poster') {
+                    const level = parseInt(document.getElementById('stylePosterLevel').value);
+                    // Update the SVG filter discrete steps
+                    const filter = document.getElementById('svg-posterize');
+                    const steps = [];
+                    for(let i=0; i<level; i++) steps.push(i/(level-1));
+                    const tableValues = steps.join(' ');
+                    filter.querySelectorAll('feFuncR, feFuncG, feFuncB').forEach(f => f.setAttribute('tableValues', tableValues));
+                } else if (currentVideoStyle === 'retro') {
+                    const level = parseInt(document.getElementById('styleRetroLevel').value);
+                    filters.push(`sepia(${level/10}) contrast(${1.0 + level/20}) brightness(${1.0 + level/50})`);
+                    animContainer.style.background = `linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, ${level/40}) 50%)`;
+                    animContainer.style.backgroundSize = `100% ${Math.max(2, 12 - level)}px`;
+                }
             }
             
             // Sync container play state
@@ -4245,9 +4374,6 @@
             const particles = document.getElementById('global-particles');
             if (particles) particles.remove();
             
-            let transforms = [];
-            let filters = [];
-
             // Apply global animations to container
             if (activeAnimations.cameraGlare && animationToggles.cameraGlare !== false) {
                 animContainer.classList.add('glare-animation');
@@ -4309,7 +4435,7 @@
                         filters.push('blur(5px)');
                         break;
                     case 'zoom':
-                        transforms.push('scale(1.2)');
+                        finalScale *= 1.2;
                         break;
                     case 'glitch':
                         filters.push('hue-rotate(90deg) contrast(1.5)');
@@ -4326,8 +4452,7 @@
                         filters.push('brightness(0.8) contrast(1.2)');
                         break;
                     case 'cinematic':
-                        // Handled via CSS on wrapper or just zoom slightly
-                        transforms.push('scale(1.1)');
+                        finalScale *= 1.1;
                         break;
                     case 'vibrance':
                         filters.push('saturate(1.8) contrast(1.1)');
@@ -4342,16 +4467,34 @@
                 }
             }
 
-            // Re-apply face tracking transform on top of timeline effects
+            // Re-apply face tracking transform
             if (faceTrackingEnabled && faceTrackingZoom) {
-                transforms.push(`scale(${faceTrackingZoom})`);
+                finalScale *= faceTrackingZoom;
                 
-                // Smart origin: if video is landscape, zoom towards top-center where faces usually are
-                // If it's already vertical, keep it more centered
                 const isLandscape = video.videoWidth > video.videoHeight;
                 video.style.transformOrigin = isLandscape ? 'center 35%' : 'center 45%';
-                
                 video.style.objectFit = 'cover';
+            }
+
+            // FINAL STAGE PIXELATION (MATCH EXPORT)
+            if (currentVideoStyle === 'pixels') {
+                const pxLevel = parseInt(document.getElementById('stylePixelsLevel').value);
+                // Dynamically update CSS variables for the pixelate filter
+                video.style.setProperty('--px-blur', `${pxLevel / 2}px`);
+                video.style.setProperty('--px-contrast', `${1 + pxLevel / 4}`);
+                
+                video.style.width = '100%';
+                video.style.height = '100%';
+                video.style.objectFit = 'contain';
+            } else {
+                video.style.width = '100%';
+                video.style.height = '100%';
+                video.style.objectFit = 'contain';
+            }
+
+            // Apply consolidated scale
+            if (finalScale !== 1.0) {
+                transforms.push(`scale(${finalScale})`);
             }
 
             // Apply combined styles
@@ -5293,6 +5436,14 @@
                 ),
                 animationToggles: animationToggles,
                 style: currentVideoStyle,
+                style_levels: {
+                    pixels: document.getElementById('stylePixelsLevel').value,
+                    paint: document.getElementById('stylePaintLevel').value,
+                    pencil: document.getElementById('stylePencilLevel').value,
+                    neon: document.getElementById('styleNeonLevel').value,
+                    poster: document.getElementById('stylePosterLevel').value,
+                    retro: document.getElementById('styleRetroLevel').value
+                },
                 effect_markers: effectMarkersData,
                 broll: brollFiles.map(f => f.name),
                 broll_markers: brollMarkers.map(m => {
@@ -6348,6 +6499,19 @@
     <!-- SVG Filters for Artistic Styles -->
     <svg style="position: absolute; width: 0; height: 0;" aria-hidden="true" focusable="false">
         <defs>
+            <!-- Proper Pixel Art (Tiling) Effect -->
+            <filter id="svg-pixels-filter" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+                <!-- Color Quantization for 8-bit look -->
+                <feComponentTransfer result="quantized">
+                    <feFuncR type="discrete" tableValues="0 0.2 0.4 0.6 0.8 1" />
+                    <feFuncG type="discrete" tableValues="0 0.2 0.4 0.6 0.8 1" />
+                    <feFuncB type="discrete" tableValues="0 0.2 0.4 0.6 0.8 1" />
+                </feComponentTransfer>
+                <!-- Sampling and Tiling for proper blocks -->
+                <feFlood x="0" y="0" height="8" width="8" result="flood" id="svg-pixels-sample" />
+                <feComposite operator="in" in2="quantized" result="sample" />
+                <feTile in="sample" result="tile" />
+            </filter>
             <!-- Posterize Effect -->
             <filter id="svg-posterize">
                 <feComponentTransfer>
@@ -6361,11 +6525,29 @@
                 <feMorphology operator="dilate" radius="2" />
                 <feColorMatrix type="saturate" values="1.5" />
             </filter>
-            <!-- Pencil Sketch Effect -->
+            <!-- High-fidelity Edge Detection for Pencil Sketch -->
+            <filter id="svg-pencil-kernel" color-interpolation-filters="sRGB">
+                <feColorMatrix type="matrix" values="0.33 0.33 0.33 0 0
+                                                     0.33 0.33 0.33 0 0
+                                                     0.33 0.33 0.33 0 0
+                                                     0 0 0 1 0"/>
+                <feConvolveMatrix order="3" kernelMatrix="0 5 0 5 -20 5 0 5 0" divisor="1" bias="1"/>
+            </filter>
+            <!-- Pencil Sketch Effect (Legacy - kept for defs) -->
             <filter id="svg-pencil">
-                <feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.3333 0.3333 0.3333 0 0" />
-                <feConvolveMatrix order="3" kernelMatrix="-1 -1 -1 -1 8 -1 -1 -1 -1" />
-                <feColorMatrix type="matrix" values="-1 0 0 0 1 0 -1 0 0 1 0 0 -1 0 1 0 0 0 1 0" />
+                <!-- Step 1: Grayscale and high contrast -->
+                <feColorMatrix type="matrix" values="0.33 0.33 0.33 0 0
+                                                     0.33 0.33 0.33 0 0
+                                                     0.33 0.33 0.33 0 0
+                                                     0 0 0 1 0" result="gray" />
+                <!-- Step 2: Edge extraction -->
+                <feConvolveMatrix order="3" kernelMatrix="0 1 0 1 -4 1 0 1 0" in="gray" result="edge" />
+                <!-- Step 3: Invert and enhance visibility -->
+                <feComponentTransfer in="edge">
+                    <feFuncR type="linear" slope="-5" intercept="1" />
+                    <feFuncG type="linear" slope="-5" intercept="1" />
+                    <feFuncB type="linear" slope="-5" intercept="1" />
+                </feComponentTransfer>
             </filter>
         </defs>
     </svg>

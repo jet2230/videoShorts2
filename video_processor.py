@@ -243,25 +243,44 @@ class VideoProcessor:
 
         # 1.5 Global Animations & Styles
         style = settings.get('style', 'none')
+        style_levels = settings.get('style_levels', {})
+        
+        def get_level(name, default):
+            try:
+                return float(style_levels.get(name, default))
+            except:
+                return float(default)
+
         if style == 'pixels':
             # Fast pixelation: scale down then up
-            vf_filters.append(f"scale=iw/8:ih/8:flags=neighbor,scale={self.width}:{self.height}:flags=neighbor")
+            px_val = int(get_level('pixels', 8))
+            vf_filters.append(f"scale=iw/{px_val}:ih/{px_val}:flags=neighbor,scale=1080:1920:flags=neighbor")
         elif style == 'paint':
-            vf_filters.append("bilateral=sigmaS=5:sigmaR=0.1,unsharp=3:3:1.5:3:3:0.5")
+            # Smoothness level 1-10 (default 5)
+            smooth = get_level('paint', 5)
+            vf_filters.append(f"bilateral=sigmaS={smooth}:sigmaR=0.1,unsharp=3:3:1.5:3:3:0.5")
         elif style == 'pencil':
-            vf_filters.append("format=gray,edgedetect=low=0.1:high=0.2,negate")
+            # Sensitivity level 1-10 (default 5)
+            sens = get_level('pencil', 5) / 10.0
+            vf_filters.append(f"format=gray,edgedetect=low={sens*0.1}:high={sens*0.2},negate")
         elif style == 'neon':
-            vf_filters.append("edgedetect=low=0.1:high=0.4,hue=h=120:s=2")
+            # Glow intensity 1-10 (default 5)
+            glow = get_level('neon', 5)
+            vf_filters.append(f"edgedetect=low=0.1:high={0.1 + (11-glow)*0.05},hue=h=120:s={1.0 + glow/5}")
         elif style == 'poster':
-            vf_filters.append("colorlevels=rimin=0.05:gimin=0.05:bimin=0.05:rimax=0.95:gimax=0.95:bimax=0.95")
+            # Color levels 2-10 (default 5)
+            levels = int(get_level('poster', 5))
+            vf_filters.append(f"posterize=levels={levels}")
         elif style == 'retro':
-            vf_filters.append("noise=alls=10:allf=t,hue=s=0.3,vignette")
+            # Vintage tint 1-10 (default 5)
+            tint = get_level('retro', 5)
+            vf_filters.append(f"noise=alls={tint*2}:allf=t,hue=s={1.0 - tint/20},vignette")
 
         # Global Animations
         if animations.get('vhs'):
             vf_filters.append("noise=alls=20:allf=t+u,hue=s=0.5,gblur=sigma=1")
         if animations.get('kenBurns'):
-            vf_filters.append(f"zoompan=z='min(zoom+0.0005,1.2)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={self.width}x{self.height}")
+            vf_filters.append(f"zoompan=z='min(zoom+0.0005,1.2)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920")
         if animations.get('scanlines'):
             vf_filters.append("drawgrid=w=iw:h=4:t=1:c=black@0.3")
         if animations.get('heartbeat'):
