@@ -3098,14 +3098,16 @@
             brollFiles.forEach((file, index) => {
                 const item = document.createElement('div');
                 item.className = 'broll-item';
-                item.style.display = 'flex';
-                item.style.alignItems = 'center';
-                item.style.gap = '5px';
-                item.style.marginBottom = '5px';
+                item.style.flexDirection = 'column';
+                item.style.alignItems = 'stretch';
                 item.innerHTML = `
-                    <div class="info" style="flex: 1;">🎬 ${file.name}</div>
-                    <button class="add-btn" onclick="addBrollToTimeline(${index})" style="background: var(--bg-color); border: 1px solid var(--border-color); color: #fff; padding: 2px 5px; border-radius: 3px; cursor: pointer; font-size: 11px;">Add to Timeline</button>
-                    <button class="remove" onclick="removeBroll(${index})">✕</button>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div class="info">🎬 ${file.name}</div>
+                        <button class="remove" onclick="removeBroll(${index})">✕</button>
+                    </div>
+                    <button class="action-btn secondary" style="margin-top: 5px; padding: 5px; font-size: 11px;" onclick="addBrollToTimeline(${index})">
+                        ➕ Add to Timeline
+                    </button>
                 `;
                 container.appendChild(item);
             });

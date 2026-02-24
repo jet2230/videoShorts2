@@ -37,6 +37,11 @@ class SubtitleEffects:
         self.audio_levels = settings.get('audio_levels', None) # Optional volume data
         self.base_time = settings.get('base_time', 0.0) # Start time of the segment
         
+    @property
+    def active_effects(self) -> bool:
+        """Returns True if any complex animation/karaoke effect is active."""
+        return self.effect_type not in ['standard', 'none']
+
     def apply_word_effect(self, word_info: Dict, current_time: float, word_start: Optional[float], word_end: Optional[float], is_highlighted: bool = False) -> Dict:
         """
         Calculates modifications to a word's properties based on the active effect.

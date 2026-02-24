@@ -3909,24 +3909,23 @@ def export_canvas_karaoke():
                         canvas_karaoke_progress[jid] = {'status': 'error', 'error': 'Word timestamps not found', 'complete': False}
                     return
 
-                # Prefer the main (absolute) SRT file for rendering to ensure perfect sync
-                # even if theme boundaries have shifted.
-                srt_file = None
-                srt_files = [f for f in folder.glob('*.srt') if 'theme_' not in f.name and 'adjust' not in f.name]
-                if srt_files:
-                    srt_file = srt_files[0]
-                else:
-                    # Fallback to theme-specific one if main is missing
-                    srt_file = folder / 'shorts' / f'theme_{int(t_num):03d}.srt'
-                    if not srt_file.exists():
+                # Prioritize theme-specific SRT (which contains user edits)
+                srt_file = folder / 'shorts' / f'theme_{int(t_num):03d}.srt'
+                
+                if not srt_file.exists():
+                    # Fallback to main SRT
+                    srt_files = [f for f in folder.glob('*.srt') if 'theme_' not in f.name and 'adjust' not in f.name]
+                    if srt_files:
+                        srt_file = srt_files[0]
+                    else:
                         srt_file = folder / 'adjust.srt'
-                    
-                    if not srt_file.exists():
-                        # Last resort: any SRT
-                        for srt in folder.glob('*.srt'):
-                            if not any(x in srt.name.lower() for x in ['theme_', 'adjust', 'transcribe']):
-                                srt_file = srt
-                                break
+                
+                if not srt_file or not srt_file.exists():
+                    # Last resort: any SRT
+                    for srt in folder.glob('*.srt'):
+                        if not any(x in srt.name.lower() for x in ['theme_', 'adjust', 'transcribe']):
+                            srt_file = srt
+                            break
                 
                 if not srt_file or not srt_file.exists():
                     with canvas_karaoke_lock:
@@ -4017,66 +4016,141 @@ def export_canvas_karaoke():
                         })
                         canvas_karaoke_progress[jid] = current
 
-                # Call the actual renderer
+                # Call the actual renderer using multi-pass strategy (same as edit)
+                from video_processor import VideoProcessor
+                import time as py_time
                 
-                # Get adjustments for this theme to ensure latest styling is used
-                adjust_settings = get_theme_adjust_settings(folder, t_num)
+                export_start_perf = py_time.time()
+                processor = VideoProcessor(str(video_file))
                 
-                # Setup final settings for the renderer, merging incoming with adjust.md
-                final_render_settings = settings_dict.copy()
-                
-                # Ensure base subtitle fields are present if missing
-                if 'fontSize' not in final_render_settings: final_render_settings['fontSize'] = 80
-                if 'fontName' not in final_render_settings: final_render_settings['fontName'] = 'Arial'
-                if 'bgColor' not in final_render_settings: final_render_settings['bgColor'] = '#000000'
-                if 'bgOpacity' not in final_render_settings: final_render_settings['bgOpacity'] = 0.63
-                
-                # Merge in saved adjustments first
-                final_render_settings.update(adjust_settings)
-
-                # Apply user's explicit show_title choice (overrides saved setting)
-                if 'show_title' in settings_dict:
-                    final_render_settings['show_title'] = settings_dict['show_title']
-
-                # Also ensure title is set
-                final_render_settings['title'] = theme_title
-                
-                # Ensure title fields are robustly set from either source (handle camelCase from UI)
-                mapping = {
-                    'title_font_size': 'titleFontSize',
-                    'title_bg_type': 'titleBgType',
-                    'title_text_color': 'titleTextColor',
-                    'title_font_weight': 'titleFontWeight',
-                    'title_outline_width': 'titleOutlineWidth',
-                    'title_outline_color': 'titleOutlineColor',
-                    'title_all_caps': 'titleAllCaps',
-                    'title_top': 'titleTop',
-                    'reburn': 'reburn'
+                # Setup settings for Pass 1 (Trim & Vertical Crop)
+                # We reuse the logic from process_video_edit
+                pass1_settings = {
+                    'trim': {
+                        'start': str(start_time),
+                        'end': str(end_time)
+                    },
+                    'subtitles': {
+                        'reburn': True,
+                        'srt_path': str(srt_file),
+                        'native_burn': settings_dict.get('effect_type') == 'none' # FAST LANE DETECTION
+                    },
+                    'folder_number': f_num,
+                    'theme_number': t_num
                 }
-                for snake, camel in mapping.items():
-                    if snake not in final_render_settings and camel in settings_dict:
-                        final_render_settings[snake] = settings_dict[camel]
                 
-                # Extract audio levels for reactive effects if needed
-                if final_render_settings.get('effect_type') == 'volume_shake':
-                    try:
-                        app_logger.info(f"Extracting audio levels for export of theme {t_num}...")
-                        audio_levels = _extract_audio_levels(video_file, start_time, end_time)
-                        final_render_settings['audio_levels'] = audio_levels
-                        final_render_settings['base_time'] = float(start_time)
-                    except Exception as ae:
-                        app_logger.warning(f"Failed to extract audio levels for export: {ae}")
+                # Check if we can use the "Fast Lane" (Native FFmpeg for everything)
+                use_fast_lane = pass1_settings['subtitles']['native_burn']
+                if use_fast_lane:
+                    app_logger.info("⚡ FAST LANE DETECTED: Using native FFmpeg for subtitle burning.")
                 
-                success = render_canvas_karaoke_video(
-                    str(video_file),
-                    str(word_timestamps_file),
-                    str(srt_file),
-                    str(output_path),
-                    float(start_time),
-                    float(end_time),
-                    final_render_settings,
-                    progress_callback=progress_cb
-                )
+                # Pass 1: Trim, Vertical Crop, Audio mixing (Fast FFmpeg pass)
+                # Calculate progress
+                def pass1_progress_cb(msg):
+                    if "PROGRESS:" in msg:
+                        try:
+                            percent = int(msg.split(":")[1].split("%")[0])
+                            if use_fast_lane:
+                                progress_cb(percent, "FFmpeg Export", "Generating final video")
+                            else:
+                                progress_cb(percent * 0.3, "Optimizing Video", "Preparing vertical clip")
+                        except: pass
+
+                app_logger.info(f"Starting Pass 1: FFmpeg Optimization for theme {t_num}")
+                pass1_start = py_time.time()
+                intermediate_video = processor.apply_effects(str(output_path), pass1_settings, log_callback=pass1_progress_cb)
+                pass1_duration = py_time.time() - pass1_start
+                app_logger.info(f"PASS 1 COMPLETE: {pass1_duration:.2f}s")
+                
+                if use_fast_lane:
+                    # In Fast Lane, the output is already complete!
+                    # Move from intermediate temp path to final output path
+                    import shutil
+                    if os.path.exists(intermediate_video) and str(Path(intermediate_video).absolute()) != str(output_path.absolute()):
+                        if output_path.exists():
+                            os.remove(output_path)
+                        shutil.move(intermediate_video, str(output_path))
+                        
+                    total_duration = py_time.time() - export_start_perf
+                    app_logger.info(f"FAST LANE EXPORT SUMMARY (Theme {t_num}):")
+                    app_logger.info(f"  - Total Duration: {total_duration:.2f}s")
+                    # We skip the Python loop entirely
+                    success = True
+                else:
+                    # SLOW LANE: Proceed to Python rendering loop
+                    # Get adjustments for this theme to ensure latest styling is used
+                    adjust_settings = get_theme_adjust_settings(folder, t_num)
+                    
+                    # Setup final settings for the renderer, merging incoming with adjust.md
+                    final_render_settings = settings_dict.copy()
+                    
+                    # ... (keep existing merging/mapping logic)
+                    # Ensure base subtitle fields are present if missing
+                    if 'fontSize' not in final_render_settings: final_render_settings['fontSize'] = 80
+                    if 'fontName' not in final_render_settings: final_render_settings['fontName'] = 'Arial'
+                    if 'bgColor' not in final_render_settings: final_render_settings['bgColor'] = '#000000'
+                    if 'bgOpacity' not in final_render_settings: final_render_settings['bgOpacity'] = 0.63
+                    
+                    # Merge in saved adjustments first
+                    final_render_settings.update(adjust_settings)
+
+                    # Apply user's explicit show_title choice (overrides saved setting)
+                    if 'show_title' in settings_dict:
+                        final_render_settings['show_title'] = settings_dict['show_title']
+
+                    # Also ensure title is set
+                    final_render_settings['title'] = theme_title
+                    
+                    # Ensure title fields are robustly set from either source (handle camelCase from UI)
+                    mapping = {
+                        'title_font_size': 'titleFontSize',
+                        'title_bg_type': 'titleBgType',
+                        'title_text_color': 'titleTextColor',
+                        'title_font_weight': 'titleFontWeight',
+                        'title_outline_width': 'titleOutlineWidth',
+                        'title_outline_color': 'titleOutlineColor',
+                        'title_all_caps': 'titleAllCaps',
+                        'title_top': 'titleTop',
+                        'reburn': 'reburn'
+                    }
+                    for snake, camel in mapping.items():
+                        if snake not in final_render_settings and camel in settings_dict:
+                            final_render_settings[snake] = settings_dict[camel]
+                    
+                    # Extract audio levels for reactive effects if needed
+                    if final_render_settings.get('effect_type') == 'volume_shake':
+                        try:
+                            app_logger.info(f"Extracting audio levels for export of theme {t_num}...")
+                            audio_levels = _extract_audio_levels(video_file, start_time, end_time)
+                            final_render_settings['audio_levels'] = audio_levels
+                            final_render_settings['base_time'] = float(start_time)
+                        except Exception as ae:
+                            app_logger.warning(f"Failed to extract audio levels for export: {ae}")
+                    
+                    # Pass 2: Canvas Subtitles (The slower Python loop, but now on a trimmed clip)
+                    def render_progress_cb(percent, stage, msg):
+                        progress_cb(30 + (percent * 0.7), "Rendering Subtitles", msg)
+
+                    app_logger.info(f"Starting Pass 2: Subtitle Rendering for theme {t_num}")
+                    pass2_start = py_time.time()
+                    success = render_canvas_karaoke_video(
+                        str(intermediate_video),
+                        str(word_timestamps_file),
+                        str(srt_file),
+                        str(output_path),
+                        float(start_time),
+                        float(end_time),
+                        final_render_settings,
+                        progress_callback=render_progress_cb,
+                        is_already_trimmed=True
+                    )
+                    pass2_duration = py_time.time() - pass2_start
+                    total_duration = py_time.time() - export_start_perf
+                    
+                    app_logger.info(f"EXPORT PERFORMANCE SUMMARY (Theme {t_num}):")
+                    app_logger.info(f"  - Pass 1 (FFmpeg): {pass1_duration:.2f}s")
+                    app_logger.info(f"  - Pass 2 (Python): {pass2_duration:.2f}s")
+                    app_logger.info(f"  - TOTAL DURATION: {total_duration:.2f}s")
 
                 with canvas_karaoke_lock:
                     if success:

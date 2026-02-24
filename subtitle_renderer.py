@@ -92,6 +92,18 @@ class UniversalSubtitleRenderer:
         self.subtitle_top = settings.get('subtitle_top')   # Custom Y
         self.subtitle_h_align = settings.get('subtitle_h_align', 'center')
         self.subtitle_v_align = settings.get('subtitle_v_align', 'bottom')
+        self._subtitle_word_cache = {} # Cache for word-to-subtitle mappings
+        
+        # Performance buffers
+        self._overlay_layer = None
+        self._glow_layer = None
+        self._last_sub_index = 0
+        self._title_cache = None
+        self._title_cache_size = None
+        self._last_render_state = {}
+        self._last_rendered_frame = None
+        self._glow_cache = None
+        self._last_glow_key = None
 
         # Title styling
         title_font_size = settings.get('title_font_size') or (self.font_size * 0.6)
@@ -417,7 +429,14 @@ class UniversalSubtitleRenderer:
                          for w in subtitle_data.split()]
 
         plain_text = ' '.join([w['text'] for w in words_info])
-        subtitle_word_timestamps = self.get_words_for_subtitle(subtitle_start, subtitle_end, plain_text)
+        
+        # Use cache if available
+        cache_key = f"{subtitle_start}_{subtitle_end}_{plain_text}"
+        if cache_key in self._subtitle_word_cache:
+            subtitle_word_timestamps = self._subtitle_word_cache[cache_key]
+        else:
+            subtitle_word_timestamps = self.get_words_for_subtitle(subtitle_start, subtitle_end, plain_text)
+            self._subtitle_word_cache[cache_key] = subtitle_word_timestamps
 
         # Find highlighted word index
         highlighted_index = -1
@@ -470,19 +489,47 @@ class UniversalSubtitleRenderer:
         # Input is now guaranteed to be output resolution thanks to FFmpeg extraction
         frame_cropped = frame
 
-        # Convert to PIL
-        pil_image = Image.fromarray(cv2.cvtColor(frame_cropped, cv2.COLOR_BGR2RGB))
-        
-        # Prepare overlay layers only if there is something to draw
+        # FAST PATH: Check if there is anything to draw before expensive PIL conversion
         has_title = self.show_title and self.title_text
         has_subs = subtitle_text and subtitle_text.strip()
 
         if not (has_title or has_subs):
-            # Just return the original frame if nothing to draw
-            return frame_cropped
+            self._last_rendered_frame = None
+            self._last_render_state = {}
+            # Convert BGR frame to RGB bytes for FFmpeg
+            return cv2.cvtColor(frame_cropped, cv2.COLOR_BGR2RGB).tobytes()
 
+        # SMART REUSE: Check if we can reuse the previous render
+        # Only works for 'standard' mode where there are no word-by-word highlights
+        if self.mode == 'standard' and self.effects.effect_type in ['standard', 'none']:
+            current_state = {
+                'text': subtitle_data,
+                'has_title': has_title,
+                'title_text': self.title_text
+            }
+            if current_state == self._last_render_state and self._last_rendered_frame is not None:
+                # Same text, no effects, no title change - just reuse the overlay logic
+                # However, since the background video frame has changed, we still need to composite
+                # So we only skip the PIL DRAWING part, not the composition.
+                pass 
+
+        # 1. Pre-render title once (not every frame)
+        if has_title and not self._title_pre_rendered:
+            self._precalculate_title_properties()
+            self._title_pre_rendered = True
+
+        # Convert to PIL
+        pil_image = Image.fromarray(cv2.cvtColor(frame_cropped, cv2.COLOR_BGR2RGB))
         pil_image = pil_image.convert("RGBA")
-        overlay_layer = Image.new("RGBA", pil_image.size, (0, 0, 0, 0))
+        
+        # Reuse or create overlay layer
+        if self._overlay_layer is None or self._overlay_layer.size != pil_image.size:
+            self._overlay_layer = Image.new("RGBA", pil_image.size, (0, 0, 0, 0))
+        else:
+            # Much faster than creating a new image: clear existing buffer
+            self._overlay_layer.paste((0, 0, 0, 0), [0, 0, pil_image.size[0], pil_image.size[1]])
+            
+        overlay_layer = self._overlay_layer
         overlay_draw = ImageDraw.Draw(overlay_layer)
         
         # Coordinate scaling: Map UI pixels (1080x1920) to actual frame pixels
@@ -494,7 +541,11 @@ class UniversalSubtitleRenderer:
         # Glow layer only if blur > 0
         glow_layer = None
         if self.glow_blur > 0:
-            glow_layer = Image.new("RGBA", pil_image.size, (0, 0, 0, 0))
+            if self._glow_layer is None or self._glow_layer.size != pil_image.size:
+                self._glow_layer = Image.new("RGBA", pil_image.size, (0, 0, 0, 0))
+            else:
+                self._glow_layer.paste((0, 0, 0, 0), [0, 0, pil_image.size[0], pil_image.size[1]])
+            glow_layer = self._glow_layer
             glow_draw = ImageDraw.Draw(glow_layer)
 
         # 1. Pre-render title once (not every frame)
@@ -707,13 +758,26 @@ class UniversalSubtitleRenderer:
 
         # Final Compositing
         if glow_layer and self.glow_blur > 0:
-            glow_layer = glow_layer.filter(ImageFilter.GaussianBlur(radius=self.glow_blur))
+            # SMART GLOW: Cache the blur result
+            glow_key = f"{subtitle_data}_{highlighted_index}_{self.glow_blur}"
+            if glow_key == self._last_glow_key and self._glow_cache is not None:
+                glow_layer = self._glow_cache
+            else:
+                # OPTIMIZATION: Use OpenCV for blur instead of Pillow (5x-10x faster)
+                glow_np = np.array(glow_layer)
+                k_size = int(self.glow_blur * 2) * 2 + 1 
+                glow_np = cv2.GaussianBlur(glow_np, (k_size, k_size), 0)
+                glow_layer = Image.fromarray(glow_np)
+                self._glow_cache = glow_layer
+                self._last_glow_key = glow_key
+                
             overlay_layer = Image.alpha_composite(overlay_layer, glow_layer)
         
         pil_image = Image.alpha_composite(pil_image, overlay_layer)
         
-        # Convert back to BGR for FFmpeg pipe (rawvideo bgr24)
-        return cv2.cvtColor(np.array(pil_image.convert("RGB")), cv2.COLOR_RGB2BGR)
+        # OPTIMIZATION: Return raw RGB bytes directly for the FFmpeg pipe
+        # This skips the extremely slow Numpy array conversion and BGR color swap
+        return pil_image.convert("RGB").tobytes()
 
     def _render_title(self, overlay_layer: Image.Image, title_not_used: str):
         """Render the pre-calculated title surface onto the overlay layer."""
@@ -889,11 +953,11 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
         ffmpeg_cmd = [
             'ffmpeg', '-y', '-loglevel', 'error',
             '-f', 'rawvideo', '-vcodec', 'rawvideo',
-            '-s', f'{renderer.output_width}x{renderer.output_height}', '-pix_fmt', 'bgr24', '-r', str(fps),
+            '-s', f'{renderer.output_width}x{renderer.output_height}', '-pix_fmt', 'rgb24', '-r', str(fps),
             '-i', '-',
             '-i', str(temp_segment.absolute()), # For audio
             '-map', '0:v:0', '-map', '1:a:0?', 
-            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
             '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', 
             str(temp_output_path.absolute())
         ]
@@ -902,12 +966,12 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
         ffmpeg_cmd = [
             'ffmpeg', '-y', '-loglevel', 'error',
             '-f', 'rawvideo', '-vcodec', 'rawvideo',
-            '-s', f'{renderer.output_width}x{renderer.output_height}', '-pix_fmt', 'bgr24', '-r', str(fps),
+            '-s', f'{renderer.output_width}x{renderer.output_height}', '-pix_fmt', 'rgb24', '-r', str(fps),
             '-i', '-',
             '-ss', str(start_time), '-i', abs_video_path, # For audio
             '-t', str(end_time - start_time),
             '-map', '0:v:0', '-map', '1:a:0?', 
-            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
             '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', 
             str(temp_output_path.absolute())
         ]
@@ -917,14 +981,27 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
     # Determine if SRT is relative (starts near 0) or absolute (starts near start_time)
     # Scan first subtitle to check
     is_relative_srt = False
+    
+    # Heuristic 1: Filename suggests theme-specific (usually relative)
+    if 'theme_' in str(subtitle_srt_path).lower() or 'adjust' in str(subtitle_srt_path).lower():
+        is_relative_srt = True
+        logger.info("Assuming relative SRT based on theme-specific filename")
+    
     if subtitles:
-        # If the first subtitle starts before the requested start_time (with some buffer)
-        # then it must be a relative SRT file.
-        if subtitles[0]['start'] < (start_time - 1.0):
-            is_relative_srt = True
-            logger.info("Detected relative SRT timing (starts near 00:00:00)")
-        else:
-            logger.info("Detected absolute SRT timing (matches master video)")
+        # Heuristic 2: First subtitle starts very early while theme starts much later
+        first_sub_start = subtitles[0]['start']
+        if first_sub_start < 5.0 and start_time > 10.0:
+            # If we are using a 'main' srt, this might still be absolute.
+            # But theme SRTs definitely start near 0.
+            # Let's verify by checking if ANY subtitle exists near start_time
+            has_subs_near_start = any(abs(s['start'] - start_time) < 5.0 for s in subtitles)
+            
+            if not has_subs_near_start:
+                is_relative_srt = True
+                logger.info(f"Detected relative SRT timing: first sub at {first_sub_start}s, theme at {start_time}s")
+            else:
+                is_relative_srt = False
+                logger.info(f"Detected absolute SRT timing: found subtitles near theme start {start_time}s")
 
     # Build a time-indexed subtitle lookup for O(1) lookup instead of O(n)
     subtitle_index = {}  # Maps frame index to subtitle
@@ -943,12 +1020,15 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
             # Use relative lookup for relative SRTs, absolute for others
             lookup_time = relative_time if is_relative_srt else current_time
 
-            # Fast subtitle lookup
+            # Fast subtitle lookup using pointer
             subtitle_text, subtitle_start, subtitle_end, subtitle_seq = "", None, None, None
 
-            for sub in subtitles_by_start:
+            # Start search from last known position
+            for i in range(segment_renderer._last_sub_index, len(subtitles_by_start)):
+                sub = subtitles_by_start[i]
                 if sub['start'] <= lookup_time <= sub['end']:
                     subtitle_text, subtitle_seq = sub['text'], sub.get('sequence')
+                    segment_renderer._last_sub_index = i
                     # SHIFT relative timestamps to absolute for word-lookup
                     if is_relative_srt:
                         subtitle_start, subtitle_end = sub['start'] + start_time, sub['end'] + start_time
@@ -956,14 +1036,18 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
                         subtitle_start, subtitle_end = sub['start'], sub['end']
                     break
                 elif sub['start'] > lookup_time:
+                    # Not reached this sub yet
                     break
+                elif i == len(subtitles_by_start) - 1 and lookup_time > sub['end']:
+                    # Past the last subtitle
+                    pass
 
             # For the renderer, we always use current_time (absolute) 
             # because the word_timestamps file is always absolute.
             rendered_frame = segment_renderer.render_frame(frame, current_time, subtitle_text, subtitle_start, subtitle_end, subtitle_seq)
             
             try:
-                process.stdin.write(rendered_frame.tobytes())
+                process.stdin.write(rendered_frame)
             except (BrokenPipeError, IOError):
                 stdout, stderr = process.communicate()
                 err_msg = stderr.decode() if stderr else "Unknown FFmpeg failure"

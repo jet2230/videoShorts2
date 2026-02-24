@@ -184,6 +184,11 @@ class VideoProcessor:
         # Force vertical 1080x1920 output as the base for all effects
         vf_filters.append(f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(iw-ow)/2:(ih-oh)/2")
         
+        # 0.5 Native Subtitle Burning (FAST PATH - used if no Canvas effects)
+        if settings.get('subtitles', {}).get('native_burn') and settings.get('subtitles', {}).get('srt_path'):
+            srt_path = settings['subtitles']['srt_path'].replace('\\', '/').replace(':', '\\:')
+            vf_filters.append(f"subtitles='{srt_path}':force_style='FontSize=24,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=3,Outline=1,Shadow=0,MarginV=30'")
+
         vf_filters.append(f"eq=contrast='{c_expr_global}':brightness='{b_expr_global}':saturation={s_ui}:eval=frame")
 
         # Apply each active timeline effect
@@ -408,7 +413,7 @@ class VideoProcessor:
             cmd.extend(['-vf', ",".join(vf_filters)])
 
         cmd.extend([
-            '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '22',
             '-c:a', 'aac', '-b:a', '192k',
             '-movflags', '+faststart',
             str(Path(intermediate_output).absolute())
