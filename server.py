@@ -4077,7 +4077,10 @@ def encode_canvas_karaoke():
 
                 # Determine SRT mode explicitly based on the chosen file
                 srt_mode = 'relative' if 'theme_' in srt_file.name or 'adjust' in srt_file.name else 'absolute'
-                
+
+                # DEBUG: Log the settings being passed to the renderer
+                app_logger.info(f"DEBUG: Passing to renderer - fontName={final_settings.get('fontName')}, fontSize={final_settings.get('fontSize')}")
+
                 # Render video with progress callback
                 success = render_canvas_karaoke_video(
                     str(video_file),
@@ -4531,7 +4534,10 @@ def export_canvas_karaoke():
                     app_logger.info(f"Starting Pass 2: Subtitle Rendering for theme {t_num}")
                     # Determine SRT mode explicitly
                     srt_mode = 'relative' if 'theme_' in srt_file.name else 'absolute'
-                    
+
+                    # DEBUG: Log the settings being passed to the renderer
+                    app_logger.info(f"DEBUG: Passing to renderer (slow lane) - fontName={final_render_settings.get('fontName')}, fontSize={final_render_settings.get('fontSize')}")
+
                     pass2_start = py_time.time()
                     success = render_canvas_karaoke_video(
                         str(intermediate_video),

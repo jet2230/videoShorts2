@@ -87,6 +87,11 @@ class UniversalSubtitleRenderer:
         self.font_size = to_int(get_val(['fontSize', 'subtitle_font_size'], None), 80)
         self.font_name = get_val(['fontName', 'subtitle_font_name'], 'Arial')
         self.max_subtitle_lines = to_int(get_val('max_subtitle_lines', None), 2)
+
+        # DEBUG: Log what font was loaded
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"DEBUG: CanvasKaraokeRenderer initialized with font_name={self.font_name}, fontSize={self.font_size}")
         
         # Colors
         self.text_color = self._hex_to_rgb(get_val(['textColor', 'textColor'], '#ffff00'))
@@ -165,33 +170,63 @@ class UniversalSubtitleRenderer:
     def _get_font(self, size: int, font_name: str = None) -> ImageFont.FreeTypeFont:
         if font_name is None: font_name = self.font_name
         if self.is_rtl and 'Arial' in font_name: font_name = 'DejaVu Sans'
-        
+
         family = font_name.split(':')[0]
         cache_key = (family, size)
         if cache_key in self._font_obj_cache: return self._font_obj_cache[cache_key]
-        
+
         font_path = self._font_path_cache.get(family)
         if not font_path:
-            try:
-                res = subprocess.run(['fc-match', '-f', '%{file}', family], capture_output=True, text=True)
-                if res.returncode == 0 and res.stdout.strip():
-                    font_path = res.stdout.strip()
-            except: pass
-            
+            # First, check media/fonts directory for custom fonts
+            import os
+            # subtitle_renderer.py is in the project root, so just use dirname once
+            media_fonts_dir = os.path.join(os.path.dirname(__file__), 'media', 'fonts')
+            print(f"[FONT DEBUG] Looking for font '{family}', media_fonts_dir={media_fonts_dir}, exists={os.path.exists(media_fonts_dir)}")
+
+            if os.path.exists(media_fonts_dir):
+                # Try exact match
+                exact_path = os.path.join(media_fonts_dir, f"{family}.ttf")
+                print(f"[FONT DEBUG] Exact path: {exact_path}, exists={os.path.exists(exact_path)}")
+                if os.path.exists(exact_path):
+                    font_path = exact_path
+                else:
+                    # Try case-insensitive match
+                    try:
+                        for f in os.listdir(media_fonts_dir):
+                            target = f"{family.lower()}.ttf".replace('_', ' ').replace('-', ' ')
+                            current = f.lower().replace('_', ' ').replace('-', ' ')
+                            if current == target:
+                                font_path = os.path.join(media_fonts_dir, f)
+                                print(f"[FONT DEBUG] Found via fuzzy match: {font_path}")
+                                break
+                    except: pass
+
+            # If not found in media/fonts, try fc-match for system fonts
+            if not font_path:
+                try:
+                    res = subprocess.run(['fc-match', '-f', '%{file}', family], capture_output=True, text=True)
+                    if res.returncode == 0 and res.stdout.strip():
+                        font_path = res.stdout.strip()
+                        print(f"[FONT DEBUG] fc-match returned: {font_path}")
+                except: pass
+
+            # Fallback to system fonts
             if not font_path or not os.path.exists(font_path):
                 fallbacks = ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"]
                 for p in fallbacks:
                     if os.path.exists(p):
                         font_path = p
+                        print(f"[FONT DEBUG] Using fallback: {font_path}")
                         break
-            
+
             if font_path: self._font_path_cache[family] = font_path
-        
+
+        print(f"[FONT DEBUG] Final font path for '{family}': {font_path}")
         try:
             if font_path: font_obj = ImageFont.truetype(font_path, size)
             else: font_obj = ImageFont.load_default()
         except: font_obj = ImageFont.load_default()
-        
+
         self._font_obj_cache[cache_key] = font_obj
         return font_obj
 
