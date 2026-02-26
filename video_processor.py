@@ -125,6 +125,18 @@ class VideoProcessor:
         for marker in broll_markers:
             broll_path = Path('media') / marker['name']
             if broll_path.exists():
+                # Optimize B-roll input: only decode the portion we need
+                # Note: marker['start_time'] is where it starts in the MAIN video.
+                # If the B-roll itself has an offset, we'd use that, but for now 
+                # we just limit the duration to avoid over-buffering.
+                # Actually, B-roll clips in this project usually start from their own 0:00
+                # but are placed at 'start_time' in the main timeline.
+                
+                # To be safe, we can limit the duration of the input read
+                dur = to_sec(marker['end_time']) - to_sec(marker['start_time'])
+                if dur > 0:
+                    cmd.extend(['-t', str(dur + 0.5)]) # Add small buffer
+                
                 cmd.extend(['-i', str(broll_path.absolute())])
                 marker['input_index'] = input_index
                 broll_inputs.append(marker)
@@ -135,6 +147,14 @@ class VideoProcessor:
         if audio_settings.get('file'):
             audio_path = Path('media') / audio_settings['file']
             if audio_path.exists():
+                # Optimize audio input: only read the required duration
+                if start_time != '0':
+                    cmd.extend(['-ss', str(to_sec(start_time))])
+                if end_time:
+                    dur = to_sec(end_time) - to_sec(start_time)
+                    if dur > 0:
+                        cmd.extend(['-t', str(dur)])
+                
                 cmd.extend(['-i', str(audio_path.absolute())])
                 custom_audio_index = input_index
                 input_index += 1
@@ -470,8 +490,13 @@ class VideoProcessor:
             
             cmd.extend(['-vf', ",".join(vf_filters)])
 
+        crf = str(settings.get('export_crf', '22'))
+        preset = settings.get('export_preset', 'ultrafast')
+        log(f"Using dynamic quality settings: CRF={crf}, Preset={preset}")
+
         cmd.extend([
-            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '22',
+            '-c:v', 'libx264', '-preset', preset, '-crf', crf,
+            '-pix_fmt', 'yuv420p', '-profile:v', 'baseline', '-level', '3.0',
             '-r', '30',
             '-c:a', 'aac', '-b:a', '192k',
             '-async', '1',
@@ -781,7 +806,7 @@ class VideoProcessor:
             cap.release()
             with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp:
                 proxy_path = tmp.name
-            transcode_cmd = ['ffmpeg', '-y', '-i', input_path, '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '20', '-c:a', 'copy', proxy_path]
+            transcode_cmd = ['ffmpeg', '-y', '-i', input_path, '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'copy', proxy_path]
             subprocess.run(transcode_cmd, capture_output=True)
             input_path = proxy_path
             cap = cv2.VideoCapture(input_path)
@@ -800,13 +825,17 @@ class VideoProcessor:
         smooth_factor = {'low': 0.05, 'high': 0.25}.get(smoothing, 0.12)
 
         # OPTIMIZATION: Setup direct FFmpeg pipe instead of cv2.VideoWriter + final pass
+        crf = str(settings.get('export_crf', '23'))
+        preset = settings.get('export_preset', 'fast')
+        
         ffmpeg_cmd = [
             'ffmpeg', '-y',
             '-f', 'rawvideo', '-vcodec', 'rawvideo',
             '-s', f'{width}x{height}', '-pix_fmt', 'bgr24', '-r', str(fps),
             '-i', '-', # Stdin
             '-i', input_path, # For audio
-            '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
+            '-c:v', 'libx264', '-preset', preset, '-crf', crf,
+            '-pix_fmt', 'yuv420p', '-profile:v', 'baseline', '-level', '3.0',
             '-c:a', 'aac', '-b:a', '192k',
             '-map', '0:v:0', '-map', '1:a:0?',
             '-movflags', '+faststart',

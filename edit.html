@@ -27,7 +27,78 @@
             background: rgba(0, 0, 0, 0.5);
             backdrop-filter: blur(10px);
             border-bottom: 1px solid #333;
+            position: relative;
+            z-index: 10000; /* Ensure header is on top of video editor content */
+            overflow: visible !important;
         }
+
+        .action-bar {
+            display: flex;
+            gap: 10px;
+            overflow: visible !important;
+        }
+
+        /* Export Quality Dropdown */
+        .primary-wrapper {
+            position: relative !important;
+            display: inline-block;
+            z-index: 999999 !important;
+        }
+
+        .export-dropdown {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            width: 250px;
+            background: #1e1e2d;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+            z-index: 999999 !important;
+            text-align: left;
+            padding-top: 4px;
+        }
+
+        .primary-wrapper:hover .export-dropdown {
+            display: flex;
+        }
+
+        .export-option {
+            padding: 12px 16px;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .export-option:last-child {
+            border-bottom: none;
+        }
+
+        .export-option:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        .export-option .title {
+            font-weight: 600;
+            font-size: 13px;
+        }
+
+        .export-option .desc {
+            font-size: 11px;
+            opacity: 0.6;
+            color: #ccc;
+        }
+
+        .export-option.fast .title { color: #8bc34a; }
+        .export-option.standard .title { color: #00ff9d; }
+        .export-option.high .title { color: #2196f3; }
+        .export-option.ultra .title { color: #e91e63; }
 
         .header h1 {
             font-size: 20px;
@@ -829,6 +900,32 @@
             border-radius: 3px;
         }
 
+        .frame-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            width: 18px;
+            height: 18px;
+            border-radius: 3px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8px;
+            transition: all 0.2s;
+            z-index: 10;
+        }
+
+        .frame-btn:hover {
+            background: rgba(0, 255, 157, 0.2);
+            border-color: #00ff9d;
+            color: #00ff9d;
+        }
+
+        .frame-btn:active {
+            transform: scale(0.9);
+        }
+
         .timeline-effect-btn {
             width: 45px;
             height: 45px;
@@ -900,9 +997,9 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            gap: 8px;
-            margin-bottom: 8px;
-            font-size: 14px;
+            gap: 6px;
+            margin-bottom: 4px;
+            font-size: 12px;
             color: #fff;
             font-weight: 500;
             position: relative;
@@ -913,20 +1010,20 @@
             left: 50%;
             transform: translateX(-50%);
             display: flex;
-            gap: 8px;
+            gap: 4px;
         }
 
         .clear-all-btn {
             background: rgba(255, 68, 68, 0.2);
             border: 1px solid rgba(255, 68, 68, 0.5);
             color: #ff4444;
-            padding: 4px 12px;
+            padding: 2px 8px;
             border-radius: 4px;
-            font-size: 12px;
+            font-size: 10px;
             cursor: pointer;
             transition: all 0.2s;
             margin-left: auto;
-            margin-top: -38px;
+            margin-top: -30px;
         }
 
         .clear-all-btn:hover {
@@ -937,7 +1034,7 @@
 
         .timeline-track {
             position: relative;
-            height: 60px;
+            height: 50px;
             background: #222;
             border-radius: 6px;
             overflow: visible;
@@ -1235,6 +1332,38 @@
         .effect-marker.image { background: rgba(255, 255, 0, 0.3); box-shadow: 0 0 8px rgba(255, 255, 0, 0.6); border-color: #ffff00; }
         .effect-marker.image::before { content: '🖼️'; color: #ffff00; }
 
+        .broll-marker {
+            cursor: move;
+            z-index: 15;
+            transition: opacity 0.2s;
+        }
+
+        .broll-marker.dragging {
+            opacity: 0.8;
+            cursor: grabbing;
+        }
+
+        .broll-marker .marker-label {
+            position: absolute;
+            top: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: auto;
+            min-width: 60px;
+            max-width: 150px;
+            font-size: 10px;
+            color: #fff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-align: center;
+            pointer-events: auto;
+            cursor: help;
+            text-shadow: 0 1px 3px rgba(0,0,0,1);
+            font-weight: 600;
+            z-index: 20;
+        }
+
         .trim-handle:hover {
             background: #ffff00;
         }
@@ -1460,7 +1589,27 @@
             <button class="action-btn secondary" id="saveBtn" onclick="toggleSaveInput()">💾 Save</button>
             <button class="action-btn secondary" onclick="resetAll()">↺ Reset</button>
             <button class="action-btn secondary" onclick="previewChanges()">👁️ Preview</button>
-            <button class="action-btn primary" id="exportBtn" onclick="applyChanges()">🎬 Export</button>
+            <div class="primary-wrapper">
+                <div class="export-dropdown">
+                    <div class="export-option fast" onclick="exportWithQuality('fast', event)">
+                        <span class="title">⚡ Fast Export</span>
+                        <span class="desc">Smaller file, faster processing</span>
+                    </div>
+                    <div class="export-option standard" onclick="exportWithQuality('standard', event)">
+                        <span class="title">✅ Standard (Default)</span>
+                        <span class="desc">Balanced quality and speed</span>
+                    </div>
+                    <div class="export-option high" onclick="exportWithQuality('high', event)">
+                        <span class="title">💎 High Quality</span>
+                        <span class="desc">Better visuals, larger file</span>
+                    </div>
+                    <div class="export-option ultra" onclick="exportWithQuality('ultra', event)">
+                        <span class="title">🌟 Ultra HQ</span>
+                        <span class="desc">Maximum quality</span>
+                    </div>
+                </div>
+                <button class="action-btn primary" id="exportBtn" onclick="applyChanges()">🎬 Export</button>
+            </div>
         </div>
     </div>
 
@@ -1539,6 +1688,10 @@
             </div>
             <div class="timeline">
                 <div class="timeline-header">
+                    <div style="display: flex; gap: 4px; align-items: center;">
+                        <button class="frame-btn" onclick="stepFrame(-1)" title="Back 1 frame (Left Arrow)">◀</button>
+                        <button class="frame-btn" onclick="stepFrame(1)" title="Forward 1 frame (Right Arrow)">▶</button>
+                    </div>
                     <div class="timer-display">
                         <span id="currentTime">00:00</span>
                         <span> / </span>
@@ -2303,6 +2456,14 @@
             <div class="text">Add clips</div>
         </div>
         <div id="brollList" style="margin-top: 15px;"></div>
+        
+        <div id="brollTimelineContainer" style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; display: none;">
+            <h4 style="font-size: 13px; color: #00ff9d; margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
+                <span>🎞️ On Timeline</span>
+                <span id="brollMarkersCount" style="font-size: 10px; background: rgba(0, 255, 157, 0.2); color: #00ff9d; padding: 1px 6px; border-radius: 10px;">0</span>
+            </h4>
+            <div id="brollMarkersList" style="display: flex; flex-direction: column; gap: 8px;"></div>
+        </div>
     </div>
 
     <!-- Intro Panel -->
@@ -2541,9 +2702,16 @@
             if (activeEffects.has('outline') || isGlobalOutline) {
                 processVideoForFaceDetection();
             }
-            if (audioFile && document.getElementById('audioEnabled').checked) {
+            const audioEnabled = document.getElementById('audioEnabled').checked;
+            if (audioFile && audioEnabled) {
                 previewAudio.currentTime = video.currentTime;
-                previewAudio.play().catch(e => console.warn('Audio play failed:', e));
+                // Ensure volume and muted state are synced
+                const vol = document.getElementById('audioVolume').value;
+                previewAudio.volume = Math.min(1.0, vol / 100);
+                previewAudio.muted = false; 
+                previewAudio.play().catch(e => {
+                    console.warn('Audio play failed:', e);
+                });
             }
         });
         video.addEventListener('pause', () => {
@@ -2556,10 +2724,23 @@
         
         video.addEventListener('seeking', () => {
             previewAudio.currentTime = video.currentTime;
+            // Force previews to update during manual seek (e.g. dragging or keys)
+            checkEffectMarkers();
+            checkImageMarkers();
+            checkBrollMarkers();
+            
+            // Sync B-roll play state during seek
+            const brollVideo = document.getElementById('brollOverlayVideo');
+            if (brollVideo && !brollVideo.paused && video.paused) {
+                brollVideo.pause();
+            }
         });
         
         video.addEventListener('seeked', () => {
             previewAudio.currentTime = video.currentTime;
+            checkEffectMarkers();
+            checkImageMarkers();
+            checkBrollMarkers();
         });
         
         video.addEventListener('ratechange', () => {
@@ -2584,17 +2765,90 @@
             }, 300);
         }
 
-        // Spacebar to play/pause
-        document.addEventListener('keydown', (e) => {
-            if (e.code === 'Space' && !e.target.matches('input, textarea, select')) {
-                e.preventDefault();
-                if (video.paused) {
-                    video.play();
+        // Keyboard controls for Fluid Timeline manipulation
+        const activeKeys = new Set();
+        let seekLoopRunning = false;
+
+        function startSeekLoop() {
+            if (seekLoopRunning) return;
+            seekLoopRunning = true;
+            
+            const loop = () => {
+                if (activeKeys.has('ArrowLeft') || activeKeys.has('ArrowRight')) {
+                    const isShift = activeKeys.has('ShiftLeft') || activeKeys.has('ShiftRight');
+                    // Fluid steps: 1/25th of second (approx 1 frame) or faster if Shift held
+                    const step = isShift ? 0.1 : 0.04; 
+                    
+                    if (activeKeys.has('ArrowLeft')) {
+                        video.currentTime = Math.max(0, video.currentTime - step);
+                    } else {
+                        video.currentTime = Math.min(video.duration || 0, video.currentTime + step);
+                    }
+                    
+                    // Bundle all UI updates for the frame
+                    requestAnimationFrame(() => {
+                        document.getElementById('currentTime').textContent = formatTime(video.currentTime);
+                        updatePlayhead();
+                        checkEffectMarkers();
+                        checkImageMarkers();
+                        checkBrollMarkers();
+                    });
+                    
+                    requestAnimationFrame(loop);
                 } else {
-                    video.pause();
+                    seekLoopRunning = false;
                 }
+            };
+            requestAnimationFrame(loop);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.target.matches('input, textarea, select')) return;
+
+            if (e.code === 'Space') {
+                e.preventDefault();
+                togglePlay();
+            } else if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
+                e.preventDefault();
+                
+                // One-frame jump on initial press for precision
+                if (!e.repeat) {
+                    const step = 1/30;
+                    if (e.code === 'ArrowLeft') {
+                        video.currentTime = Math.max(0, video.currentTime - step);
+                    } else {
+                        video.currentTime = Math.min(video.duration || 0, video.currentTime + step);
+                    }
+                    // Immediate manual update
+                    checkBrollMarkers();
+                }
+
+                activeKeys.add(e.code);
+                if (e.shiftKey) activeKeys.add('ShiftLeft');
+                startSeekLoop();
             }
         });
+
+        document.addEventListener('keyup', (e) => {
+            activeKeys.delete(e.code);
+            if (!e.shiftKey) {
+                activeKeys.delete('ShiftLeft');
+                activeKeys.delete('ShiftRight');
+            }
+        });
+
+        function stepFrame(frames) {
+            const fps = 30;
+            const step = frames / fps;
+            video.currentTime = Math.max(0, Math.min(video.duration || 0, video.currentTime + step));
+            
+            // Force immediate UI updates
+            document.getElementById('currentTime').textContent = formatTime(video.currentTime);
+            updatePlayhead();
+            checkEffectMarkers();
+            checkImageMarkers();
+            checkBrollMarkers();
+        }
 
         // Time formatting
         function formatTime(seconds) {
@@ -3037,12 +3291,14 @@
                         document.getElementById('audioEnabled').checked = true;
                         
                         previewAudio.src = URL.createObjectURL(file);
+                        previewAudio.load(); // Explicitly load the new source
                         const vol = document.getElementById('audioVolume').value;
                         previewAudio.volume = Math.min(1.0, vol / 100);
                         
                         // Immediately play if video is already playing
                         if (!video.paused) {
                             previewAudio.currentTime = video.currentTime;
+                            previewAudio.muted = false;
                             previewAudio.play().catch(e => console.warn('Immediate audio play failed:', e));
                         }
                         
@@ -3073,7 +3329,8 @@
                         if (result.filename) {
                             brollFiles.push({
                                 file: file,
-                                name: result.filename
+                                name: result.filename,
+                                duration: result.duration || 5 // Default to 5s if not returned
                             });
                             updateBrollList();
                             showNotification(`${file.name} uploaded successfully`, 'success');
@@ -3096,9 +3353,10 @@
                 item.className = 'broll-item';
                 item.style.flexDirection = 'column';
                 item.style.alignItems = 'stretch';
+                const displayName = file.name.length > 5 ? file.name.substring(0, 5) + "..." : file.name;
                 item.innerHTML = `
                     <div style="display: flex; align-items: center; gap: 10px;">
-                        <div class="info">🎬 ${file.name}</div>
+                        <div class="info" title="${file.name}">🎬 ${displayName}</div>
                         <button class="remove" onclick="removeBroll(${index})">✕</button>
                     </div>
                     <button class="action-btn secondary" style="margin-top: 5px; padding: 5px; font-size: 11px;" onclick="addBrollToTimeline(${index})">
@@ -3107,13 +3365,54 @@
                 `;
                 container.appendChild(item);
             });
+
+            // Update timeline list
+            const markersContainer = document.getElementById('brollMarkersList');
+            const markersWrapper = document.getElementById('brollTimelineContainer');
+            const markersCount = document.getElementById('brollMarkersCount');
+            
+            if (!markersContainer || !markersWrapper || !markersCount) return;
+            
+            markersContainer.innerHTML = '';
+            
+            if (brollMarkers.length > 0) {
+                markersWrapper.style.display = 'block';
+                markersCount.textContent = brollMarkers.length;
+                
+                brollMarkers.forEach((marker) => {
+                    const item = document.createElement('div');
+                    item.className = 'broll-item';
+                    item.style.padding = '8px 12px';
+                    item.style.background = 'rgba(255, 255, 255, 0.05)';
+                    item.style.border = '1px solid rgba(255, 255, 255, 0.1)';
+                    item.style.borderRadius = '8px';
+                    item.style.display = 'flex';
+                    item.style.alignItems = 'center';
+                    item.style.gap = '10px';
+                    item.style.marginBottom = '0';
+                    
+                    const displayName = marker.brollName.length > 5 ? marker.brollName.substring(0, 5) + "..." : marker.brollName;
+                    item.innerHTML = `
+                        <div style="flex: 1; font-size: 11px; color: #eee; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${marker.brollName}">
+                            🎬 ${displayName}
+                            <div style="font-size: 9px; opacity: 0.6; margin-top: 2px;">
+                                ${formatTimeSeconds(marker.start * video.duration)} - ${formatTimeSeconds(marker.end * video.duration)}
+                            </div>
+                        </div>
+                        <button onclick="removeBrollMarker('${marker.id}')" style="background: rgba(255, 68, 68, 0.2); color: #ff4444; border: 1px solid rgba(255, 68, 68, 0.3); padding: 4px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='rgba(255, 68, 68, 0.4)'" onmouseout="this.style.background='rgba(255, 68, 68, 0.2)'">✕</button>
+                    `;
+                    markersContainer.appendChild(item);
+                });
+            } else {
+                markersWrapper.style.display = 'none';
+            }
         }
 
         // Add B-roll to timeline
         function addBrollToTimeline(index) {
             const file = brollFiles[index];
             const startPos = selectedTimelinePosition !== null ? selectedTimelinePosition : (video.currentTime / video.duration);
-            const duration = 5; // Default 5 seconds
+            const duration = file.duration || 5; // Use file duration if available
             const endPos = Math.min(1.0, startPos + (duration / video.duration));
 
             const marker = {
@@ -3126,6 +3425,7 @@
             };
             brollMarkers.push(marker);
             createBrollMarker(marker);
+            updateBrollList();
             showNotification(`Added ${file.name} to timeline`, 'success');
         }
 
@@ -3136,14 +3436,109 @@
             const markerEl = document.createElement('div');
             markerEl.className = 'timeline-marker broll-marker';
             markerEl.id = markerData.id;
+            markerEl.title = `🎬 ${markerData.brollName}`;
             markerEl.style.position = 'absolute';
-            markerEl.style.top = '10px'; // Align appropriately
-            markerEl.style.height = '10px';
-            markerEl.style.backgroundColor = '#4a90e2'; // Distinct blue color for B-roll
-            markerEl.style.border = '1px solid #2c3e50';
-            markerEl.style.borderRadius = '3px';
-            markerEl.style.cursor = 'move';
+            markerEl.style.top = '4px'; // Directly on green video track
+            markerEl.style.height = '18px';
+            markerEl.style.backgroundColor = '#2196f3'; // Solid bright blue
+            markerEl.style.border = '2px solid #fff'; // Thick white border to pop
+            markerEl.style.boxShadow = '0 0 8px rgba(33, 150, 243, 0.8)'; // Blue glow
+            markerEl.style.borderRadius = '4px';
             markerEl.style.zIndex = '15';
+            markerEl.style.overflow = 'visible'; // To see label below
+            
+            // Text label for the marker - displayed below the blue bar
+            const label = document.createElement('div');
+            label.className = 'marker-label';
+            const displayName = markerData.brollName.length > 5 ? markerData.brollName.substring(0, 5) + "..." : markerData.brollName;
+            label.textContent = displayName;
+            label.title = `🎬 ${markerData.brollName}`;
+            markerEl.appendChild(label);
+
+            const quickRemove = document.createElement('button');
+            quickRemove.innerHTML = '✕';
+            quickRemove.style.position = 'absolute';
+            quickRemove.style.right = '2px';
+            quickRemove.style.top = '50%';
+            quickRemove.style.transform = 'translateY(-50%)';
+            quickRemove.style.background = 'rgba(255, 68, 68, 0.8)';
+            quickRemove.style.border = 'none';
+            quickRemove.style.color = 'white';
+            quickRemove.style.borderRadius = '2px';
+            quickRemove.style.width = '12px';
+            quickRemove.style.height = '12px';
+            quickRemove.style.fontSize = '8px';
+            quickRemove.style.lineHeight = '12px';
+            quickRemove.style.cursor = 'pointer';
+            quickRemove.style.padding = '0';
+            quickRemove.style.zIndex = '20';
+            quickRemove.onclick = (e) => {
+                e.stopPropagation();
+                // Show inline confirmation popup
+                showBrollConfirmPopup(markerEl, markerData);
+            };
+            markerEl.appendChild(quickRemove);
+
+            // Function for inline confirmation
+            function showBrollConfirmPopup(parent, data) {
+                // Remove existing popup if any
+                const existing = document.querySelector('.broll-confirm-popup');
+                if (existing) existing.remove();
+
+                const popup = document.createElement('div');
+                popup.className = 'broll-confirm-popup';
+                
+                // Get marker position to place the popup correctly
+                const rect = parent.getBoundingClientRect();
+                
+                popup.style.position = 'fixed'; // Use fixed to ensure it's on top of everything
+                popup.style.top = `${rect.top - 50}px`;
+                popup.style.left = `${rect.left + rect.width / 2}px`;
+                popup.style.transform = 'translateX(-50%)';
+                
+                popup.style.background = '#2c3e50';
+                popup.style.border = '1px solid #e74c3c';
+                popup.style.borderRadius = '4px';
+                popup.style.padding = '8px';
+                popup.style.zIndex = '999999'; // Super high z-index
+                popup.style.display = 'flex';
+                popup.style.flexDirection = 'column';
+                popup.style.gap = '8px';
+                popup.style.minWidth = '120px';
+                popup.style.boxShadow = '0 8px 16px rgba(0,0,0,0.6)';
+
+                popup.innerHTML = `
+                    <div style="font-size: 11px; color: white; text-align: center; margin-bottom: 2px; font-weight: bold;">Remove Segment?</div>
+                    <div style="display: flex; gap: 6px;">
+                        <button style="flex: 1; padding: 4px 0; background: #e74c3c; color: white; border: none; border-radius: 4px; font-size: 10px; cursor: pointer; font-weight: bold;" id="confirmBrollDel">Yes</button>
+                        <button style="flex: 1; padding: 4px 0; background: #95a5a6; color: white; border: none; border-radius: 4px; font-size: 10px; cursor: pointer; font-weight: bold;" id="cancelBrollDel">No</button>
+                    </div>
+                `;
+                
+                document.body.appendChild(popup); // Append to body to bypass any clipping
+
+                popup.querySelector('#confirmBrollDel').onclick = (ev) => {
+                    ev.stopPropagation();
+                    removeBrollMarker(data.id);
+                    popup.remove();
+                };
+                popup.querySelector('#cancelBrollDel').onclick = (ev) => {
+                    ev.stopPropagation();
+                    popup.remove();
+                };
+
+                // Close when clicking outside
+                const closeHandler = (ev) => {
+                    if (!popup.contains(ev.target) && !parent.contains(ev.target)) {
+                        popup.remove();
+                        document.removeEventListener('mousedown', closeHandler);
+                    }
+                };
+                // Use setTimeout to avoid immediate trigger from the click that opened it
+                setTimeout(() => {
+                    document.addEventListener('mousedown', closeHandler);
+                }, 10);
+            }
 
             // Set position and width
             const startPercent = markerData.start * 100;
@@ -3151,18 +3546,17 @@
             markerEl.style.left = `${startPercent}%`;
             markerEl.style.width = `${widthPercent}%`;
 
-            // Tooltip
-            const tooltip = document.createElement('div');
-            tooltip.className = 'marker-tooltip';
-            tooltip.innerHTML = `🎬 ${markerData.brollName}<br><span style="font-size: 10px; opacity: 0.8;">[B-Roll Segment] Drag to move</span><br><button onclick="removeBrollMarker('${markerData.id}')" style="margin-top: 5px; background: #e74c3c; border: none; color: white; padding: 2px 5px; border-radius: 3px; cursor: pointer; font-size: 10px;">Remove</button>`;
-            markerEl.appendChild(tooltip);
-
             // Dragging logic
             let isDragging = false;
             let startX;
             
             markerEl.addEventListener('mousedown', (e) => {
-                if (e.target.tagName === 'BUTTON') return;
+                if (e.target.tagName === 'BUTTON' || e.target.closest('.broll-confirm-popup')) return;
+                
+                // Close any existing delete popups when clicking or dragging
+                const existing = document.querySelector('.broll-confirm-popup');
+                if (existing) existing.remove();
+
                 isDragging = true;
                 startX = e.clientX;
                 markerEl.classList.add('dragging');
@@ -3185,6 +3579,7 @@
                 markerData.end = newStartPercent + durationPercent;
                 
                 markerEl.style.left = `${newStartPercent * 100}%`;
+                updateBrollList();
             });
 
             document.addEventListener('mouseup', () => {
@@ -3220,6 +3615,7 @@
                     const widthPercent = newWidth / rect.width;
                     markerData.end = Math.min(1.0, markerData.start + widthPercent);
                     markerEl.style.width = `${(markerData.end - markerData.start) * 100}%`;
+                    updateBrollList();
                 };
                 
                 const upHandler = () => {
@@ -3236,7 +3632,6 @@
             markerEl.appendChild(resizeHandle);
             track.appendChild(markerEl);
             markerData.element = markerEl;
-            markerData.tooltip = tooltip;
         }
 
         // Remove B-roll marker
@@ -3245,14 +3640,27 @@
             if (index > -1) {
                 const marker = brollMarkers[index];
                 if (marker.element) marker.element.remove();
-                if (marker.tooltip) marker.tooltip.remove();
+                
+                // Also remove any open delete popups
+                const existing = document.querySelector('.broll-confirm-popup');
+                if (existing) existing.remove();
+
                 brollMarkers.splice(index, 1);
+                updateBrollList();
             }
         };
 
         // Remove B-roll
         function removeBroll(index) {
+            const fileName = brollFiles[index].name;
             brollFiles.splice(index, 1);
+            
+            // Remove any markers that were using this specific file
+            for (let i = brollMarkers.length - 1; i >= 0; i--) {
+                if (brollMarkers[i].brollName === fileName) {
+                    removeBrollMarker(brollMarkers[i].id);
+                }
+            }
             updateBrollList();
         }
 
@@ -4273,7 +4681,8 @@
                 const segmentDuration = (activeMarker.end - activeMarker.start) * video.duration;
                 const timeInSegment = (currentPercent - activeMarker.start) * video.duration;
 
-                if (Math.abs(brollVideo.currentTime - timeInSegment) > 0.5) {
+                // Increased sync precision for fluid seeking
+                if (Math.abs(brollVideo.currentTime - timeInSegment) > 0.01) {
                     brollVideo.currentTime = timeInSegment % (brollVideo.duration || segmentDuration || 1);
                 }
 
@@ -4287,10 +4696,18 @@
                     // Trigger slide out/fade out
                     brollVideo.classList.remove('active');
                     
+                    // Capture current time to check in timeout
+                    const captureTime = Date.now();
+                    brollVideo.dataset.captureTime = captureTime;
+
                     // Wait for transition to finish before clearing
                     setTimeout(() => {
-                        // Check if still inactive to prevent clearing if a new marker started
-                        if (!activeMarker && brollVideo.dataset.activeMarkerId) {
+                        // Re-check if any broll should be active now
+                        const currentPercent = video.currentTime / video.duration;
+                        const isAnyActive = brollMarkers.some(m => currentPercent >= m.start && currentPercent <= m.end);
+                        
+                        // Only clear if no new marker became active and this is still the relevant cleanup call
+                        if (!isAnyActive && brollVideo.dataset.captureTime == captureTime) {
                             brollVideo.pause();
                             brollVideo.dataset.activeMarkerId = '';
                             brollVideo.src = '';
@@ -5342,7 +5759,18 @@
         let editId = null;
         let statusCheckInterval = null;
 
-        function applyChanges() {
+        window.exportWithQuality = function(quality, event) {
+            if (event) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+            console.log(`🚀 Exporting with quality: ${quality}`);
+            applyChanges(quality);
+        };
+
+        function applyChanges(quality = 'standard') {
+            // Normalize quality if called from event listener or missing
+            if (typeof quality !== 'string') quality = 'standard';
             if (isExporting) {
                 // Cancel the export
                 cancelExport();
@@ -5486,7 +5914,7 @@
             console.log('Export settings:', settings);
 
             // Send to backend for processing
-            processVideoEdit(settings);
+            processVideoEdit(settings, quality);
         }
 
         // Update export button state
@@ -5504,7 +5932,7 @@
         }
 
         // Send edit settings to backend
-        async function processVideoEdit(settings) {
+        async function processVideoEdit(settings, quality = 'standard') {
             const urlParams = new URLSearchParams(window.location.search);
             const videoPath = urlParams.get('video');
 
@@ -5529,7 +5957,8 @@
                     },
                     body: JSON.stringify({
                         video_path: videoPath,
-                        settings: settings
+                        settings: settings,
+                        quality: quality
                     })
                 });
 
@@ -6023,6 +6452,7 @@
                     // For loaded projects, we don't have the File object, but we have the server path
                     audioFile = { name: settings.audio.file };
                     previewAudio.src = `/media/${encodeURIComponent(settings.audio.file)}`;
+                    previewAudio.load(); // Explicitly load the new source
                     const vol = settings.audio.volume || 100;
                     previewAudio.volume = Math.min(1.0, vol / 100);
                     
@@ -6453,6 +6883,19 @@
 
         // Handle Enter key in preset name input
         document.addEventListener('DOMContentLoaded', () => {
+            // Unlock audio on first user interaction
+            const videoWrapper = document.querySelector('.video-wrapper');
+            if (videoWrapper) {
+                videoWrapper.addEventListener('click', () => {
+                    if (previewAudio && previewAudio.paused) {
+                        // Play and immediately pause to "unlock" the audio element
+                        previewAudio.play().then(() => {
+                            previewAudio.pause();
+                        }).catch(() => {});
+                    }
+                }, { once: true });
+            }
+
             const presetInput = document.getElementById('presetNameInput');
             if (presetInput) {
                 presetInput.addEventListener('keypress', (e) => {
