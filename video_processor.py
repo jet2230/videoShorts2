@@ -63,6 +63,14 @@ class VideoProcessor:
 
         log("Starting optimized video processing...")
 
+        def to_sec(ts):
+            if ts is None: return 0.0
+            if isinstance(ts, (int, float)): return float(ts)
+            if ':' in str(ts):
+                parts = list(map(float, str(ts).replace(',', '.').split(':')))
+                return parts[-1] + (parts[-2] * 60 if len(parts) > 1 else 0) + (parts[-3] * 3600 if len(parts) > 2 else 0)
+            return float(ts)
+
         # Parse trim settings
         start_time = trim_settings.get('start', '0')
         end_time = trim_settings.get('end')
@@ -71,6 +79,15 @@ class VideoProcessor:
         has_face_tracking = bool(global_effects.get('faceTracking'))
         reburn_subs = settings.get('subtitles', {}).get('reburn', True)
         
+        # Check if we should enforce a theme duration from metadata
+        # BUT only if user didn't explicitly provide an end_time in trim settings
+        f_num = settings.get('folder_number')
+        t_num = settings.get('theme_number')
+        
+        if not end_time and f_num and t_num:
+            # Look up metadata...
+            pass
+        
         intermediate_output = output_path
         temp_dir_for_cleanup = tempfile.mkdtemp()
         
@@ -78,18 +95,20 @@ class VideoProcessor:
             intermediate_output = os.path.join(temp_dir_for_cleanup, 'intermediate.mp4')
 
         # Build FFmpeg command
-        cmd = ['ffmpeg', '-y']
+        cmd = ['ffmpeg', '-nostdin', '-y']
         
-        # Fast input seeking for trim
+        # Use input seeking for the main trim to ensure filter 't' starts at 0 for the clip
+        # This makes B-roll markers and effects (which are 0-based from the UI) sync perfectly.
         if start_time != '0':
-            cmd.extend(['-ss', start_time])
+            cmd.extend(['-ss', str(to_sec(start_time))])
+        if end_time:
+            dur = to_sec(end_time) - to_sec(start_time)
+            if dur > 0:
+                cmd.extend(['-t', str(dur)])
         
-        abs_input = str(self.video_path.absolute())
-        cmd.extend(['-i', abs_input])
+        cmd.extend(['-i', str(self.video_path.absolute())])
         
         input_index = 1
-        
-        # Add additional inputs ... (keeping existing logic)
         
         # Add additional inputs for images
         image_inputs = []
@@ -100,8 +119,6 @@ class VideoProcessor:
                 img_data['input_index'] = input_index
                 image_inputs.append(img_data)
                 input_index += 1
-            else:
-                log(f"Warning: Image not found: {img_path}")
         
         # Add additional inputs for B-roll
         broll_inputs = []
@@ -112,8 +129,6 @@ class VideoProcessor:
                 marker['input_index'] = input_index
                 broll_inputs.append(marker)
                 input_index += 1
-            else:
-                log(f"Warning: B-roll clip not found: {broll_path}")
         
         # Add additional input for custom audio
         custom_audio_index = None
@@ -123,24 +138,6 @@ class VideoProcessor:
                 cmd.extend(['-i', str(audio_path.absolute())])
                 custom_audio_index = input_index
                 input_index += 1
-            else:
-                log(f"Warning: Audio file not found: {audio_path}")
-        
-        if end_time:
-            # We use duration for -t to be safe
-            try:
-                def to_sec(ts):
-                    if ':' in str(ts):
-                        parts = list(map(float, str(ts).replace(',', '.').split(':')))
-                        return parts[-1] + (parts[-2] * 60 if len(parts) > 1 else 0) + (parts[-3] * 3600 if len(parts) > 2 else 0)
-                    return float(ts)
-                
-                dur = to_sec(end_time) - to_sec(start_time)
-                if dur > 0:
-                    cmd.extend(['-t', str(dur)])
-            except:
-                # Fallback to -to if duration calculation fails
-                cmd.extend(['-to', end_time])
 
         # Build filter complex
         vf_filters = []
@@ -185,9 +182,34 @@ class VideoProcessor:
         vf_filters.append(f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(iw-ow)/2:(ih-oh)/2")
         
         # 0.5 Native Subtitle Burning (FAST PATH - used if no Canvas effects)
-        if settings.get('subtitles', {}).get('native_burn') and settings.get('subtitles', {}).get('srt_path'):
-            srt_path = settings['subtitles']['srt_path'].replace('\\', '/').replace(':', '\\:')
-            vf_filters.append(f"subtitles='{srt_path}':force_style='FontSize=24,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=3,Outline=1,Shadow=0,MarginV=30'")
+        subs = settings.get('subtitles', {})
+        if subs.get('native_burn') and subs.get('srt_path'):
+            # Path escaping for FFmpeg (colons in paths are problematic)
+            srt_path = subs['srt_path'].replace('\\', '/').replace(':', '\\:')
+            
+            # Extract and convert styles for libass (BBGGRR format)
+            # Ensure hex colors are handled robustly
+            f_size = subs.get('fontSize', 80)
+            p_color_raw = subs.get('primaryColor', '#ffffff').lstrip('#')
+            if len(p_color_raw) == 6:
+                # Convert RRGGBB to BBGGRR for ASS
+                p_color = p_color_raw[4:6] + p_color_raw[2:4] + p_color_raw[0:2]
+            else:
+                p_color = "ffffff"
+            
+            # Use PlayResY=1920 to ensure font size matches our logical 1080x1920 space
+            vf_filters.append(f"subtitles='{srt_path}':force_style='FontSize={f_size},PlayResY=1920,PrimaryColour=&H00{p_color.upper()},OutlineColour=&H00000000,BorderStyle=3,Outline=1,Shadow=0,MarginV=100'")
+            
+        # 0.6 Native Title Rendering (FAST PATH)
+        # ONLY do this if we are in native_burn mode OR reburn is disabled
+        # otherwise Pass 2/3 (SubtitleRenderer) will handle it.
+        if subs.get('show_title') and subs.get('title') and (subs.get('native_burn') or not reburn_subs):
+            # CRITICAL: Escape colons and single quotes for FFmpeg drawtext filter
+            title_text = subs['title'].replace("'", "'\\\\\\''").replace(":", "\\:")
+            t_size = subs.get('title_font_size', 80)
+            t_top = subs.get('title_top', 150)
+            t_color = subs.get('title_text_color', '#00ff9d').replace('#', '0x')
+            vf_filters.append(f"drawtext=text='{title_text}':fontcolor={t_color}:fontsize={t_size}:x=(w-text_w)/2:y={t_top}:box=1:boxcolor=black@0.6:boxborderw=10")
 
         vf_filters.append(f"eq=contrast='{c_expr_global}':brightness='{b_expr_global}':saturation={s_ui}:eval=frame")
 
@@ -240,11 +262,11 @@ class VideoProcessor:
             elif etype == 'vibrance':
                 vf_filters.append(f"vibrance=intensity=0.8:enable='{enable}'")
             elif etype == 'shake':
-                vf_filters.append(f"crop=w=iw-40:h=ih-40:x='20+20*sin(2*PI*t*10)':y='20+20*cos(2*PI*t*13)':enable='{enable}',scale={self.width}:{self.height}")
+                vf_filters.append(f"crop=w=iw-40:h=ih-40:x='20+20*sin(2*PI*t*10)':y='20+20*cos(2*PI*t*13)':enable='{enable}',scale=1080:1920")
             elif etype == 'pixelate':
                 vf_filters.append(f"boxblur=20:enable='{enable}'")
             elif etype == 'zoom':
-                vf_filters.append(f"zoompan=z='if({enable},1.2,1)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={self.width}x{self.height}:enable='{enable}'")
+                vf_filters.append(f"zoompan=z='if({enable},1.2,1)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:enable='{enable}'")
 
         # 1.5 Global Animations & Styles
         style = settings.get('style', 'none')
@@ -302,36 +324,46 @@ class VideoProcessor:
         filter_complex = []
         if vf_filters:
             # Join video filters and label result [v_base]
-            filter_complex.append("[0:v]" + ",".join(vf_filters) + "[v_base]")
+            filter_complex.append("[0:v]setpts=PTS-STARTPTS," + ",".join(vf_filters) + "[v_base]")
             last_v = "[v_base]"
         else:
-            last_v = "[0:v]"
+            filter_complex.append("[0:v]setpts=PTS-STARTPTS[v_base]")
+            last_v = "[v_base]"
             
         overlay_count = 0
         
         # 2. Add B-roll overlays
         for i, marker in enumerate(broll_inputs):
+            # Each B-roll marker uses its own input once. 
+            # If multiple markers used same B-roll file, they have different input_index.
             input_label = f"[{marker['input_index']}:v]"
             output_label = f"[v_br{overlay_count}]"
             
             s = marker['start_time']
             e = marker['end_time']
-            duration = e - s
+            duration = max(0.1, e - s)
             transition = marker.get('transition', 'fade')
-            trans_dur = 0.4 # Match CSS 0.4s
+            trans_dur = min(0.4, duration / 2) # Match CSS 0.4s, but cap at half duration
             
             enable = f"between(t,{s},{e})"
             
             # Base scaling for B-roll - MUST MATCH MAIN VIDEO (1080x1920)
-            br_filters = [f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(iw-ow)/2:(ih-oh)/2"]
+            # NOTE: Transitions on the input stream MUST use times relative to the clip start (0)
+            # So we first normalize PTS to start at 0
+            br_filters = [
+                f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(iw-ow)/2:(ih-oh)/2,format=rgba",
+                "setpts=PTS-STARTPTS"
+            ]
             
-            # Apply transition effects to the B-roll input before overlaying
             if transition == 'fade':
-                br_filters.append(f"fade=t=in:st={s}:d={trans_dur}:alpha=1")
-                br_filters.append(f"fade=t=out:st={e-trans_dur}:d={trans_dur}:alpha=1")
+                br_filters.append(f"fade=t=in:st=0:d={trans_dur}:alpha=1")
+                br_filters.append(f"fade=t=out:st={duration-trans_dur}:d={trans_dur}:alpha=1")
             elif transition == 'zoom':
-                # Use standard 1080x1920 for zoompan output
-                br_filters.append(f"zoompan=z='if(between(t,{s},{s+trans_dur}),1+(t-{s})/{trans_dur}*0.2,if(between(t,{e-trans_dur},{e}),1.2-({trans_dur}-(t-({e-trans_dur})))/{trans_dur}*0.2,1.2))':d=1:s=1080x1920")
+                # Continuous zoom in/out over the clip duration
+                br_filters.append(f"zoompan=z='min(zoom+0.001,1.5)':d=1:s=1080x1920:fps={self.fps if self.fps > 0 else 30}")
+            
+            # NOW shift the PTS to the start time in the main video for the overlay filter
+            br_filters.append(f"setpts=PTS+{s}/TB")
             
             filter_complex.append(f"{input_label}{','.join(br_filters)}{output_label}")
             
@@ -339,15 +371,13 @@ class VideoProcessor:
             x_pos = "0"
             y_pos = "0"
             
-            if 'slide-left' in transition:
-                # Slide from right (width) to 0, then stay, then slide to left (-width)
+            if transition == 'slide-left':
                 x_pos = f"if(between(t,{s},{s+trans_dur}),W-(t-{s})/{trans_dur}*W,if(between(t,{e-trans_dur},{e}),-(t-({e-trans_dur}))/{trans_dur}*W,0))"
-            elif 'slide-right' in transition:
-                # Slide from left (-width) to 0, then stay, then slide to right (width)
+            elif transition == 'slide-right':
                 x_pos = f"if(between(t,{s},{s+trans_dur}),-W+(t-{s})/{trans_dur}*W,if(between(t,{e-trans_dur},{e}),(t-({e-trans_dur}))/{trans_dur}*W,0))"
-            elif 'slide-up' in transition:
+            elif transition == 'slide-up':
                 y_pos = f"if(between(t,{s},{s+trans_dur}),H-(t-{s})/{trans_dur}*H,if(between(t,{e-trans_dur},{e}),-(t-({e-trans_dur}))/{trans_dur}*H,0))"
-            elif 'slide-down' in transition:
+            elif transition == 'slide-down':
                 y_pos = f"if(between(t,{s},{s+trans_dur}),-H+(t-{s})/{trans_dur}*H,if(between(t,{e-trans_dur},{e}),(t-({e-trans_dur}))/{trans_dur}*H,0))"
             
             # Overlay B-roll over main video
@@ -358,10 +388,20 @@ class VideoProcessor:
             
         # 3. Add image overlay filters
         for i, img_data in enumerate(image_inputs):
-            input_label = f"[{img_data['input_index']}:v]"
+            markers = img_data.get('markers', [])
+            if not markers:
+                continue
+                
+            # Each marker for this image needs its own split from the input
+            if len(markers) > 1:
+                split_labels = "".join([f"[img_{i}_m{m_idx}]" for m_idx in range(len(markers))])
+                filter_complex.append(f"[{img_data['input_index']}:v]split={len(markers)}{split_labels}")
+            else:
+                filter_complex.append(f"[{img_data['input_index']}:v]null[img_{i}_m0]")
             
-            for marker in img_data.get('markers', []):
+            for m_idx, marker in enumerate(markers):
                 output_label = f"[v_ov{overlay_count}]"
+                input_m_label = f"[img_{i}_m{m_idx}]"
                 
                 s = marker['start_time']
                 e = marker['end_time']
@@ -370,20 +410,25 @@ class VideoProcessor:
                 scale_factor = marker.get('scale', 1.0)
                 stretch_width = marker.get('stretch_width', False)
                 
-                # Proper centering: main_w*x_pct/100 - overlay_w/2
-                x_pos = f"(main_w*{x_pct}/100-overlay_w/2)"
+                # Center the overlay by default
+                # If stretch_width is true, x_pos should be 0 for a 1080px wide overlay
+                if stretch_width:
+                    x_pos = "0"
+                else:
+                    x_pos = f"(main_w*{x_pct}/100-overlay_w/2)"
+                
                 y_pos = f"(main_h*{y_pct}/100-overlay_h/2)"
                 
                 enable = f"between(t,{s},{e})"
                 
-                # Scale image based on video width and scale factor
+                # Scale image based on 1080 reference width
                 scaled_marker_label = f"[img_s_ov{overlay_count}]"
                 if stretch_width:
-                    target_w = str(self.width)
+                    target_w = "1080" # Force full width for logo stretching
                 else:
-                    target_w = f"({self.width}*0.4*{scale_factor})"
+                    target_w = f"(1080*0.4*{scale_factor})"
                 
-                filter_complex.append(f"{input_label}scale=w='{target_w}':h='-1'{scaled_marker_label}")
+                filter_complex.append(f"{input_m_label}scale=w='{target_w}':h='-1'{scaled_marker_label}")
                 
                 filter_complex.append(f"{last_v}{scaled_marker_label}overlay=x='{x_pos}':y='{y_pos}':enable='{enable}'{output_label}")
                 last_v = output_label
@@ -396,13 +441,13 @@ class VideoProcessor:
         last_a = "0:a"
         if custom_audio_index is not None:
             # Apply volume to original and custom audio then mix
-            filter_complex.append(f"[0:a]volume={orig_vol}[a_orig]")
-            filter_complex.append(f"[{custom_audio_index}:a]volume={custom_vol}[a_custom]")
-            filter_complex.append(f"[a_orig][a_custom]amix=inputs=2:duration=first[a_mixed]")
+            filter_complex.append(f"[0:a]asetpts=PTS-STARTPTS,volume={orig_vol}[a_orig]")
+            filter_complex.append(f"[{custom_audio_index}:a]asetpts=PTS-STARTPTS,volume={custom_vol}[a_custom]")
+            filter_complex.append(f"[a_orig][a_custom]amix=inputs=2:duration=first:dropout_transition=0[a_mixed]")
             last_a = "[a_mixed]"
         else:
             # Just apply volume to original audio
-            filter_complex.append(f"[0:a]volume={orig_vol}[a_orig]")
+            filter_complex.append(f"[0:a]asetpts=PTS-STARTPTS,volume={orig_vol}[a_orig]")
             last_a = "[a_orig]"
 
         if filter_complex:
@@ -414,11 +459,14 @@ class VideoProcessor:
 
         cmd.extend([
             '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '22',
+            '-r', '30',
             '-c:a', 'aac', '-b:a', '192k',
+            '-async', '1',
             '-movflags', '+faststart',
             str(Path(intermediate_output).absolute())
         ])
 
+        log(f"Running FFmpeg command: {' '.join(cmd)}")
         log(f"Running single-pass effects processing...")
         # Split progress across all passes
         has_face_tracking = bool(global_effects.get('faceTracking'))

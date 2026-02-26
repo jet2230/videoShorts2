@@ -56,9 +56,9 @@ exporter_logger.addHandler(log_handler)
 console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setLevel(logging.INFO)
 console_handler.setFormatter(log_formatter)
-flask_logger.addHandler(console_handler)
-app_logger.addHandler(console_handler)
-exporter_logger.addHandler(console_handler)
+# flask_logger.addHandler(console_handler)
+# app_logger.addHandler(console_handler)
+# exporter_logger.addHandler(console_handler)
 
 app = Flask(__name__, static_folder='static')
 CORS(app)
@@ -97,8 +97,40 @@ except RuntimeError:
 task_manager = None
 tasks = {}
 task_processes = {}
-task_lock = threading.RLock() 
+task_lock = threading.RLock()
 
+def parse_timestamp(s):
+    """Parses timestamps in HH:MM:SS.mmm, MM:SS.mmm, or float string format."""
+    if s is None:
+        return 0.0
+    if isinstance(s, (int, float)):
+        return float(s)
+    s = str(s).strip()
+    if not s:
+        return 0.0
+    try:
+        # Check if it's just a number
+        return float(s)
+    except ValueError:
+        # HH:MM:SS or HH:MM:SS.mmm
+        s = s.replace(',', '.')
+        parts = s.split(':')
+        if len(parts) == 3:
+            h, m, sec = parts
+            return int(h) * 3600 + int(m) * 60 + float(sec)
+        elif len(parts) == 2:
+            m, sec = parts
+            return int(m) * 60 + float(sec)
+        else:
+            raise ValueError(f"Unknown timestamp format: {s}")
+
+def format_srt_time(seconds):
+    """Formats seconds to HH:MM:SS,mmm string."""
+    milliseconds = int((seconds % 1) * 1000)
+    total_seconds = int(seconds)
+    minutes, seconds = divmod(total_seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d},{milliseconds:03d}"
 # Canvas karaoke progress tracking
 canvas_karaoke_progress = {}
 canvas_karaoke_lock = threading.RLock()
@@ -2663,6 +2695,7 @@ def process_video_edit():
     ensure_manager()
 
     data = request.json
+    app_logger.info(f"RAW INCOMING DATA: {data}")
     video_path = data.get('video_path')
     edit_settings = data.get('settings', {})
 
@@ -2672,10 +2705,13 @@ def process_video_edit():
     # Construct full video path
     base_dir = Path(settings.get('video', 'output_dir'))
     input_video = base_dir / video_path
+    
+    # CRITICAL: Check if we are starting from a theme clip BEFORE potentially switching to master
+    is_editing_theme_clip = 'theme_' in input_video.name
 
     if not input_video.exists():
         return jsonify({'error': f'Video not found: {video_path}'}), 404
-
+    
     # Try to fetch theme title and subtitle settings if folder/theme provided
     f_num = edit_settings.get('folder_number')
     t_num = edit_settings.get('theme_number')
@@ -2687,7 +2723,7 @@ def process_video_edit():
         folder_root = folder_root / 'shorts'
         
     output_dir = folder_root / 'edited_shorts'
-    output_dir.mkdir(exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     if f_num and t_num:
         try:
@@ -2702,16 +2738,36 @@ def process_video_edit():
                 # If we are re-burning subtitles, switch to the CLEAN master video 
                 # (the one in the folder root) so we don't get double subtitles.
                 reburn_enabled = edit_settings.get('subtitles', {}).get('reburn', True)
-                if reburn_enabled:
+                
+                # Get adjustments for this theme to get metadata timing
+                adjust_settings = get_theme_adjust_settings(folder, t_num)
+                
+                theme_meta_start = 0
+                theme_meta_end = 0
+                time_range = adjust_settings.get('time_range')
+                app_logger.info(f"DEBUG: Processing Folder {f_num}, Theme {t_num}")
+                app_logger.info(f"DEBUG: Metadata Time Range from adjust.md: {time_range}")
+                
+                if time_range:
+                    # Format: "00:01:40 - 00:02:33 (0m 53s)" or similar
+                    t_match = re.search(r'(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)\s*-\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)', time_range)
+                    if t_match:
+                        theme_meta_start = creator.parse_timestamp_to_seconds(t_match.group(1).replace(',', '.'))
+                        theme_meta_end = creator.parse_timestamp_to_seconds(t_match.group(2).replace(',', '.'))
+                        app_logger.info(f"DEBUG: Parsed Theme Metadata: Start={theme_meta_start}, End={theme_meta_end}")
+
+                # Identify if we are using an already-subtitled theme clip
+                # themes are stored in folder/shorts/
+                is_theme_subtitled = 'theme_' in input_video.name and 'shorts' in str(input_video.parent)
+                is_manual_clean = 'clean_' in input_video.name
+                
+                if reburn_enabled and not (is_theme_subtitled or is_manual_clean):
                     # Look for master video in root, excluding theme clips and previous edits
-                    master_videos = [f for f in folder.glob('*.mp4') if 'theme_' not in f.name and 'edited_' not in f.name]
+                    master_videos = [f for f in folder.glob('*.mp4') if 'theme_' not in f.name and 'edited_' not in f.name and 'clean_' not in f.name]
                     if master_videos:
                         input_video = master_videos[0]
                         app_logger.info(f"Using clean master video for re-burn: {input_video}")
 
-                # Get adjustments for this theme
-                adjust_settings = get_theme_adjust_settings(folder, t_num)
-                
                 if 'subtitles' not in edit_settings:
                     edit_settings['subtitles'] = {}
                 
@@ -2720,15 +2776,55 @@ def process_video_edit():
                     if k not in edit_settings['subtitles']:
                         edit_settings['subtitles'][k] = v
                 
-                # ALSO FORCE THEME TIMING from metadata to ensure Pass 1 trims correctly
-                time_range = adjust_settings.get('time_range')
-                if time_range:
-                    # Format: "00:01:40 - 00:02:33 (0m 53s)" or similar
-                    t_match = re.search(r'(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)\s*-\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)', time_range)
-                    if t_match:
-                        edit_settings['trim']['start'] = t_match.group(1).replace(',', '.')
-                        edit_settings['trim']['end'] = t_match.group(2).replace(',', '.')
-                        app_logger.info(f"Enforcing theme trim from metadata: {edit_settings['trim']['start']} - {edit_settings['trim']['end']}")
+                # CRITICAL: Also specifically map karaoke settings from highlight_style.json
+                highlight_file = folder / 'highlight_style.json'
+                if highlight_file.exists():
+                    try:
+                        with open(highlight_file, 'r', encoding='utf-8') as f:
+                            h_style = json.load(f)
+                            subs_conf = edit_settings['subtitles']
+                            if 'karaoke_mode' in h_style: subs_conf['mode'] = h_style['karaoke_mode']
+                            if 'effectType' in h_style: subs_conf['effect_type'] = h_style['effectType']
+                            if 'textColor' in h_style: subs_conf['textColor'] = h_style['textColor']
+                            if 'glowColor' in h_style: subs_conf['glowColor'] = h_style['glowColor']
+                            if 'glowBlur' in h_style: subs_conf['glowBlur'] = h_style['glowBlur']
+                            if 'past_color' in h_style: subs_conf['pastColor'] = h_style['past_color']
+                    except Exception as e:
+                        app_logger.warning(f"Failed to load highlight settings for Edit: {e}")
+                
+                # Handle trim translation
+                user_trim = edit_settings.get('trim', {})
+                user_start_str = user_trim.get('start', '00:00:00')
+                user_end_str = user_trim.get('end', '')
+                user_start_sec = creator.parse_timestamp_to_seconds(user_start_str)
+                user_end_sec = creator.parse_timestamp_to_seconds(user_end_str) if user_end_str else 0
+                
+                # ALWAYS use theme metadata as the base if available
+                if theme_meta_start > 0:
+                    if 'trim' not in edit_settings: edit_settings['trim'] = {}
+                    
+                    # If user_start_sec is close to theme_meta_start or very large, 
+                    # it is likely a confused absolute time from the UI. 
+                    # We reset to metadata start.
+                    if user_start_sec == 0 or abs(user_start_sec - theme_meta_start) < 60:
+                        new_start = theme_meta_start
+                        app_logger.info(f"Using metadata start {new_start} (ignoring UI {user_start_sec})")
+                    else:
+                        # Significant difference, treat as relative offset
+                        new_start = theme_meta_start + user_start_sec
+                        app_logger.info(f"Applying relative user offset {user_start_sec} to theme start {theme_meta_start}")
+
+                    # Calculate end time
+                    if user_end_sec == 0 or abs(user_end_sec - theme_meta_end) < 60:
+                        new_end = theme_meta_end
+                    else:
+                        new_end = theme_meta_start + user_end_sec
+                        
+                    edit_settings['trim']['start'] = format_srt_time(new_start).replace(',', '.')
+                    edit_settings['trim']['end'] = format_srt_time(new_end).replace(',', '.')
+                    app_logger.info(f"Final Enforced Theme Trim: {edit_settings['trim']['start']} - {edit_settings['trim']['end']}")
+                else:
+                    app_logger.info(f"Using provided trim as-is (no theme metadata): {user_start_str} - {user_end_str}")
 
                 # Also try to get title from themes.md or adjust.md
                 theme_title = ""
@@ -2792,7 +2888,7 @@ def process_video_edit():
     # Start background task (daemon=True to allow Ctrl+C)
     thread = threading.Thread(
         target=run_edit_task,
-        args=(edit_id, str(input_video), str(output_video), edit_settings),
+        args=(edit_id, str(input_video), str(output_video), edit_settings, is_editing_theme_clip),
         daemon=True
     )
     thread.start()
@@ -2800,177 +2896,199 @@ def process_video_edit():
     return jsonify({'edit_id': edit_id, 'status': 'started'})
 
 
-def run_edit_task(edit_id: str, input_video: str, output_video: str, edit_settings: dict):
+def run_edit_task(edit_id: str, input_video: str, output_video: str, edit_settings: dict, is_editing_theme_clip: bool = False):
     """Run video edit in background thread."""
     from video_processor import VideoProcessor
+    from subtitle_renderer import render_canvas_karaoke_video
     import os
     import time
     import cv2
+    import shutil
+    import tempfile
+    import subprocess
+    from pathlib import Path
 
-    # Function to log directly to status
+    # Helper to log directly to status and file
     def log_message(msg):
+        if not msg.startswith("PROGRESS:"):
+            app_logger.info(f"[EDIT_TASK {edit_id}] {msg}")
         with task_lock:
             if edit_id in edit_processes:
                 if msg.startswith("PROGRESS:"):
                     try:
-                        # Format: "PROGRESS:45%|Stage Name"
                         parts = msg.split("|")
                         percent_str = parts[0].split(":")[1].replace("%", "")
                         edit_processes[edit_id]['progress'] = int(percent_str)
-                        
                         if len(parts) > 1:
-                            # Add a special marker for the stage so frontend can find it easily
-                            stage = parts[1]
-                            edit_processes[edit_id]['log'] = f"STAGE:{stage}\n"
+                            edit_processes[edit_id]['log'] = f"STAGE:{parts[1]}\n"
                         return 
-                    except:
-                        pass
-                
+                    except: pass
                 current_log = edit_processes[edit_id].get('log', '')
                 edit_processes[edit_id]['log'] = current_log + msg + '\n'
+
+    def to_sec(ts):
+        if not ts: return 0.0
+        if isinstance(ts, (int, float)): return float(ts)
+        try:
+            parts = list(map(float, str(ts).replace(',', '.').split(':')))
+            return parts[-1] + (parts[-2] * 60 if len(parts) > 1 else 0) + (parts[-3] * 3600 if len(parts) > 2 else 0)
+        except: return 0.0
 
     try:
         with task_lock:
             edit_processes[edit_id]['status'] = 'running'
             edit_processes[edit_id]['progress'] = 0
-            edit_processes[edit_id]['log'] = ''  # Initialize log
+            edit_processes[edit_id]['log'] = ''
 
-        log_message(f"Processing video: {input_video}")
-        log_message(f"Settings: {edit_settings}")
+        # Determine folder and theme context
+        f_num = edit_settings.get('folder_number')
+        base_dir = Path(settings.get('video', 'output_dir'))
+        folder_path = None
+        for f in base_dir.iterdir():
+            if f.is_dir() and f.name.startswith(f"{f_num}_"):
+                folder_path = f
+                break
+        if not folder_path: folder_path = Path(input_video).parent.parent
+        t_num = edit_settings.get('theme_number', 1)
 
-        # Process video with ffmpeg (preserves audio)
+        # Timestamps for extraction
+        start_str = edit_settings.get('trim', {}).get('start', '0')
+        end_str = edit_settings.get('trim', {}).get('end')
+        log_message(f"DEBUG: run_edit_task start_str={start_str}, end_str={end_str}")
+        actual_start = to_sec(start_str)
+        actual_end = to_sec(end_str)
+        log_message(f"DEBUG: Calculated actual_start={actual_start}, actual_end={actual_end}")
+        
+        reburn_enabled = edit_settings.get('subtitles', {}).get('reburn', True)
+        final_burn_success = False
+
+        # --- STEP 1: SYNCED SEGMENT EXTRACTION ---
+        if reburn_enabled:
+            log_message("STEP 1: Extracting clean segment from master for sync...")
+            temp_clean = os.path.join(tempfile.gettempdir(), f"clean_{edit_id}.mp4")
+            
+            # Find the clean master
+            master_video = None
+            master_videos = [f for f in folder_path.glob('*.mp4') if 'theme_' not in f.name and 'edited_' not in f.name and 'clean_' not in f.name]
+            if master_videos: master_video = master_videos[0]
+            else: master_video = Path(input_video)
+            
+            # Stage 1: Fast Stream Copy Buffer.
+            # We copy a segment starting 30s before the target. This is instant and safe.
+            seek_buffer = 30.0
+            fast_ss = max(0, actual_start - seek_buffer)
+            buffer_dur = (actual_end - actual_start) + seek_buffer + 10.0
+            
+            extract_cmd = [
+                'ffmpeg', '-nostdin', '-y',
+                '-i', str(master_video.absolute()),
+                '-ss', str(fast_ss),
+                '-t', str(buffer_dur),
+                '-c', 'copy',
+                '-avoid_negative_ts', 'make_zero',
+                temp_clean
+            ]
+            app_logger.info(f"Step 1 Buffer Copy Command: {' '.join(extract_cmd)}")
+            subprocess.run(extract_cmd, capture_output=True, check=True)
+            
+            input_video = temp_clean
+            # Step 2 logic: Now we perform the FRAME-ACCURATE trim relative to the buffer start.
+            # Since the buffer starts at fast_ss, the target start is at (actual_start - fast_ss).
+            # VideoProcessor re-encodes, so this trim will be perfect.
+            relative_start = actual_start - fast_ss
+            relative_end = actual_end - fast_ss
+            edit_settings['trim']['start'] = format_srt_time(relative_start).replace(',', '.')
+            edit_settings['trim']['end'] = format_srt_time(relative_end).replace(',', '.')
+            app_logger.info(f"Step 2 Relative Trim: {edit_settings['trim']['start']} - {edit_settings['trim']['end']}")
+
+            input_video = temp_clean
+            # Step 2 logic will now be 0-based relative to this clean clip
+            # --- FIXED: We DO NOT reset to 0:00 because temp_clean has a 30s buffer. ---
+            # We keep the relative_start/end calculated above.
+
+        # --- STEP 2: APPLY EFFECTS & OVERLAYS ---
+        log_message("STEP 2: Applying Logo, Audio, and B-roll overlays...")
         processor = VideoProcessor(input_video)
         intermediate_video = processor.apply_effects(output_video, edit_settings, cancel_flag=lambda: edit_processes.get(edit_id, {}).get('cancelled', False), log_callback=log_message)
         
-        log_message(f"Pass 1 & 2 complete. Intermediate: {intermediate_video}")
+        # --- STEP 3: BURN SUBTITLES ---
+        if reburn_enabled:
+            log_message("STEP 3: Burning Subtitles & Title...")
+            
+            # Ensure title from metadata if missing
+            if not edit_settings.get('subtitles', {}).get('title'):
+                adjust_settings = get_theme_adjust_settings(folder_path, t_num)
+                if adjust_settings.get('title'):
+                    edit_settings.setdefault('subtitles', {})['title'] = adjust_settings['title']
 
-        # Pass 3: Final Subtitle and Title rendering if requested
-        if edit_settings.get('subtitles', {}).get('reburn', True):
-            log_message("Starting Pass: Final Subtitle & Title Burning...")
-            
-            # Find necessary files
-            # folder_path might be different if input_video was master
-            f_num = edit_settings.get('folder_number')
-            base_dir = Path(settings.get('video', 'output_dir'))
-            folder_path = None
-            for f in base_dir.iterdir():
-                if f.is_dir() and f.name.startswith(f"{f_num}_"):
-                    folder_path = f
-                    break
-            
-            if not folder_path:
-                # Fallback to parent logic
-                folder_path = Path(intermediate_video).parent.parent
-            
-            t_num = edit_settings.get('theme_number', 1)
-            log_message(f"Using folder: {folder_path}, theme: {t_num}")
-            
-            # Use the SRT path identified earlier or fallback
-            srt_path = edit_settings.get('subtitles', {}).get('srt_path')
-            if not srt_path:
-                srt_path = str(folder_path / 'shorts' / f'theme_{int(t_num):03d}.srt')
+            # Use relative theme SRT because Step 1 created a 0-based clip
+            srt_path = str(folder_path / 'shorts' / f'theme_{int(t_num):03d}.srt')
+            if not os.path.exists(srt_path):
+                matches = list((folder_path / 'shorts').glob(f"theme_{int(t_num):03d}_*.srt"))
+                if matches: srt_path = str(matches[0])
             
             word_timestamps_file = next(folder_path.glob('*_word_timestamps.json'), None)
-            log_message(f"SRT: {srt_path}, Timestamps: {word_timestamps_file}")
             
-            if Path(srt_path).exists() and word_timestamps_file:
-                # Calculate progress scaling for the final pass
-                pass_count = 1
-                if edit_settings.get('effects', {}).get('faceTracking'): pass_count += 1
-                pass_count += 1 # The reburn pass itself
+            if os.path.exists(srt_path) and word_timestamps_file:
+                # Setup render context
+                edit_render_settings = edit_settings.get('subtitles', {}).copy()
+                edit_render_settings['folder_number'] = f_num
+                edit_render_settings['theme_number'] = t_num
+                
+                # Metadata start for word lookup
+                adjust_settings = get_theme_adjust_settings(folder_path, t_num)
+                t_match = re.search(r'(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)\s*-\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)', adjust_settings.get('time_range', ''))
+                theme_meta_start = to_sec(t_match.group(1).replace(',', '.')) if t_match else 0
+                log_message(f"DEBUG: theme_meta_start from adjust.md={theme_meta_start}")
+                
+                # The renderer uses theme_meta_start as the offset for word lookup *relative to the SRT*.
+                # This must match the original theme start time because the SRT is relative to that.
+                edit_render_settings['theme_meta_start'] = theme_meta_start
+                log_message(f"DEBUG: Final theme_meta_start for renderer={edit_render_settings['theme_meta_start']}")
+
+                if 'h_align' in edit_render_settings: edit_render_settings['subtitle_h_align'] = edit_render_settings['h_align']
+                if 'v_align' in edit_render_settings: edit_render_settings['subtitle_v_align'] = edit_render_settings['v_align']
+
+                # Progress weighting
+                pass_count = 2
                 p_scale = 1.0 / pass_count
-                offset = 100 * (pass_count - 1) / pass_count
+                p_offset = 50.0
 
                 def render_progress_cb(percent, stage, msg):
-                    scaled_percent = int(offset + (percent * p_scale))
-                    log_message(f"PROGRESS:{scaled_percent}%|Final Subtitle & Title Burn")
+                    scaled_percent = min(99, int(p_offset + (percent * p_scale)))
+                    log_message(f"PROGRESS:{scaled_percent}%|Final Subtitle Burn")
 
-                from subtitle_renderer import render_canvas_karaoke_video
-                
-                # IMPORTANT: If intermediate_video is already trimmed, we need the ORIGINAL 
-                # theme start time for the subtitle lookup to work!
-                # Extract start/end from settings
-                from shorts_creator import YouTubeShortsCreator
-                temp_creator = YouTubeShortsCreator()
-                
-                start_str = edit_settings.get('trim', {}).get('start', '0')
-                end_str = edit_settings.get('trim', {}).get('end')
-                
-                # Convert to seconds
-                def to_sec(ts):
-                    if not ts: return 0
-                    if isinstance(ts, (int, float)): return float(ts)
-                    parts = list(map(float, ts.replace(',', '.').split(':')))
-                    return parts[-1] + (parts[-2] * 60 if len(parts) > 1 else 0) + (parts[-3] * 3600 if len(parts) > 2 else 0)
-                
-                actual_start = to_sec(start_str)
-                actual_end = to_sec(end_str)
-                log_message(f"Theme timing for subtitle sync: {actual_start} - {actual_end}")
-
-                success = render_canvas_karaoke_video(
-                    intermediate_video,
-                    str(word_timestamps_file),
-                    srt_path,
-                    output_video,
-                    actual_start, 
-                    actual_end,
-                    edit_settings.get('subtitles', {}),
-                    progress_callback=render_progress_cb,
-                    is_already_trimmed=True # We need to add this flag to renderer!
+                log_message(f"DEBUG: Calling render_canvas_karaoke_video with actual_start={actual_start}, actual_end={actual_end}, srt={srt_path}")
+                # CRITICAL: render_canvas_karaoke_video expects absolute timestamps for data lookup,
+                # but is_already_trimmed=True handles the 0-based video sync.
+                final_burn_success = render_canvas_karaoke_video(
+                    intermediate_video, str(word_timestamps_file), srt_path, output_video,
+                    actual_start, actual_end, edit_render_settings,
+                    progress_callback=render_progress_cb, is_already_trimmed=True, srt_mode='relative'
                 )
-                
-                if not success:
-                    log_message("Warning: Final subtitle rendering pass failed.")
-                    # Fallback: if reburn failed but we have intermediate, rename it to output
-                    if os.path.exists(intermediate_video) and str(intermediate_video) != str(output_video):
-                        import shutil
-                        log_message(f"Moving intermediate to final: {output_video}")
-                        shutil.move(intermediate_video, output_video)
             else:
-                log_message(f"Warning: Could not find SRT ({srt_path}) or word timestamps for final pass.")
-                if str(intermediate_video) != str(output_video):
-                    import shutil
-                    log_message(f"Moving intermediate to final (fallback): {output_video}")
-                    shutil.move(intermediate_video, output_video)
-        elif str(intermediate_video) != str(output_video):
-            import shutil
-            log_message(f"Finalizing output: {output_video}")
-            shutil.move(intermediate_video, output_video)
+                log_message(f"Warning: SRT or Timestamps missing. Skipping Step 3.")
+
+        # FINALIZATION
+        if not final_burn_success:
+            if os.path.exists(intermediate_video) and str(intermediate_video) != str(output_video):
+                if os.path.exists(output_video): os.remove(output_video)
+                shutil.move(intermediate_video, output_video)
 
         with task_lock:
             edit_processes[edit_id]['status'] = 'completed'
             edit_processes[edit_id]['success'] = True
-            # Store path relative to project root for display
-            try:
-                rel_path = Path(output_video).relative_to(Path.cwd())
-                edit_processes[edit_id]['output_path'] = str(rel_path)
-            except:
-                edit_processes[edit_id]['output_path'] = str(output_video)
+            try: rel_path = Path(output_video).relative_to(Path.cwd())
+            except: rel_path = output_video
+            edit_processes[edit_id]['output_path'] = str(rel_path)
 
     except Exception as e:
         import traceback
-        error_details = traceback.format_exc()
-        log_message(f"Processing error: {error_details}")
-
-        # Clean up partial output file on error or cancellation
-        if os.path.exists(output_video):
-            try:
-                os.remove(output_video)
-                log_message(f"Cleaned up partial output file: {output_video}")
-            except Exception as cleanup_error:
-                log_message(f"Failed to clean up output file: {cleanup_error}")
-
+        log_message(f"Processing error: {traceback.format_exc()}")
         with task_lock:
-            # Check if this was a cancellation
-            if edit_processes.get(edit_id, {}).get('cancelled'):
-                edit_processes[edit_id]['status'] = 'cancelled'
-            else:
-                edit_processes[edit_id]['status'] = 'failed'
-                edit_processes[edit_id]['error'] = str(e)
-    finally:
-        # Final log update is done by log_message so no need to do it here
-        pass
-
+            edit_processes[edit_id]['status'] = 'cancelled' if edit_processes.get(edit_id, {}).get('cancelled') else 'failed'
+            edit_processes[edit_id]['error'] = str(e)
+    finally: pass
 
 @app.route('/api/process-edit/<edit_id>/cancel', methods=['POST'])
 def cancel_edit(edit_id: str):
@@ -3442,6 +3560,25 @@ def get_theme_adjust_settings(folder_path, theme_number):
         st_match = re.search(r'\*\*show_title:\*\*\s*(true|false)', content)
         if st_match: settings['show_title'] = st_match.group(1) == 'true'
             
+    # Load global highlight style if it exists
+    highlight_file = folder_path / 'highlight_style.json'
+    if highlight_file.exists():
+        try:
+            with open(highlight_file, 'r', encoding='utf-8') as f:
+                h_style = json.load(f)
+                # Map highlight style fields to the settings keys expected by the renderer
+                if 'textColor' in h_style: settings['textColor'] = h_style['textColor']
+                if 'glowColor' in h_style: settings['glowColor'] = h_style['glowColor']
+                if 'glowBlur' in h_style: settings['glowBlur'] = h_style['glowBlur']
+                if 'fontWeight' in h_style: settings['font_weight'] = h_style['fontWeight']
+                if 'effectType' in h_style: settings['effect_type'] = h_style['effectType']
+                if 'karaoke_mode' in h_style: settings['mode'] = h_style['karaoke_mode']
+                if 'autoEmoji' in h_style: settings['auto_emoji'] = h_style['autoEmoji']
+                if 'keywordScaling' in h_style: settings['keyword_scaling'] = h_style['keywordScaling']
+                if 'past_color' in h_style: settings['pastColor'] = h_style['past_color']
+        except Exception as e:
+            app_logger.warning(f"Failed to load highlight_style.json: {e}")
+
     return settings
 
 
@@ -3567,14 +3704,11 @@ def encode_canvas_karaoke():
 
                 tr_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)\s*-\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)', adj_content)
                 if tr_match:
-                    def parse_ts(s):
-                        s = s.replace(',', '.')
-                        h, m, sec = s.split(':')
-                        return int(h) * 3600 + int(m) * 60 + float(sec)
-                    start_time = parse_ts(tr_match.group(1))
-                    end_time = parse_ts(tr_match.group(2))
+                    start_time = parse_timestamp(tr_match.group(1))
+                    end_time = parse_timestamp(tr_match.group(2))
             
             # Fall back to reading from themes.md if still 0
+                
             if start_time == 0 and end_time == 0:
                 themes_file = folder / 'themes.md'
                 if not themes_file.exists():
@@ -3909,15 +4043,16 @@ def export_canvas_karaoke():
                         canvas_karaoke_progress[jid] = {'status': 'error', 'error': 'Word timestamps not found', 'complete': False}
                     return
 
-                # Prioritize theme-specific SRT (which contains user edits)
-                srt_file = folder / 'shorts' / f'theme_{int(t_num):03d}.srt'
-                
-                if not srt_file.exists():
-                    # Fallback to main SRT
-                    srt_files = [f for f in folder.glob('*.srt') if 'theme_' not in f.name and 'adjust' not in f.name]
-                    if srt_files:
-                        srt_file = srt_files[0]
-                    else:
+                # Prefer the main (absolute) SRT file for rendering to ensure perfect sync
+                # even if theme boundaries have shifted.
+                srt_file = None
+                srt_files = [f for f in folder.glob('*.srt') if 'theme_' not in f.name and 'adjust' not in f.name]
+                if srt_files:
+                    srt_file = srt_files[0]
+                else:
+                    # Fallback to theme-specific one if main is missing
+                    srt_file = folder / 'shorts' / f'theme_{int(t_num):03d}.srt'
+                    if not srt_file.exists():
                         srt_file = folder / 'adjust.srt'
                 
                 if not srt_file or not srt_file.exists():
@@ -3938,8 +4073,8 @@ def export_canvas_karaoke():
                 theme_title = ""
 
                 if start_override is not None and end_override is not None:
-                    start_time = float(start_override)
-                    end_time = float(end_override)
+                    start_time = parse_timestamp(start_override)
+                    end_time = parse_timestamp(end_override)
                     app_logger.info(f"Using client-provided times: {start_time} - {end_time}")
                 
                 # Check adjust.md if times not provided or to get title
@@ -3955,13 +4090,8 @@ def export_canvas_karaoke():
                         # Allow both HH:MM:SS and HH:MM:SS,mmm or HH:MM:SS.mmm
                         tr_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)\s*-\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)', adj_content)
                         if tr_match:
-                            def parse_ts(s):
-                                # Handle HH:MM:SS.mmm or HH:MM:SS,mmm
-                                s = s.replace(',', '.')
-                                h, m, sec = s.split(':')
-                                return int(h) * 3600 + int(m) * 60 + float(sec)
-                            start_time = parse_ts(tr_match.group(1))
-                            end_time = parse_ts(tr_match.group(2))
+                            start_time = parse_timestamp(tr_match.group(1))
+                            end_time = parse_timestamp(tr_match.group(2))
                             app_logger.info(f"Using adjust.md times: {start_time} - {end_time}")
 
                 # Fallback to themes.md
@@ -4001,7 +4131,11 @@ def export_canvas_karaoke():
 
                 # Output path
                 sanitized_title = creator.sanitize_title(theme_title) if theme_title else "untitled"
-                output_filename = f'theme_{int(t_num):03d}_{sanitized_title}_canvas_karaoke.mp4'
+                
+                # Determine suffix based on mode
+                suffix = "standard" if settings_dict.get('effect_type') == 'none' else "canvas_karaoke"
+                output_filename = f'theme_{int(t_num):03d}_{sanitized_title}_{suffix}.mp4'
+                
                 output_path = folder / 'shorts' / output_filename
                 output_path.parent.mkdir(exist_ok=True)
 
@@ -4033,7 +4167,14 @@ def export_canvas_karaoke():
                     'subtitles': {
                         'reburn': True,
                         'srt_path': str(srt_file),
-                        'native_burn': settings_dict.get('effect_type') == 'none' # FAST LANE DETECTION
+                        'native_burn': settings_dict.get('effect_type') == 'none', # FAST LANE DETECTION
+                        'fontSize': settings_dict.get('fontSize', 80),
+                        'primaryColor': settings_dict.get('primaryColor', '#ffffff'),
+                        'show_title': settings_dict.get('show_title', False),
+                        'title': theme_title,
+                        'title_top': settings_dict.get('titleTop', 150),
+                        'title_font_size': settings_dict.get('titleFontSize', 80),
+                        'title_text_color': settings_dict.get('titleTextColor', '#00ff9d'),
                     },
                     'folder_number': f_num,
                     'theme_number': t_num
@@ -4083,6 +4224,9 @@ def export_canvas_karaoke():
                     
                     # Setup final settings for the renderer, merging incoming with adjust.md
                     final_render_settings = settings_dict.copy()
+                    final_render_settings['folder_number'] = f_num
+                    final_render_settings['theme_number'] = t_num
+                    final_render_settings['themeNumber'] = t_num
                     
                     # ... (keep existing merging/mapping logic)
                     # Ensure base subtitle fields are present if missing
@@ -4111,6 +4255,8 @@ def export_canvas_karaoke():
                         'title_outline_color': 'titleOutlineColor',
                         'title_all_caps': 'titleAllCaps',
                         'title_top': 'titleTop',
+                        'subtitle_h_align': 'h_align',
+                        'subtitle_v_align': 'v_align',
                         'reburn': 'reburn'
                     }
                     for snake, camel in mapping.items():
@@ -4132,6 +4278,9 @@ def export_canvas_karaoke():
                         progress_cb(30 + (percent * 0.7), "Rendering Subtitles", msg)
 
                     app_logger.info(f"Starting Pass 2: Subtitle Rendering for theme {t_num}")
+                    # Determine SRT mode explicitly
+                    srt_mode = 'relative' if 'theme_' in srt_file.name else 'absolute'
+                    
                     pass2_start = py_time.time()
                     success = render_canvas_karaoke_video(
                         str(intermediate_video),
@@ -4142,7 +4291,8 @@ def export_canvas_karaoke():
                         float(end_time),
                         final_render_settings,
                         progress_callback=render_progress_cb,
-                        is_already_trimmed=True
+                        is_already_trimmed=True,
+                        srt_mode=srt_mode
                     )
                     pass2_duration = py_time.time() - pass2_start
                     total_duration = py_time.time() - export_start_perf
@@ -4199,12 +4349,19 @@ def download_video(folder, theme, type):
 
         if type == 'canvas_karaoke':
             # Use glob to find the file since it now includes the title
-            pattern = f'theme_{int(theme):03d}_*_canvas_karaoke.mp4'
-            matches = list((folder / 'shorts').glob(pattern))
+            # Look for either standard or canvas_karaoke versions
+            pattern = f'theme_{int(theme):03d}_*_{{standard,canvas_karaoke}}.mp4'
+            # Note: glob doesn't support curly braces by default in all versions, 
+            # so let's check for both manually
+            matches = list((folder / 'shorts').glob(f'theme_{int(theme):03d}_*_standard.mp4'))
+            matches += list((folder / 'shorts').glob(f'theme_{int(theme):03d}_*_canvas_karaoke.mp4'))
+            
             if not matches:
                 # Fallback to old format just in case
                 video_path = folder / 'shorts' / f'theme_{theme}_canvas_karaoke.mp4'
             else:
+                # Get the newest match
+                matches.sort(key=lambda x: x.stat().st_mtime, reverse=True)
                 video_path = matches[0]
         else:
             return jsonify({'error': 'Invalid type'}), 400
