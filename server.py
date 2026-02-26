@@ -196,6 +196,9 @@ def _process_wrapper(task_id, func, shared_tasks, args, kwargs):
         sys.__stdout__.write(f"[{task_id}] {msg_str}\n")
         sys.__stdout__.flush()
         
+        # ALSO log to server.log via app_logger
+        app_logger.info(f"[{task_id}] {msg_str}")
+        
         try:
             # We must pull, update, and push back the sub-dictionary
             # because manager.dict() doesn't track nested changes automatically
@@ -806,69 +809,75 @@ def get_theme_subtitles(folder_number: str, theme_number: str):
     if theme_start_sec is None or theme_end_sec is None:
         return jsonify({'error': 'Theme time range not found'}), 404
 
-    # Always use the original SRT for loading (filter based on current theme time)
-    # The adjusted SRT is only for saving custom edits
-    srt_files = [f for f in folder.glob('*.srt') if 'theme_' not in f.name and 'adjust' not in f.name]
-    if not srt_files:
-        srt_files = list(folder.glob('*.srt'))
-        
-    if not srt_files:
-        return "SRT file not found", 404
-
-    srt_file = srt_files[0]
-
-    # Create theme-specific SRT and JSON files in the shorts directory
+    # Determine source of truth for subtitles
+    theme_srt_name = f"theme_{int(theme_number):03d}.srt"
+    theme_srt_path = folder / 'shorts' / theme_srt_name
+    
+    # 1. Ensure theme-specific SRT and JSON files exist in the shorts directory
     # This ensures they exist for editing as soon as adjust.html loads the theme
     try:
         shorts_dir = folder / 'shorts'
         shorts_dir.mkdir(exist_ok=True)
         
-        # 1. Create theme SRT (theme_XXX.srt)
-        theme_srt_name = f"theme_{int(theme_number):03d}.srt"
-        theme_srt_path = shorts_dir / theme_srt_name
+        # Determine the fallback main SRT if needed
+        srt_files = [f for f in folder.glob('*.srt') if 'theme_' not in f.name and 'adjust' not in f.name]
+        if not srt_files: srt_files = list(folder.glob('*.srt'))
+        main_srt = srt_files[0] if srt_files else None
+
+        if not theme_srt_path.exists() and main_srt:
+            creator.create_trimmed_srt(main_srt, theme_start_sec, theme_end_sec, theme_srt_path)
+            app_logger.info(f"Generated missing theme SRT: {theme_srt_name}")
         
-        # Use creator to create the trimmed SRT
-        creator.create_trimmed_srt(srt_file, theme_start_sec, theme_end_sec, theme_srt_path)
-        
-        # 2. Create theme JSON word timestamps (theme_XXX.json)
+        # Create theme JSON word timestamps (theme_XXX.json) ONLY if it doesn't exist
         theme_json_name = f"theme_{int(theme_number):03d}.json"
         theme_json_path = shorts_dir / theme_json_name
         
-        # Find original word timestamps
-        word_timestamps_file = None
-        for file in folder.glob('*_word_timestamps.json'):
-            word_timestamps_file = file
-            break
-            
-        if word_timestamps_file and word_timestamps_file.exists():
-            with open(word_timestamps_file, 'r', encoding='utf-8') as f:
-                wt_data = json.load(f)
-                all_words = wt_data.get('words', [])
+        if not theme_json_path.exists():
+            # Find original word timestamps
+            word_timestamps_file = None
+            for file in folder.glob('*_word_timestamps.json'):
+                word_timestamps_file = file
+                break
                 
-            # Filter words for this theme and make timestamps relative
-            theme_words = []
-            for w in all_words:
-                if w['start'] >= theme_start_sec - 1.0 and w['end'] <= theme_end_sec + 1.0:
-                    rw = w.copy()
-                    rw['start'] = max(0, w['start'] - theme_start_sec)
-                    rw['end'] = max(0, w['end'] - theme_start_sec)
-                    theme_words.append(rw)
+            if word_timestamps_file and word_timestamps_file.exists():
+                with open(word_timestamps_file, 'r', encoding='utf-8') as f:
+                    wt_data = json.load(f)
+                    all_words = wt_data.get('words', [])
                     
-            with open(theme_json_path, 'w', encoding='utf-8') as f:
-                json.dump({
-                    'theme': theme_number,
-                    'start_time': theme_start_sec,
-                    'end_time': theme_end_sec,
-                    'words': theme_words
-                }, f, indent=2)
-                
-        app_logger.info(f"Generated theme metadata: {theme_srt_name} and {theme_json_name}")
+                # Filter words for this theme and make timestamps relative
+                theme_words = []
+                for w in all_words:
+                    if w['start'] >= theme_start_sec - 1.0 and w['end'] <= theme_end_sec + 1.0:
+                        rw = w.copy()
+                        rw['start'] = max(0, w['start'] - theme_start_sec)
+                        rw['end'] = max(0, w['end'] - theme_start_sec)
+                        theme_words.append(rw)
+                        
+                with open(theme_json_path, 'w', encoding='utf-8') as f:
+                    json.dump({
+                        'theme': theme_number,
+                        'start_time': theme_start_sec,
+                        'end_time': theme_end_sec,
+                        'words': theme_words
+                    }, f, indent=2)
+                app_logger.info(f"Generated missing theme metadata JSON: {theme_json_name}")
     except Exception as e:
         app_logger.warning(f"Failed to generate theme metadata: {e}")
 
+    # 2. Select the SRT file to load from
+    is_theme_srt = False
+    if theme_srt_path.exists():
+        srt_file = theme_srt_path
+        is_theme_srt = True
+    else:
+        # Fallback to main SRT
+        srt_files = [f for f in folder.glob('*.srt') if 'theme_' not in f.name and 'adjust' not in f.name]
+        if not srt_files: srt_files = list(folder.glob('*.srt'))
+        if not srt_files: return "SRT file not found", 404
+        srt_file = srt_files[0]
+
     # Check if adjusted subtitles exist (for info only)
     shorts_dir = folder / 'shorts'
-    shorts_dir.mkdir(exist_ok=True)
     adjusted_srt = shorts_dir / f'theme_{int(theme_number):03d}_adjust.srt'
     has_adjusted = adjusted_srt.exists()
 
@@ -876,7 +885,7 @@ def get_theme_subtitles(folder_number: str, theme_number: str):
     with open(srt_file, 'r', encoding='utf-8') as f:
         srt_content = f.read()
 
-    # Parse SRT into JSON format, filtering by theme time range
+    # Parse SRT into JSON format, filtering by theme time range if it's the main SRT
     cues = []
     filtered_cues = []
     lines = srt_content.strip().split('\n')
@@ -898,7 +907,6 @@ def get_theme_subtitles(folder_number: str, theme_number: str):
             # Timestamp line
             if i < len(lines) and '-->' in lines[i]:
                 timestamp_line = lines[i].strip()
-                # Parse timestamps: 00:00:00,000 --> 00:00:05,000
                 match = re.match(r'(\d{2}:\d{2}:\d{2})[.,](\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2})[.,](\d{3})', timestamp_line)
                 if match:
                     # Convert to seconds for filtering
@@ -910,8 +918,9 @@ def get_theme_subtitles(folder_number: str, theme_number: str):
                     end_millis = int(match.group(4))
                     cue_end_sec = end_h * 3600 + end_m * 60 + end_s + end_millis / 1000
 
-                    # Filter: only include cues that overlap with theme time range
-                    if cue_end_sec > theme_start_sec and cue_start_sec < theme_end_sec:
+                    # Filter: if it's the main SRT, only include cues that overlap with theme time range.
+                    # If it's the theme SRT, it's already trimmed, so include everything.
+                    if is_theme_srt or (cue_end_sec > theme_start_sec and cue_start_sec < theme_end_sec):
                         # Get subtitle text (may be multiple lines)
                         i += 1
                         text_lines = []
@@ -2394,6 +2403,7 @@ def get_retranscribe_settings(folder_number: str):
 
 def _run_retranscribe_task(folder_number, folder, video_file, model, language, base_dir, progress_callback=None, cancel_check=None):
     """Module-level function for re-transcription task."""
+    app_logger.info(f"DEBUG: _run_retranscribe_task started for folder {folder_number}")
     sys.__stdout__.write(f"DEBUG: _run_retranscribe_task started for folder {folder_number}\n")
     sys.__stdout__.flush()
     
@@ -2419,6 +2429,7 @@ def _run_retranscribe_task(folder_number, folder, video_file, model, language, b
         def scaled_callback(msg):
             msg_str = str(msg)
             # Use raw stdout to bypass any redirection issues
+            app_logger.info(f"[Re-transcribe Progress] {msg_str}")
             sys.__stdout__.write(f"[Re-transcribe Progress] {msg_str}\n")
             sys.__stdout__.flush()
             
@@ -2720,7 +2731,13 @@ def process_video_edit():
     }
     crf = crf_map.get(quality_preset, 22)
     edit_settings['export_crf'] = crf
-    edit_settings['export_preset'] = 'veryfast' if quality_preset == 'fast' else 'medium'
+    
+    # Use settings.ini default if available, otherwise use fast presets
+    default_preset = settings.get('video', 'export_preset', fallback='ultrafast')
+    if quality_preset == 'fast':
+        edit_settings['export_preset'] = 'ultrafast'
+    else:
+        edit_settings['export_preset'] = default_preset
 
     if not video_path:
         return jsonify({'error': 'video_path is required'}), 400
@@ -3107,7 +3124,7 @@ def run_edit_task(edit_id: str, input_video: str, output_video: str, edit_settin
 
                 def render_progress_cb(percent, stage, msg):
                     scaled_percent = min(99, int(p_offset + (percent * p_scale)))
-                    log_message(f"PROGRESS:{scaled_percent}%|Final Subtitle Burn")
+                    log_message(f"PROGRESS:{scaled_percent}%|Final Subtitle Burn ({msg})")
 
                 log_message(f"DEBUG: Calling render_canvas_karaoke_video with actual_start={actual_start}, actual_end={actual_end}, srt={srt_path}")
                 # CRITICAL: render_canvas_karaoke_video expects absolute timestamps for data lookup,
@@ -3797,23 +3814,23 @@ def encode_canvas_karaoke():
         if not word_timestamps_file or not word_timestamps_file.exists():
             return jsonify({'error': 'Word timestamps not found'}), 404
 
-        # Prefer the main (absolute) SRT file for rendering to ensure perfect sync
-        srt_file = None
-        srt_files = [f for f in folder.glob('*.srt') if 'theme_' not in f.name and 'adjust' not in f.name]
-        if srt_files:
-            srt_file = srt_files[0]
-        else:
-            # Fallback to theme-specific one
-            srt_file = folder / 'shorts' / f'theme_{int(theme_number):03d}.srt'
-            if not srt_file.exists():
-                srt_file = folder / 'adjust.srt'
-
-            # Last resort
-            if not srt_file.exists():
-                for srt in folder.glob('*.srt'):
-                    if not any(x in srt.name.lower() for x in ['theme_', 'adjust', 'transcribe']):
-                        srt_file = srt
-                        break
+        # Prefer the theme-specific SRT file if it exists, as it contains user edits and restructuring.
+        # Fall back to the main (absolute) SRT only if theme-specific is missing.
+        srt_file = folder / 'shorts' / f'theme_{int(theme_number):03d}.srt'
+        if not srt_file.exists():
+            srt_file = folder / 'adjust.srt'
+        
+        if not srt_file.exists():
+            srt_files = [f for f in folder.glob('*.srt') if 'theme_' not in f.name and 'adjust' not in f.name]
+            if srt_files:
+                srt_file = srt_files[0]
+        
+        if not srt_file or not srt_file.exists():
+            # Last resort: any SRT
+            for srt in folder.glob('*.srt'):
+                if not any(x in srt.name.lower() for x in ['transcribe']):
+                    srt_file = srt
+                    break
 
         if not srt_file or not srt_file.exists():
             return jsonify({'error': 'Subtitle file not found'}), 404
@@ -3900,6 +3917,9 @@ def encode_canvas_karaoke():
                 # Import the renderer
                 from subtitle_renderer import render_canvas_karaoke_video
 
+                # Determine SRT mode explicitly based on the chosen file
+                srt_mode = 'relative' if 'theme_' in srt_file.name or 'adjust' in srt_file.name else 'absolute'
+                
                 # Render video with progress callback
                 success = render_canvas_karaoke_video(
                     str(video_file),
@@ -3909,7 +3929,8 @@ def encode_canvas_karaoke():
                     start_time,
                     end_time,
                     final_settings,
-                    progress_callback
+                    progress_callback,
+                    srt_mode=srt_mode
                 )
 
                 if not success:
@@ -3982,7 +4003,6 @@ def encode_canvas_karaoke():
 
 
 @app.route('/api/canvas-karaoke-progress/<job_id>')
-@app.route('/api/export-canvas-karaoke/<job_id>/status')
 def canvas_karaoke_progress_endpoint(job_id):
     """Get progress for a canvas karaoke export job."""
     ensure_manager()
@@ -4077,7 +4097,13 @@ def export_canvas_karaoke():
                 }
                 crf = crf_map.get(quality_preset, 22)
                 settings_dict['export_crf'] = crf
-                settings_dict['export_preset'] = 'veryfast' if quality_preset == 'fast' else 'medium'
+                
+                # Use settings.ini default if available, otherwise use fast presets
+                default_preset = settings.get('video', 'export_preset', fallback='ultrafast')
+                if quality_preset == 'fast':
+                    settings_dict['export_preset'] = 'ultrafast'
+                else:
+                    settings_dict['export_preset'] = default_preset
 
                 # Get folder path
                 base_dir = Path(settings.get('video', 'output_dir'))
@@ -4107,22 +4133,21 @@ def export_canvas_karaoke():
                         canvas_karaoke_progress[jid] = {'status': 'error', 'error': 'Word timestamps not found', 'complete': False}
                     return
 
-                # Prefer the main (absolute) SRT file for rendering to ensure perfect sync
-                # even if theme boundaries have shifted.
-                srt_file = None
-                srt_files = [f for f in folder.glob('*.srt') if 'theme_' not in f.name and 'adjust' not in f.name]
-                if srt_files:
-                    srt_file = srt_files[0]
-                else:
-                    # Fallback to theme-specific one if main is missing
-                    srt_file = folder / 'shorts' / f'theme_{int(t_num):03d}.srt'
-                    if not srt_file.exists():
-                        srt_file = folder / 'adjust.srt'
+                # Prefer the theme-specific SRT file if it exists, as it contains user edits and restructuring.
+                # Fall back to the main (absolute) SRT only if theme-specific is missing.
+                srt_file = folder / 'shorts' / f'theme_{int(t_num):03d}.srt'
+                if not srt_file.exists():
+                    srt_file = folder / 'adjust.srt'
+                
+                if not srt_file.exists():
+                    srt_files = [f for f in folder.glob('*.srt') if 'theme_' not in f.name and 'adjust' not in f.name]
+                    if srt_files:
+                        srt_file = srt_files[0]
                 
                 if not srt_file or not srt_file.exists():
                     # Last resort: any SRT
                     for srt in folder.glob('*.srt'):
-                        if not any(x in srt.name.lower() for x in ['theme_', 'adjust', 'transcribe']):
+                        if not any(x in srt.name.lower() for x in ['transcribe']):
                             srt_file = srt
                             break
                 
@@ -4249,19 +4274,22 @@ def export_canvas_karaoke():
                 if use_fast_lane:
                     app_logger.info("⚡ FAST LANE DETECTED: Using native FFmpeg for subtitle burning.")
                 
-                # Pass 1: Trim, Vertical Crop, Audio mixing (Fast FFmpeg pass)
-                # Calculate progress
+                # Pass 1: Trim, Vertical Crop, Audio mixing (FFmpeg passes)
+                # Calculate progress (Pass 1 in VideoProcessor now handles its own internal offsets)
                 def pass1_progress_cb(msg):
                     if "PROGRESS:" in msg:
                         try:
+                            # Extract percentage from VideoProcessor (0-100 range)
                             percent = int(msg.split(":")[1].split("%")[0])
+                            # If we ARE doing the slow Python pass, FFmpeg is only about 40% of the work.
+                            # If we ARE in Fast Lane (Native FFmpeg), then FFmpeg is 100% of the work.
                             if use_fast_lane:
                                 progress_cb(percent, "FFmpeg Export", "Generating final video")
                             else:
-                                progress_cb(percent * 0.3, "Optimizing Video", "Preparing vertical clip")
+                                progress_cb(percent * 0.4, "Optimizing Video", "Processing effects & overlays")
                         except: pass
 
-                app_logger.info(f"Starting Pass 1: FFmpeg Optimization for theme {t_num}")
+                app_logger.info(f"Starting Pass 1 (FFmpeg): theme {t_num}")
                 pass1_start = py_time.time()
                 intermediate_video = processor.apply_effects(str(output_path), pass1_settings, log_callback=pass1_progress_cb)
                 pass1_duration = py_time.time() - pass1_start
@@ -4339,7 +4367,8 @@ def export_canvas_karaoke():
                     
                     # Pass 2: Canvas Subtitles (The slower Python loop, but now on a trimmed clip)
                     def render_progress_cb(percent, stage, msg):
-                        progress_cb(30 + (percent * 0.7), "Rendering Subtitles", msg)
+                        # VideoProcessor (Pass 1) took up 40% of the work
+                        progress_cb(40 + (percent * 0.6), "Rendering Subtitles", msg)
 
                     app_logger.info(f"Starting Pass 2: Subtitle Rendering for theme {t_num}")
                     # Determine SRT mode explicitly
@@ -4471,4 +4500,6 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT, signal_handler)  # Ctrl+C
     signal.signal(signal.SIGTERM, signal_handler)
 
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Note: use_reloader=False is recommended when using background threading 
+    # to prevent the server from starting threads twice.
+    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)

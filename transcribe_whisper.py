@@ -137,22 +137,31 @@ class TranscribeWhisper:
         # Import whisper dependencies
         import whisper as whisper_module
         from whisper.utils import get_writer
+        import sys
+        import io
+        import re
 
-        # Start background progress simulator
-        stop_progress = threading.Event()
+        # Mechanism to capture Whisper's tqdm progress from stderr
+        class ProgressRedirector(io.TextIOBase):
+            def __init__(self, callback, original_stderr):
+                self.callback = callback
+                self.original_stderr = original_stderr
+                self.last_percent = -1
 
-        def progress_simulator():
-            for i in range(0, 101, 10):
-                if stop_progress.is_set():
-                    break
-                # Check for cancellation within simulator too
-                if cancel_check and cancel_check():
-                    break
-                _log_msg(f"Progress: {i}%")
-                time.sleep(2)
+            def write(self, s):
+                self.original_stderr.write(s)
+                # tqdm format: 30%|███...
+                match = re.search(r'(\d+)%\|', s)
+                if match:
+                    percent = int(match.group(1))
+                    if percent > self.last_percent:
+                        self.last_percent = percent
+                        self.callback(f"Progress: {percent}%")
+                return len(s)
 
-        progress_thread = threading.Thread(target=progress_simulator, daemon=True)
-        progress_thread.start()
+        # Save original stderr
+        original_stderr = sys.stderr
+        sys.stderr = ProgressRedirector(_log_msg, original_stderr)
 
         try:
             # Check for cancellation before starting long task
@@ -160,12 +169,13 @@ class TranscribeWhisper:
                 raise Exception("Cancelled by user")
 
             # Transcribe with word-level timestamps
+            # verbose=True ensures tqdm progress is sent to stderr
             result = self.model.transcribe(
                 str(video_path),
                 language=language,
                 task=task,
                 word_timestamps=True,
-                verbose=False,
+                verbose=True, 
                 fp16=(self.device == "cuda")
             )
             
@@ -173,8 +183,8 @@ class TranscribeWhisper:
             if cancel_check and cancel_check():
                 raise Exception("Cancelled by user")
         finally:
-            stop_progress.set()
-            progress_thread.join()
+            # Restore stderr
+            sys.stderr = original_stderr
             
             # If we were cancelled, don't report 100%
             if not (cancel_check and cancel_check()):
@@ -223,6 +233,18 @@ class TranscribeWhisper:
                 "duration": result.get("duration"),
                 "words": word_data
             }, f, indent=2, ensure_ascii=False)
+
+    def release_model(self) -> None:
+        """Free GPU memory by deleting the model and clearing cache."""
+        if self.model is not None:
+            del self.model
+            self.model = None
+            
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+            print("\033[91mReleased Whisper model and cleared CUDA cache\033[0m")
 
     @staticmethod
     def get_available_models() -> list:

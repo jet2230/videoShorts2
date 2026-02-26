@@ -470,6 +470,9 @@ Video Path: {video_info['video_path']}
             cancel_check=cancel_check
         )
 
+        # Free GPU resources for subsequent AI tasks (like theme generation)
+        transcriber.release_model()
+
         return srt_path
 
     def generate_themes(self, video_info: Dict[str, str], ai_generator=None, model_size='base', language=None, progress_callback=None, cancel_check=None) -> None:

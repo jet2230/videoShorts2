@@ -91,65 +91,118 @@ class VideoProcessor:
         # ALWAYS use a temporary file for the first pass result to ensure Step 3 
         # (SubtitleRenderer) reads the frames with effects/B-roll already applied.
         temp_dir_for_cleanup = tempfile.mkdtemp()
+        
+        # --- NEW TWO-PASS STRATEGY TO PREVENT OOM ---
+        # If we are seeking deep into a large file, FFmpeg often hits OOM if complex filters are attached.
+        # We first extract a clean clip of JUST the portion we need.
+        # We use re-encoding with 'ultrafast' to ensure the clip is ACCURATELY trimmed at the start/end,
+        # which is critical for subtitle sync in Pass 2.
+        clean_clip = os.path.join(temp_dir_for_cleanup, 'source_clip.mp4')
+        log(f"Pass 0: Extracting source clip ({start_time} to {end_time})")
+        
+        extract_cmd = ['ffmpeg', '-nostdin', '-y']
+        if start_time != '0':
+            # Use input seeking for speed
+            extract_cmd.extend(['-ss', str(to_sec(start_time))])
+        if end_time:
+            dur = to_sec(end_time) - to_sec(start_time)
+            if dur > 0:
+                extract_cmd.extend(['-t', str(dur)])
+        
+        # Accurate extraction with re-encoding (Fast preset for speed)
+        # CRITICAL: Scale to 1080p HERE to reduce memory usage in subsequent passes
+        extract_cmd.extend([
+            '-i', str(self.video_path.absolute()),
+            '-vf', 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(iw-ow)/2:(ih-oh)/2',
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18',
+            '-c:a', 'aac', '-b:a', '192k',
+            '-threads', '4',
+            clean_clip
+        ])
+        
+        try:
+            log(f"Starting Pass 0 accurately...")
+            # Use _run_with_cancel for Pass 0 to get progress and handle cancellation
+            # We give Pass 0 a 10% weight of the total progress
+            self._run_with_cancel(extract_cmd, cancel_flag, log_callback, progress_offset=0, progress_scale=0.1, stage_name="Preparing Source Clip")
+            source_for_effects = clean_clip
+            # When using the clean clip, the internal time 't' starts at 0
+            # relative to the clip, which is exactly what we want for filters.
+            internal_start = 0
+        except Exception as e:
+            log(f"Fast extraction failed, falling back to direct seek: {e}")
+            source_for_effects = str(self.video_path.absolute())
+            internal_start = to_sec(start_time)
+
         intermediate_output = os.path.join(temp_dir_for_cleanup, 'intermediate.mp4')
         
         has_face_tracking = bool(global_effects.get('faceTracking'))
         reburn_subs = settings.get('subtitles', {}).get('reburn', True)
+        
+        # START BUILDING THE SINGLE-PASS COMMAND
         cmd = ['ffmpeg', '-nostdin', '-y']
         
-        # Use input seeking for the main trim to ensure filter 't' starts at 0 for the clip
-        # This makes B-roll markers and effects (which are 0-based from the UI) sync perfectly.
-        if start_time != '0':
-            cmd.extend(['-ss', str(to_sec(start_time))])
-        if end_time:
+        # If Pass 0 failed and we fell back to the original file, we MUST seek/trim here.
+        if internal_start != 0:
+            # Use input seeking for speed and memory efficiency
+            cmd.extend(['-ss', str(internal_start)])
+        
+        # Main input (0:v and 0:a)
+        cmd.extend(['-i', source_for_effects])
+        
+        # If Pass 0 failed, we also need to limit the duration of this input
+        if source_for_effects != clean_clip and end_time:
             dur = to_sec(end_time) - to_sec(start_time)
             if dur > 0:
                 cmd.extend(['-t', str(dur)])
         
-        cmd.extend(['-i', str(self.video_path.absolute())])
-        
+        # Input index for subsequent inputs
         input_index = 1
         
         # Add additional inputs for images
         image_inputs = []
-        for img_data in image_settings:
-            img_path = Path('media') / img_data['name']
+        for img in image_settings:
+            img_path = Path('media') / img['name']
+            if not img_path.exists(): img_path = Path(img['name'])
+            
             if img_path.exists():
-                cmd.extend(['-i', str(img_path.absolute())])
-                img_data['input_index'] = input_index
-                image_inputs.append(img_data)
+                # Loop image for duration
+                cmd.extend(['-loop', '1', '-i', str(img_path.absolute())])
+                image_inputs.append({
+                    **img,
+                    'input_index': input_index
+                })
                 input_index += 1
-        
+            else:
+                log(f"WARNING: Image {img['name']} not found.")
+
         # Add additional inputs for B-roll
         broll_inputs = []
         for marker in broll_markers:
-            broll_path = Path('media') / marker['name']
-            if broll_path.exists():
-                # Optimize B-roll input: only decode the portion we need
-                # Note: marker['start_time'] is where it starts in the MAIN video.
-                # If the B-roll itself has an offset, we'd use that, but for now 
-                # we just limit the duration to avoid over-buffering.
-                # Actually, B-roll clips in this project usually start from their own 0:00
-                # but are placed at 'start_time' in the main timeline.
-                
-                # To be safe, we can limit the duration of the input read
-                dur = to_sec(marker['end_time']) - to_sec(marker['start_time'])
-                if dur > 0:
-                    cmd.extend(['-t', str(dur + 0.5)]) # Add small buffer
-                
-                cmd.extend(['-i', str(broll_path.absolute())])
-                marker['input_index'] = input_index
-                broll_inputs.append(marker)
+            br_path = Path('media') / marker['name']
+            if not br_path.exists(): br_path = Path(marker['name'])
+            
+            if br_path.exists():
+                # Stream loop for B-roll files
+                cmd.extend(['-stream_loop', '-1', '-i', str(br_path.absolute())])
+                broll_inputs.append({
+                    **marker,
+                    'input_index': input_index
+                })
                 input_index += 1
-        
+            else:
+                log(f"WARNING: B-roll {marker['name']} not found.")
+
         # Add additional input for custom audio
         custom_audio_index = None
         if audio_settings.get('file'):
             audio_path = Path('media') / audio_settings['file']
             if audio_path.exists():
                 # Optimize audio input: only read the required duration
-                if start_time != '0':
-                    cmd.extend(['-ss', str(to_sec(start_time))])
+                # Use same seek logic as main video for sync
+                if internal_start != 0:
+                    cmd.extend(['-ss', str(internal_start)])
+                
                 if end_time:
                     dur = to_sec(end_time) - to_sec(start_time)
                     if dur > 0:
@@ -201,7 +254,8 @@ class VideoProcessor:
         # Force vertical 1080x1920 output as the base for all effects
         vf_filters.append(f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(iw-ow)/2:(ih-oh)/2")
         
-        vf_filters.append(f"eq=contrast='{c_expr_global}':brightness='{b_expr_global}':saturation={s_ui}:eval=frame")
+        # Use eval=init for better performance since these are global constants
+        vf_filters.append(f"eq=contrast='{c_expr_global}':brightness='{b_expr_global}':saturation={s_ui}:eval=init")
 
         # Apply each active timeline effect
         for marker in effect_markers:
@@ -496,17 +550,27 @@ class VideoProcessor:
 
         cmd.extend([
             '-c:v', 'libx264', '-preset', preset, '-crf', crf,
-            '-pix_fmt', 'yuv420p', '-profile:v', 'baseline', '-level', '3.0',
+            '-pix_fmt', 'yuv420p',
             '-r', '30',
             '-c:a', 'aac', '-b:a', '192k',
             '-async', '1',
             '-movflags', '+faststart',
-            str(Path(intermediate_output).absolute())
+            '-threads', '4'
         ])
+        
+        # ADDED: Force output duration to match the intended trim to prevent infinite loops 
+        # with -stream_loop or -loop inputs.
+        if end_time:
+            dur = to_sec(end_time) - to_sec(start_time)
+            if dur > 0:
+                cmd.extend(['-t', str(dur)])
+        
+        cmd.append(str(Path(intermediate_output).absolute()))
 
         log(f"Running FFmpeg command: {' '.join(cmd)}")
         log(f"Running single-pass effects processing...")
-        # Split progress across all passes
+        # Split progress across all passes (Pass 0 took 10%)
+        # The remaining 90% is shared by subsequent passes
         has_face_tracking = bool(global_effects.get('faceTracking'))
         reburn_subs = settings.get('subtitles', {}).get('reburn', True)
         
@@ -514,8 +578,8 @@ class VideoProcessor:
         if has_face_tracking: pass_count += 1
         if reburn_subs: pass_count += 1
         
-        p_scale = 1.0 / pass_count
-        current_offset = 0
+        p_scale = 0.9 / pass_count
+        current_offset = 10.0
         
         # Use a unique temp file for Pass 1 to avoid 'Output same as Input' errors
         # if output_path is accidentally pointing to the source folder
@@ -668,10 +732,12 @@ class VideoProcessor:
             sel.unregister(process.stderr)
             sel.close()
 
-        stdout, stderr = process.communicate()
+        stdout, stderr_remainder = process.communicate()
         if process.returncode != 0:
-            # Note: stderr is already partially read if we were tracking progress
-            err_msg = stderr if stderr else "Process ended abruptly. Check logs for details."
+            # Note: process.communicate()'s stderr will be empty if we've read from the pipe
+            # So we rely on our accumulated buffer + any remainder
+            full_stderr = (stderr_buffer + (stderr_remainder if stderr_remainder else "")).strip()
+            err_msg = full_stderr if full_stderr else "Process ended abruptly. Check logs for details."
             if log_callback:
                 log_callback(f"FFmpeg Error: {err_msg}")
             raise subprocess.CalledProcessError(process.returncode, cmd, err_msg)
@@ -835,10 +901,11 @@ class VideoProcessor:
             '-i', '-', # Stdin
             '-i', input_path, # For audio
             '-c:v', 'libx264', '-preset', preset, '-crf', crf,
-            '-pix_fmt', 'yuv420p', '-profile:v', 'baseline', '-level', '3.0',
+            '-pix_fmt', 'yuv420p',
             '-c:a', 'aac', '-b:a', '192k',
             '-map', '0:v:0', '-map', '1:a:0?',
             '-movflags', '+faststart',
+            '-threads', '4',
             output_path
         ]
         

@@ -381,20 +381,21 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
     # 1. Load high-accuracy word data first
     with open(word_timestamps_path, 'r') as f: all_words = json.load(f).get('words', [])
     
-    # CRITICAL: Filter words to ONLY the ones within our theme range (+ small buffer)
-    # This prevents 'unused' words from appearing at the start of the first segment
-    words = [w for w in all_words if (start_time - 0.1) <= w['start'] <= (end_time + 0.5)]
+    # CRITICAL: Filter words to ONLY the ones within our theme range (+ buffer)
+    # Use a larger 0.5s look-back buffer to ensure we catch the first segment's words
+    words = [w for w in all_words if (start_time - 0.5) <= w['start'] <= (end_time + 0.5)]
     
-    # 2. Try to load SRT, but treat it as a secondary reference
+    # 2. Load SRT as the primary source for segment boundaries
+    # This preserves capitalization and specific word groupings from the original transcription
     subtitles = _parse_srt(subtitle_srt_path)
     
-    # CRITICAL FIX: If theme SRT is known to be bad or missing, 
-    # generate high-accuracy segments directly from word timestamps
-    is_theme_srt = 'theme_' in str(subtitle_srt_path)
-    if not subtitles or is_theme_srt:
-        logger.info("Using high-accuracy Dynamic Word Grouping instead of unreliable SRT file.")
+    # Check if we should use dynamic grouping (only if SRT is missing or empty)
+    if not subtitles:
+        logger.info("SRT file missing or empty. Falling back to dynamic word grouping.")
         subtitles = generate_dynamic_subtitles(words)
-        srt_mode = 'absolute' # Dynamic subs are always absolute to match words
+        srt_mode = 'absolute'
+    else:
+        logger.info(f"Using {len(subtitles)} segments from SRT file.")
 
     # 3. Load manual edits
     edits = {}
@@ -405,53 +406,70 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
     if edit_file.exists():
         with open(edit_file, 'r', encoding='utf-8') as f: edits = json.load(f)
 
-    # CRITICAL: Apply manual edits to the words data before rendering
-    # If a word's time overlaps with an edited segment, we will group it using the edited text
+    # Apply manual edits to the segments
     if edits:
-        logger.info(f"Injecting {len(edits)} manual corrections into word-stream...")
+        logger.info(f"Applying {len(edits)} manual edits to SRT segments...")
+        
+        # We'll build a final list of segments by matching edits to SRT blocks
+        # or replacing SRT blocks with edited ones.
         final_segments = []
-        
-        # Sort edits by start time
-        sorted_edit_keys = sorted(edits.keys(), key=lambda k: parse_srt_time(k.split('_')[0]))
-        
         theme_meta_start = settings.get('theme_meta_start', 0)
         
-        for key in sorted_edit_keys:
-            e_start, e_end = map(parse_srt_time, key.split('_'))
-            
-            # If edits are relative (start near 0 but theme starts much later), translate to absolute
-            # Prefer using theme_meta_start if provided for highest accuracy
-            sync_base = theme_meta_start if theme_meta_start > 0 else start_time
-            
-            if e_start < sync_base - 1.0:
-                e_start += sync_base
-                e_end += sync_base
+        # Use a set to track which edited keys we've handled
+        applied_edit_keys = set()
+        
+        for sub in subtitles:
+            # Check if this SRT segment matches an edit
+            # Edits are keyed by "start_end"
+            match_found = False
+            for edit_key, edited_text in edits.items():
+                e_start, e_end = map(parse_srt_time, edit_key.split('_'))
                 
-            # Filter words that belong to this edit block
-            # We use a slightly wider window to catch all relevant words
-            block_words = [w for w in words if (e_start - 0.2) <= w['start'] <= (e_end + 0.2)]
+                # Align edit times with SRT times if needed (relative vs absolute)
+                sync_base = theme_meta_start if theme_meta_start > 0 else start_time
+                if e_start < sync_base - 1.0:
+                    e_start_abs = e_start + sync_base
+                    e_end_abs = e_end + sync_base
+                else:
+                    e_start_abs = e_start
+                    e_end_abs = e_end
+                
+                # If SRT segment overlaps significantly with this edit, use the edit
+                overlap_start = max(sub['start'], e_start_abs)
+                overlap_end = min(sub['end'], e_end_abs)
+                if overlap_end > overlap_start + 0.1: # At least 100ms overlap
+                    final_segments.append({
+                        'start': sub['start'],
+                        'end': sub['end'],
+                        'text': edited_text,
+                        'is_edited': True
+                    })
+                    applied_edit_keys.add(edit_key)
+                    match_found = True
+                    break
             
-            if block_words:
+            if not match_found:
+                final_segments.append(sub)
+        
+        # Add any edits that didn't match existing SRT segments (new blocks)
+        for edit_key, edited_text in edits.items():
+            if edit_key not in applied_edit_keys:
+                e_start, e_end = map(parse_srt_time, edit_key.split('_'))
+                sync_base = theme_meta_start if theme_meta_start > 0 else start_time
+                if e_start < sync_base - 1.0:
+                    e_start += sync_base
+                    e_end += sync_base
+                
                 final_segments.append({
                     'start': e_start,
                     'end': e_end,
-                    'text': edits[key],
+                    'text': edited_text,
                     'is_edited': True
                 })
-                # Mark these words as handled so we don't double-group them later
-                for w in block_words: w['_handled'] = True
         
-        # Add remaining unedited words as segments
-        remaining_words = [w for w in words if not w.get('_handled')]
-        if remaining_words:
-            unhandled_segments = generate_dynamic_subtitles(remaining_words)
-            final_segments.extend(unhandled_segments)
-            
         # Re-sort everything by start time
         subtitles = sorted(final_segments, key=lambda s: s['start'])
-    else:
-        # No edits, just use dynamic grouping
-        subtitles = generate_dynamic_subtitles(words)
+    
 
     renderer = UniversalSubtitleRenderer(video_path, words, settings)
     
@@ -482,13 +500,13 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
         '-i', str(Path(video_path).absolute()),
         '-t', str(end_time - start_time), # Limit audio input length
         '-map', '0:v:0', '-map', '1:a:0?', '-c:v', 'libx264', '-preset', preset, '-crf', crf,
-        '-pix_fmt', 'yuv420p', '-profile:v', 'baseline', '-level', '3.0',
+        '-pix_fmt', 'yuv420p',
         '-c:a', 'aac', '-b:a', '128k', 
         '-t', str(end_time - start_time), # FINAL duration limit for output
         str(tmp_out)
     ]
     
-    proc = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    proc = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
     total_f = int((end_time - start_time) * 30)
     
     # Determine the reference time for SRT lookup
@@ -521,10 +539,14 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
         except: break
         
         if progress_callback and f_idx % 30 == 0:
-            progress_callback((f_idx / total_f) * 100, "rendering", f"Frame {f_idx}")
+            progress_callback((f_idx / total_f) * 100, "rendering", f"Frame {f_idx}/{total_f}")
 
     proc.stdin.close()
-    proc.wait()
+    stdout, stderr = proc.communicate()
+    if proc.returncode != 0:
+        err_msg = stderr.decode('utf-8', errors='replace') if stderr else "No error message"
+        logger.error(f"FFmpeg rendering failed: {err_msg}")
+        raise Exception(f"Subtitle rendering failed: {err_msg}")
     
     out_p = Path(output_path).absolute()
     if os.path.exists(out_p): os.remove(out_p)
@@ -536,14 +558,44 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
 def _parse_srt(path):
     import re
     if not os.path.exists(path): return []
-    with open(path, 'r', encoding='utf-8', errors='ignore') as f: content = f.read()
-    pattern = r'(\d+)\s*\r?\n(\d{2}:\d{2}:\d{2}[.,]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[.,]\d{3})\s*\r?\n(.*?)(?=\r?\n\r?\n|\r?\n\s*\d+\s*\r?\n|\Z)'
+    # Use utf-8-sig to automatically handle BOM if present, then strip it explicitly to be sure
+    try:
+        with open(path, 'r', encoding='utf-8-sig', errors='ignore') as f: content = f.read()
+    except:
+        with open(path, 'r', encoding='utf-8', errors='ignore') as f: content = f.read()
+    
+    # Strip BOM and normalize line endings
+    content = content.lstrip('\ufeff').replace('\r\n', '\n').strip()
+    
+    # Split by double newline to get potential SRT blocks
+    blocks = re.split(r'\n\s*\n', content)
     subs = []
-    for m in re.finditer(pattern, content, re.DOTALL):
-        def p(t):
-            h, m, s = map(float, t.replace(',', '.').split(':'))
-            return h * 3600 + m * 60 + s
-        subs.append({'start': p(m.group(2)), 'end': p(m.group(3)), 'text': m.group(4).strip()})
+    
+    for block in blocks:
+        lines = block.strip().split('\n')
+        if not lines: continue
+        
+        # Look for the timing line (e.g., 00:00:01,000 --> 00:00:02,000)
+        for i, line in enumerate(lines):
+            time_match = re.search(r'(\d{2}:\d{2}:\d{2}[.,]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[.,]\d{3})', line)
+            if time_match:
+                def p(t):
+                    h, m, s = map(float, t.replace(',', '.').split(':'))
+                    return h * 3600 + m * 60 + s
+                
+                start = p(time_match.group(1))
+                end = p(time_match.group(2))
+                
+                # Everything after the timing line is the subtitle text
+                text = '\n'.join(lines[i+1:]).strip()
+                
+                subs.append({
+                    'start': start,
+                    'end': end,
+                    'text': text
+                })
+                break # Move to next block
+                
     return subs
 
 def parse_srt_time(ts):
