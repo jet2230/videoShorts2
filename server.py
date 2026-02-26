@@ -3248,17 +3248,29 @@ def run_edit_task(edit_id: str, input_video: str, output_video: str, edit_settin
                 edit_render_settings = edit_settings.get('subtitles', {}).copy()
                 edit_render_settings['folder_number'] = f_num
                 edit_render_settings['theme_number'] = t_num
-                
+
                 # Metadata start for word lookup
                 adjust_settings = get_theme_adjust_settings(folder_path, t_num)
                 t_match = re.search(r'(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)\s*-\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)', adjust_settings.get('time_range', ''))
                 theme_meta_start = to_sec(t_match.group(1).replace(',', '.')) if t_match else 0
                 log_message(f"DEBUG: theme_meta_start from adjust.md={theme_meta_start}")
-                
+
                 # The renderer uses theme_meta_start as the offset for word lookup *relative to the SRT*.
                 # This must match the original theme start time because the SRT is relative to that.
                 edit_render_settings['theme_meta_start'] = theme_meta_start
                 log_message(f"DEBUG: Final theme_meta_start for renderer={edit_render_settings['theme_meta_start']}")
+
+                # CRITICAL: Merge adjust_settings into edit_render_settings so saved font, colors, etc. are applied
+                # These fields always come from adjust.md (saved settings):
+                always_from_adjust = ['fontName', 'fontSize', 'primaryColor', 'bgColor', 'bgOpacity',
+                                      'subtitle_bold', 'subtitle_position', 'subtitle_left', 'subtitle_top',
+                                      'subtitle_h_align', 'subtitle_v_align',
+                                      'title_font_size', 'title_bg_type', 'title_text_color', 'title_font_weight',
+                                      'title_outline_width', 'title_outline_color', 'title_all_caps', 'title_top',
+                                      'show_title', 'title']
+                for key in always_from_adjust:
+                    if key in adjust_settings and adjust_settings[key] is not None:
+                        edit_render_settings[key] = adjust_settings[key]
 
                 if 'h_align' in edit_render_settings: edit_render_settings['subtitle_h_align'] = edit_render_settings['h_align']
                 if 'v_align' in edit_render_settings: edit_render_settings['subtitle_v_align'] = edit_render_settings['v_align']
