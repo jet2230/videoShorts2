@@ -2086,6 +2086,7 @@
                                                 <option value="orange-fire">Orange Fire</option>
                                                 <option value="white-clean">White Clean</option>
                                                 <option value="purple-vibe">Purple Vibe</option>
+                                                <option value="blue-ocean">Blue Ocean</option>
                                             </select>
                                         </div>
 
@@ -2234,6 +2235,20 @@
                         cropArea.style.width = `${Math.min(100, cropWidthPercent)}%`;
                     }
                 }
+
+                // IMPORTANT: Resize the canvas to match the new wrapper dimensions
+                // Otherwise centering will be calculated on old/wrong canvas size
+                const canvas = wrapper.querySelector('canvas');
+                if (canvas) {
+                    const rect = wrapper.getBoundingClientRect();
+                    canvas.width = rect.width;
+                    canvas.height = rect.height;
+                    
+                    // Trigger a re-render if the renderer exists
+                    if (video.id === 'preview-video' && typeof updateSubtitlePreview === 'function') {
+                        updateSubtitlePreview();
+                    }
+                }
             }
         }
 
@@ -2295,18 +2310,23 @@
                 return;
             }
             
-            notification.textContent = message;
+            // Unify with Toast-like inner HTML for close button
+            notification.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; width: 100%;">
+                    <div style="text-align: center; flex-grow: 1;">${message}</div>
+                    <button onclick="this.parentElement.parentElement.classList.remove('show')" style="background: none; border: none; color: white; cursor: pointer; font-size: 18px; font-weight: bold; line-height: 1; padding: 0 4px; opacity: 0.7;">&times;</button>
+                </div>
+            `;
             notification.className = `notification ${type} show`;
 
-            // For error notifications, keep visible longer or add click to dismiss
-            if (type === 'error') {
-                notification.style.cursor = 'pointer';
-                notification.onclick = () => notification.classList.remove('show');
-            } else {
-                // Hide after 3 seconds (or custom timeout) for non-error notifications
+            // Auto-hide only for non-errors
+            if (type !== 'error') {
                 setTimeout(() => {
                     notification.classList.remove('show');
-                }, customTimeout || 3000);
+                }, customTimeout || 4000);
+            } else {
+                // For errors, ensure it doesn't close on click unless X is clicked
+                notification.onclick = null; 
             }
         };
 
@@ -2613,7 +2633,12 @@
                 else if (this.settings.subtitle_position === 'middle') startY = (canvas.height - totalHeight) / 2;
                 else if (this.settings.subtitle_position === 'custom' && this.settings.subtitle_top !== null) {
                     startY = ((this.settings.subtitle_top / 1920) * canvas.height) - (totalHeight / 2);
-                } else startY = canvas.height - (100 * scale) - totalHeight;
+                } else {
+                    // Default to bottom or follow verticalAlign snap
+                    if (verticalAlign === 'top') startY = 100 * scale;
+                    else if (verticalAlign === 'middle') startY = (canvas.height - totalHeight) / 2;
+                    else startY = canvas.height - (100 * scale) - totalHeight;
+                }
 
                 ctx.textBaseline = 'middle';
                 
@@ -2627,18 +2652,21 @@
                         if (i < line.length - 1) lineTextWidth += spaceWidth;
                     }
 
-                    let xCenter;
-                    if (effectType === 'flash' || effectType === 'dynamic_box') xCenter = canvas.width / 2;
-                    else if (this.settings.subtitle_position === 'custom' && this.settings.subtitle_left !== null) {
+                    let xCenter = canvas.width / 2;
+                    if (this.settings.subtitle_position === 'custom' && this.settings.subtitle_left !== null) {
                         xCenter = (this.settings.subtitle_left / 1080) * canvas.width;
-                    } else xCenter = canvas.width / 2;
+                    }
                     
                     let xPosStart;
-                    if (this.settings.subtitle_position === 'custom' && effectType !== 'flash' && effectType !== 'dynamic_box') {
-                        if (this.settings.subtitle_h_align === 'left') xPosStart = xCenter;
-                        else if (this.settings.subtitle_h_align === 'right') xPosStart = xCenter - lineTextWidth;
+                    if (effectType === 'flash' || effectType === 'dynamic_box') {
+                        xPosStart = (canvas.width / 2) - (lineTextWidth / 2);
+                    } else {
+                        // Use the h_align setting regardless of custom position
+                        // FIX: Left means the text ENDS at the anchor (moved left), Right means it STARTS at the anchor (moved right)
+                        if (this.settings.subtitle_h_align === 'left') xPosStart = xCenter - lineTextWidth;
+                        else if (this.settings.subtitle_h_align === 'right') xPosStart = xCenter;
                         else xPosStart = xCenter - (lineTextWidth / 2);
-                    } else xPosStart = xCenter - (lineTextWidth / 2);
+                    }
 
                     // Pass 1: Background box
                     if (effectType !== 'dynamic_box' && effectType !== 'flash') {
@@ -5583,6 +5611,13 @@
             btn.addEventListener('click', async () => {
                 const align = btn.dataset.align;
                 horizontalAlign = align;
+                
+                // Clear manual X coordinate to allow snapping to middle/edges
+                if (customPosition) {
+                    customPosition.centerX = null;
+                    customPosition.left = null;
+                }
+                
                 updateAlignButtons(align, verticalAlign);
                 updateSubtitlePreview();
                 await saveGlobalPosition(globalPosition);
@@ -5594,6 +5629,12 @@
             btn.addEventListener('click', async () => {
                 const valign = btn.dataset.valign;
                 verticalAlign = valign;
+                
+                // Clear manual Y coordinate to allow snapping to Top/Middle/Bottom
+                if (customPosition) {
+                    customPosition.top = null;
+                }
+                
                 updateAlignButtons(horizontalAlign, valign);
                 updateSubtitlePreview();
                 await saveGlobalPosition(globalPosition);
@@ -5624,7 +5665,7 @@
 
             // Update horizontal buttons
             document.querySelectorAll('.align-btn[data-align]').forEach(btn => {
-                if (btn.dataset.align === hAlign) {
+                if (hAlign && btn.dataset.align === hAlign) {
                     btn.classList.add('active');
                 } else {
                     btn.classList.remove('active');
@@ -5633,7 +5674,7 @@
 
             // Update vertical buttons
             document.querySelectorAll('.align-btn[data-valign]').forEach(btn => {
-                if (btn.dataset.valign === vAlign) {
+                if (vAlign && btn.dataset.valign === vAlign) {
                     btn.classList.add('active');
                 } else {
                     btn.classList.remove('active');
@@ -5977,40 +6018,55 @@
             // Create toast element
             const toast = document.createElement('div');
             toast.className = 'karaoke-toast';
-            toast.textContent = message;
-
-            // Style based on type
+            
+            // Add icon and message
             const styles = {
                 info: { background: '#2196F3', icon: 'ℹ️' },
                 success: { background: '#4CAF50', icon: '✅' },
                 error: { background: '#f44336', icon: '❌' }
             };
-
             const style = styles[type] || styles.info;
+
+            toast.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
+                    <div style="display: flex; gap: 8px;">
+                        <span>${style.icon}</span>
+                        <span>${message}</span>
+                    </div>
+                    <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; color: white; cursor: pointer; font-size: 18px; font-weight: bold; line-height: 1; padding: 0 4px; opacity: 0.7;">&times;</button>
+                </div>
+            `;
+
             toast.style.cssText = `
                 position: fixed;
                 top: 20px;
                 right: 20px;
                 background: ${style.background};
                 color: white;
-                padding: 16px 24px;
+                padding: 16px 20px;
                 border-radius: 8px;
                 box-shadow: 0 4px 12px rgba(0,0,0,0.3);
                 z-index: 10000;
                 font-size: 14px;
                 font-weight: 500;
                 animation: slideIn 0.3s ease-out;
-                max-width: 400px;
+                max-width: 450px;
+                word-break: break-word;
             `;
 
             // Add to page
             document.body.appendChild(toast);
 
-            // Auto-remove after 3 seconds
-            setTimeout(() => {
-                toast.style.animation = 'slideOut 0.3s ease-out';
-                setTimeout(() => toast.remove(), 300);
-            }, 3000);
+            // Auto-remove after 3 seconds ONLY for success/info. 
+            // Errors stay until clicked.
+            if (type !== 'error') {
+                setTimeout(() => {
+                    if (toast.parentElement) {
+                        toast.style.animation = 'slideOut 0.3s ease-out';
+                        setTimeout(() => toast.remove(), 300);
+                    }
+                }, 4000);
+            }
         }
 
         // Add CSS for toast animations
@@ -6275,7 +6331,8 @@
             'pink-soft': { textColor: '#ff69b4', glowColor: '#ff1493', glowBlur: '15', fontWeight: '500' },
             'orange-fire': { textColor: '#ff8c00', glowColor: '#ff4500', glowBlur: '18', fontWeight: 'bold' },
             'white-clean': { textColor: '#ffffff', glowColor: '#ffffff', glowBlur: '5', fontWeight: 'normal' },
-            'purple-vibe': { textColor: '#da70d6', glowColor: '#9932cc', glowBlur: '16', fontWeight: 'bold' }
+            'purple-vibe': { textColor: '#da70d6', glowColor: '#9932cc', glowBlur: '16', fontWeight: 'bold' },
+            'blue-ocean': { textColor: '#3366ff', glowColor: '#0044ff', glowBlur: '15', fontWeight: 'bold' }
         };
 
         // Apply preset style
@@ -6445,6 +6502,9 @@
 
             isDraggingSubtitle = true;
             hasManualPosition = true; // Mark as having manual position
+            
+            // UNSELECT alignment boxes when dragging starts
+            updateAlignButtons(null, null);
 
             subtitleDragStart = { x: e.clientX, y: e.clientY };
 

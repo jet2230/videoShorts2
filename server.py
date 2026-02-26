@@ -2739,6 +2739,16 @@ def process_video_edit():
                 # (the one in the folder root) so we don't get double subtitles.
                 reburn_enabled = edit_settings.get('subtitles', {}).get('reburn', True)
                 
+                # CRITICAL: If B-roll or Images are added, we MUST reburn subtitles
+                # otherwise the B-roll will cover the original subtitles.
+                has_overlays = bool(edit_settings.get('broll_markers')) or bool(edit_settings.get('images'))
+                if has_overlays and not reburn_enabled:
+                    app_logger.info("Automatically enabling re-burn because overlays (B-roll/Images) are present.")
+                    reburn_enabled = True
+                    # Update the settings dict so other functions see the change
+                    if 'subtitles' not in edit_settings: edit_settings['subtitles'] = {}
+                    edit_settings['subtitles']['reburn'] = True
+                
                 # Get adjustments for this theme to get metadata timing
                 adjust_settings = get_theme_adjust_settings(folder, t_num)
                 
@@ -2761,12 +2771,12 @@ def process_video_edit():
                 is_theme_subtitled = 'theme_' in input_video.name and 'shorts' in str(input_video.parent)
                 is_manual_clean = 'clean_' in input_video.name
                 
-                if reburn_enabled and not (is_theme_subtitled or is_manual_clean):
-                    # Look for master video in root, excluding theme clips and previous edits
+                if reburn_enabled:
+                    # Switch to master if we are reburning, to ensure we use absolute metadata timestamps correctly
                     master_videos = [f for f in folder.glob('*.mp4') if 'theme_' not in f.name and 'edited_' not in f.name and 'clean_' not in f.name]
                     if master_videos:
                         input_video = master_videos[0]
-                        app_logger.info(f"Using clean master video for re-burn: {input_video}")
+                        app_logger.info(f"Switching to clean master video for re-burn: {input_video}")
 
                 if 'subtitles' not in edit_settings:
                     edit_settings['subtitles'] = {}
@@ -2799,8 +2809,8 @@ def process_video_edit():
                 user_start_sec = creator.parse_timestamp_to_seconds(user_start_str)
                 user_end_sec = creator.parse_timestamp_to_seconds(user_end_str) if user_end_str else 0
                 
-                # ALWAYS use theme metadata as the base if available
-                if theme_meta_start > 0:
+                # ALWAYS use theme metadata as the base if available AND we are reburning (using master)
+                if theme_meta_start > 0 and reburn_enabled:
                     if 'trim' not in edit_settings: edit_settings['trim'] = {}
                     
                     # If user_start_sec is close to theme_meta_start or very large, 
@@ -2824,7 +2834,24 @@ def process_video_edit():
                     edit_settings['trim']['end'] = format_srt_time(new_end).replace(',', '.')
                     app_logger.info(f"Final Enforced Theme Trim: {edit_settings['trim']['start']} - {edit_settings['trim']['end']}")
                 else:
-                    app_logger.info(f"Using provided trim as-is (no theme metadata): {user_start_str} - {user_end_str}")
+                    # If reburn is False, we are editing the theme clip directly.
+                    # UI might send absolute master-video times; we must translate them to 0-based relative.
+                    if theme_meta_start > 0 and user_start_sec >= theme_meta_start - 60:
+                        rel_start = max(0, user_start_sec - theme_meta_start)
+                        # Ensure we don't end up with invalid negative or zero durations
+                        if user_end_sec > user_start_sec:
+                            rel_end = user_end_sec - theme_meta_start
+                        else:
+                            rel_end = theme_meta_end - theme_meta_start
+                        
+                        edit_settings['trim']['start'] = format_srt_time(rel_start).replace(',', '.')
+                        edit_settings['trim']['end'] = format_srt_time(rel_end).replace(',', '.')
+                        app_logger.info(f"Translated absolute UI trim to relative for theme clip: {edit_settings['trim']['start']} - {edit_settings['trim']['end']}")
+                    else:
+                        app_logger.info(f"Using provided trim as-is (reburn={reburn_enabled}): {user_start_str} - {user_end_str}")
+                        if 'trim' not in edit_settings: edit_settings['trim'] = {}
+                        edit_settings['trim']['start'] = user_start_str
+                        edit_settings['trim']['end'] = user_end_str
 
                 # Also try to get title from themes.md or adjust.md
                 theme_title = ""
@@ -3074,6 +3101,10 @@ def run_edit_task(edit_id: str, input_video: str, output_video: str, edit_settin
             if os.path.exists(intermediate_video) and str(intermediate_video) != str(output_video):
                 if os.path.exists(output_video): os.remove(output_video)
                 shutil.move(intermediate_video, output_video)
+
+        # VALIDATION: Ensure output file is valid and not empty
+        if not os.path.exists(output_video) or os.path.getsize(output_video) < 1000:
+            raise Exception("Output video is missing or empty. FFmpeg may have failed due to invalid seek range.")
 
         with task_lock:
             edit_processes[edit_id]['status'] = 'completed'

@@ -88,13 +88,13 @@ class VideoProcessor:
             # Look up metadata...
             pass
         
-        intermediate_output = output_path
+        # ALWAYS use a temporary file for the first pass result to ensure Step 3 
+        # (SubtitleRenderer) reads the frames with effects/B-roll already applied.
         temp_dir_for_cleanup = tempfile.mkdtemp()
+        intermediate_output = os.path.join(temp_dir_for_cleanup, 'intermediate.mp4')
         
-        if has_face_tracking or reburn_subs:
-            intermediate_output = os.path.join(temp_dir_for_cleanup, 'intermediate.mp4')
-
-        # Build FFmpeg command
+        has_face_tracking = bool(global_effects.get('faceTracking'))
+        reburn_subs = settings.get('subtitles', {}).get('reburn', True)
         cmd = ['ffmpeg', '-nostdin', '-y']
         
         # Use input seeking for the main trim to ensure filter 't' starts at 0 for the clip
@@ -181,36 +181,6 @@ class VideoProcessor:
         # Force vertical 1080x1920 output as the base for all effects
         vf_filters.append(f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(iw-ow)/2:(ih-oh)/2")
         
-        # 0.5 Native Subtitle Burning (FAST PATH - used if no Canvas effects)
-        subs = settings.get('subtitles', {})
-        if subs.get('native_burn') and subs.get('srt_path'):
-            # Path escaping for FFmpeg (colons in paths are problematic)
-            srt_path = subs['srt_path'].replace('\\', '/').replace(':', '\\:')
-            
-            # Extract and convert styles for libass (BBGGRR format)
-            # Ensure hex colors are handled robustly
-            f_size = subs.get('fontSize', 80)
-            p_color_raw = subs.get('primaryColor', '#ffffff').lstrip('#')
-            if len(p_color_raw) == 6:
-                # Convert RRGGBB to BBGGRR for ASS
-                p_color = p_color_raw[4:6] + p_color_raw[2:4] + p_color_raw[0:2]
-            else:
-                p_color = "ffffff"
-            
-            # Use PlayResY=1920 to ensure font size matches our logical 1080x1920 space
-            vf_filters.append(f"subtitles='{srt_path}':force_style='FontSize={f_size},PlayResY=1920,PrimaryColour=&H00{p_color.upper()},OutlineColour=&H00000000,BorderStyle=3,Outline=1,Shadow=0,MarginV=100'")
-            
-        # 0.6 Native Title Rendering (FAST PATH)
-        # ONLY do this if we are in native_burn mode OR reburn is disabled
-        # otherwise Pass 2/3 (SubtitleRenderer) will handle it.
-        if subs.get('show_title') and subs.get('title') and (subs.get('native_burn') or not reburn_subs):
-            # CRITICAL: Escape colons and single quotes for FFmpeg drawtext filter
-            title_text = subs['title'].replace("'", "'\\\\\\''").replace(":", "\\:")
-            t_size = subs.get('title_font_size', 80)
-            t_top = subs.get('title_top', 150)
-            t_color = subs.get('title_text_color', '#00ff9d').replace('#', '0x')
-            vf_filters.append(f"drawtext=text='{title_text}':fontcolor={t_color}:fontsize={t_size}:x=(w-text_w)/2:y={t_top}:box=1:boxcolor=black@0.6:boxborderw=10")
-
         vf_filters.append(f"eq=contrast='{c_expr_global}':brightness='{b_expr_global}':saturation={s_ui}:eval=frame")
 
         # Apply each active timeline effect
@@ -451,10 +421,53 @@ class VideoProcessor:
             last_a = "[a_orig]"
 
         if filter_complex:
+            # Check if we should add final pass for titles/subtitles over all overlays
+            # We skip this if it's a theme clip and reburn is False to avoid double titles
+            is_theme_clip = "theme_" in str(self.video_path.name)
+            final_vf = []
+            
+            subs = settings.get('subtitles', {})
+            if subs.get('show_title') and subs.get('title') and (subs.get('native_burn') or not reburn_subs):
+                if not (is_theme_clip and not reburn_subs):
+                    title_text = subs['title'].replace("'", "'\\\\\\''").replace(":", "\\:")
+                    t_size = subs.get('title_font_size', 80)
+                    t_top = subs.get('title_top', 150)
+                    t_color = subs.get('title_text_color', '#00ff9d').replace('#', '0x')
+                    final_vf.append(f"drawtext=text='{title_text}':fontcolor={t_color}:fontsize={t_size}:x=(w-text_w)/2:y={t_top}:box=1:boxcolor=black@0.6:boxborderw=10")
+
+            if subs.get('native_burn') and subs.get('srt_path'):
+                if not (is_theme_clip and not reburn_subs):
+                    srt_path = subs['srt_path'].replace('\\', '/').replace(':', '\\:')
+                    f_size = subs.get('fontSize', 80)
+                    p_color_raw = subs.get('primaryColor', '#ffffff').lstrip('#')
+                    p_color = p_color_raw[4:6] + p_color_raw[2:4] + p_color_raw[0:2] if len(p_color_raw) == 6 else "ffffff"
+                    final_vf.append(f"subtitles='{srt_path}':force_style='FontSize={f_size},PlayResY=1920,PrimaryColour=&H00{p_color.upper()},OutlineColour=&H00000000,BorderStyle=3,Outline=1,Shadow=0,MarginV=100'")
+
+            if final_vf:
+                filter_complex.append(f"{last_v}" + ",".join(final_vf) + "[v_final]")
+                last_v = "[v_final]"
+
             cmd.extend(['-filter_complex', ";".join(filter_complex)])
             # Map the last result
             cmd.extend(['-map', f"{last_v}", '-map', last_a])
         elif vf_filters:
+            # Skip native burns here too for consistency
+            is_theme_clip = "theme_" in str(self.video_path.name)
+            subs = settings.get('subtitles', {})
+            if not (is_theme_clip and not reburn_subs):
+                if subs.get('show_title') and subs.get('title') and (subs.get('native_burn') or not reburn_subs):
+                    title_text = subs['title'].replace("'", "'\\\\\\''").replace(":", "\\:")
+                    t_size = subs.get('title_font_size', 80)
+                    t_top = subs.get('title_top', 150)
+                    t_color = subs.get('title_text_color', '#00ff9d').replace('#', '0x')
+                    vf_filters.append(f"drawtext=text='{title_text}':fontcolor={t_color}:fontsize={t_size}:x=(w-text_w)/2:y={t_top}:box=1:boxcolor=black@0.6:boxborderw=10")
+                if subs.get('native_burn') and subs.get('srt_path'):
+                    srt_path = subs['srt_path'].replace('\\', '/').replace(':', '\\:')
+                    f_size = subs.get('fontSize', 80)
+                    p_color_raw = subs.get('primaryColor', '#ffffff').lstrip('#')
+                    p_color = p_color_raw[4:6] + p_color_raw[2:4] + p_color_raw[0:2] if len(p_color_raw) == 6 else "ffffff"
+                    vf_filters.append(f"subtitles='{srt_path}':force_style='FontSize={f_size},PlayResY=1920,PrimaryColour=&H00{p_color.upper()},OutlineColour=&H00000000,BorderStyle=3,Outline=1,Shadow=0,MarginV=100'")
+            
             cmd.extend(['-vf', ",".join(vf_filters)])
 
         cmd.extend([
@@ -472,48 +485,34 @@ class VideoProcessor:
         has_face_tracking = bool(global_effects.get('faceTracking'))
         reburn_subs = settings.get('subtitles', {}).get('reburn', True)
         
-        # Check if we actually have any FFmpeg effects to run
-        # If reburn is enabled, we ALWAYS want to run Pass 1 to get a vertical trimmed source
-        has_ffmpeg_effects = bool(vf_filters or filter_complex or start_time != '0' or end_time or reburn_subs)
+        pass_count = 1
+        if has_face_tracking: pass_count += 1
+        if reburn_subs: pass_count += 1
         
-        if has_ffmpeg_effects:
-            pass_count = 1
-            if has_face_tracking: pass_count += 1
-            if reburn_subs: pass_count += 1
-            
-            p_scale = 1.0 / pass_count
-            current_offset = 0
-            
-            # Use a unique temp file for Pass 1 to avoid 'Output same as Input' errors
-            # if output_path is accidentally pointing to the source folder
-            pass1_temp = os.path.join(temp_dir_for_cleanup or tempfile.gettempdir(), f"pass1_{os.getpid()}.mp4")
-            
-            # Update command to use temp output
-            cmd[-1] = str(Path(pass1_temp).absolute())
-            
-            # Decide first pass stage name
-            pass1_msg = "Applying Edit Effects & Overlays"
-            if start_time != '0' or end_time:
-                pass1_msg = "Trimming & Applying Edit Effects"
+        p_scale = 1.0 / pass_count
+        current_offset = 0
+        
+        # Use a unique temp file for Pass 1 to avoid 'Output same as Input' errors
+        # if output_path is accidentally pointing to the source folder
+        pass1_temp = os.path.join(temp_dir_for_cleanup or tempfile.gettempdir(), f"pass1_{os.getpid()}.mp4")
+        
+        # Update command to use temp output
+        cmd[-1] = str(Path(pass1_temp).absolute())
+        
+        # Decide first pass stage name
+        pass1_msg = "Applying Edit Effects & Overlays"
+        if start_time != '0' or end_time:
+            pass1_msg = "Trimming & Applying Edit Effects"
 
-            self._run_with_cancel(cmd, cancel_flag, log_callback, progress_offset=current_offset, progress_scale=p_scale, stage_name=pass1_msg)
-            
-            # Move temp to intermediate_output
-            if os.path.exists(intermediate_output) and intermediate_output != pass1_temp:
-                os.remove(intermediate_output)
-            import shutil
-            shutil.move(pass1_temp, intermediate_output)
-            
-            current_offset += (100 * p_scale)
-        else:
-            log("No FFmpeg effects requested, skipping Pass 1.")
-            # Use original as intermediate
-            intermediate_output = str(self.video_path)
-            pass_count = 1
-            if has_face_tracking: pass_count += 1
-            if reburn_subs: pass_count += 1
-            p_scale = 1.0 / pass_count
-            current_offset = (100 * p_scale) # The 'skip' counts as 1 pass done
+        self._run_with_cancel(cmd, cancel_flag, log_callback, progress_offset=current_offset, progress_scale=p_scale, stage_name=pass1_msg)
+        
+        # Move temp to intermediate_output
+        if os.path.exists(intermediate_output) and intermediate_output != pass1_temp:
+            os.remove(intermediate_output)
+        import shutil
+        shutil.move(pass1_temp, intermediate_output)
+        
+        current_offset += (100 * p_scale)
 
         # Apply global effects (Face Tracking) if needed
         if has_face_tracking:

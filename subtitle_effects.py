@@ -35,7 +35,12 @@ class SubtitleEffects:
         self.settings = settings
         self.effect_type = settings.get('effect_type', 'standard') # 'standard', 'pop', 'slide', 'typewriter', etc.
         self.audio_levels = settings.get('audio_levels', None) # Optional volume data
-        self.base_time = settings.get('base_time', 0.0) # Start time of the segment
+        
+        def to_float(val, default):
+            try: return float(val)
+            except: return default
+            
+        self.base_time = to_float(settings.get('base_time'), 0.0) # Start time of the segment
         
     @property
     def active_effects(self) -> bool:
@@ -47,6 +52,10 @@ class SubtitleEffects:
         Calculates modifications to a word's properties based on the active effect.
         Returns a dict with updated: scale, offset_x, offset_y, opacity, color, text, etc.
         """
+        def to_float(val, default):
+            try: return float(val)
+            except: return default
+
         res = {
             'scale': 1.0,
             'offset_x': 0,
@@ -54,8 +63,8 @@ class SubtitleEffects:
             'opacity': 1.0,
             'color': word_info.get('color'),
             'text': word_info.get('text', ''),
-            'glow_blur': self.settings.get('glowBlur', 0),
-            'font_size_multiplier': word_info.get('sizeMultiplier', 1.0),
+            'glow_blur': to_float(self.settings.get('glowBlur'), 0),
+            'font_size_multiplier': to_float(word_info.get('sizeMultiplier'), 1.0),
             'custom_render': False # If True, the effect handles its own rendering
         }
         
@@ -128,7 +137,8 @@ class SubtitleEffects:
             # Neon Glitch: Occasional RGB split / jitter
             if int(current_time * 30) % 4 == 0:
                 res['offset_x'] = np.random.randint(-8, 9)
-                res['glow_blur'] = self.settings.get('glowBlur', 10) * 2.5
+                base_glow = to_float(self.settings.get('glowBlur'), 10)
+                res['glow_blur'] = base_glow * 2.5
                 
         # 4. Audio-Reactive Effects
         if self.effect_type == 'volume_shake' and self.audio_levels:
@@ -144,7 +154,8 @@ class SubtitleEffects:
         if self.effect_type == 'pulsing_glow':
             # Pulsing Glow: Glow brightness pulses
             pulse = (math.sin(current_time * 12) + 1) / 2
-            res['glow_blur'] = int(self.settings.get('glowBlur', 10) * (0.4 + pulse * 1.2))
+            base_glow = to_float(self.settings.get('glowBlur'), 10)
+            res['glow_blur'] = int(base_glow * (0.4 + pulse * 1.2))
 
         # 5. Emphasis/AI-Driven Effects
         if self.settings.get('keyword_scaling', False):

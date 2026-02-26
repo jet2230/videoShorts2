@@ -2247,15 +2247,15 @@
         <div class="control-group" style="margin-top: 15px;">
             <label>Audio Volume</label>
             <div class="range-wrapper">
-                <input type="range" id="audioVolume" min="0" max="200" value="100">
-                <span class="value" id="audioVolumeValue">100%</span>
+                <input type="range" id="audioVolume" min="0" max="100" value="30">
+                <span class="value" id="audioVolumeValue">30%</span>
             </div>
         </div>
         <div class="control-group">
             <label>Original Audio</label>
             <div class="range-wrapper">
-                <input type="range" id="originalAudioVolume" min="0" max="100" value="50">
-                <span class="value" id="originalAudioVolumeValue">50%</span>
+                <input type="range" id="originalAudioVolume" min="0" max="100" value="100">
+                <span class="value" id="originalAudioVolumeValue">100%</span>
             </div>
         </div>
     </div>
@@ -2473,20 +2473,12 @@
             if (themeNumber) {
                 document.getElementById('reburnSubtitles').checked = true;
                 
-                // FETCH THEME SETTINGS (Start/End times)
-                fetch(`/api/folder/${folderNumber}/themes`)
-                    .then(r => r.json())
-                    .then(data => {
-                        const theme = data.themes.find(t => t.number == themeNumber);
-                        if (theme && theme.start && theme.end) {
-                            console.log("Applying theme trim:", theme.start, theme.end);
-                            document.getElementById('startTime').value = theme.start;
-                            document.getElementById('endTime').value = theme.end;
-                            // Trigger timeline update
-                            if (typeof updateTimeline === 'function') updateTimeline();
-                        }
-                    })
-                    .catch(err => console.warn("Failed to load theme trim settings:", err));
+                // For themes, we don't load absolute timestamps from the metadata into the UI inputs
+                // because the video player loads a theme-specific clip that starts at 0.
+                // The backend handles translating the relative 0-based UI trim to absolute master trim.
+                document.getElementById('startTime').value = "00:00:00";
+                
+                // We'll set the endTime once the video metadata is loaded
             }
         }
 
@@ -2494,11 +2486,9 @@
         video.addEventListener('loadedmetadata', () => {
             const duration = formatTime(video.duration);
             
-            // Only set defaults if NOT a theme
-            if (!themeNumber) {
-                document.getElementById('endTime').value = duration;
-                document.getElementById('startTime').value = "00:00:00";
-            }
+            // Set defaults for all videos
+            document.getElementById('endTime').value = duration;
+            document.getElementById('startTime').value = "00:00:00";
             
             document.getElementById('timelineDuration').textContent = duration;
             updateTimeline();
@@ -3050,6 +3040,12 @@
                         const vol = document.getElementById('audioVolume').value;
                         previewAudio.volume = Math.min(1.0, vol / 100);
                         
+                        // Immediately play if video is already playing
+                        if (!video.paused) {
+                            previewAudio.currentTime = video.currentTime;
+                            previewAudio.play().catch(e => console.warn('Immediate audio play failed:', e));
+                        }
+                        
                         showNotification(`${file.name} uploaded successfully`, 'success');
                     }
                 } catch (error) {
@@ -3555,7 +3551,7 @@
             
             // If video is playing, sync audio state immediately
             if (!video.paused) {
-                if (isEnabled && audioFile) {
+                if (isEnabled && (audioFile || previewAudio.src)) {
                     previewAudio.currentTime = video.currentTime;
                     previewAudio.play().catch(e => console.warn('Audio play failed:', e));
                 } else {

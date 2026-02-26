@@ -1132,10 +1132,18 @@ Video Path: {video_info['video_path']}
         return themes
 
     def parse_timestamp_to_seconds(self, timestamp: str) -> float:
-        """Convert timestamp (HH:MM:SS) to seconds."""
-        parts = timestamp.split(':')
-        h, m, s = int(parts[0]), int(parts[1]), int(parts[2])
-        return h * 3600 + m * 60 + s
+        """Convert timestamp (HH:MM:SS, MM:SS, or seconds) to seconds."""
+        if not timestamp: return 0.0
+        try:
+            parts = str(timestamp).replace(',', '.').split(':')
+            if len(parts) == 3:
+                return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+            elif len(parts) == 2:
+                return int(parts[0]) * 60 + float(parts[1])
+            else:
+                return float(parts[0])
+        except (ValueError, IndexError):
+            return 0.0
 
     def seconds_to_timestamp(self, seconds: float) -> str:
         """Convert seconds to SRT timestamp format (HH:MM:SS,mmm)."""
