@@ -298,6 +298,11 @@ def get_settings():
         'theme': {
             'ai_enabled': settings.get('theme', 'ai_enabled') == 'true',
             'ai_model': settings.get('theme', 'ai_model'),
+        },
+        'subtitle': {
+            'font_name': settings.get('subtitle', 'font_name'),
+            'font_size': settings.get('subtitle', 'font_size'),
+            'max_subtitle_lines': int(settings.get('subtitle', 'max_subtitle_lines', fallback=2)),
         }
     })
 
@@ -330,6 +335,14 @@ def save_settings():
         if 'max_duration' in data['theme']:
             settings.set('theme', 'max_duration', str(data['theme']['max_duration']))
 
+    if 'subtitle' in data:
+        if 'font_name' in data['subtitle']:
+            settings.set('subtitle', 'font_name', data['subtitle']['font_name'])
+        if 'font_size' in data['subtitle']:
+            settings.set('subtitle', 'font_size', str(data['subtitle']['font_size']))
+        if 'max_subtitle_lines' in data['subtitle']:
+            settings.set('subtitle', 'max_subtitle_lines', str(data['subtitle']['max_subtitle_lines']))
+
     # Save to file with comments manually to preserve them
     try:
         with open('settings.ini', 'w', encoding='utf-8') as f:
@@ -355,6 +368,7 @@ def save_settings():
             f.write(f"crf = {settings.get('video', 'crf')}\n\n")
             
             f.write("[subtitle]\n")
+            f.write(f"max_subtitle_lines = {settings.get('subtitle', 'max_subtitle_lines')}\n")
             f.write(f"font_name = {settings.get('subtitle', 'font_name')}\n")
             f.write(f"font_size = {settings.get('subtitle', 'font_size')}\n")
             f.write(f"primary_colour = {settings.get('subtitle', 'primary_colour')}\n")
@@ -950,6 +964,31 @@ def get_theme_subtitles(folder_number: str, theme_number: str):
         except:
             pass
 
+    # ENFORCE MAX LINES: Split segments for the UI
+    try:
+        from subtitle_renderer import UniversalSubtitleRenderer
+        # Get word timestamps for splitting
+        theme_json_path = folder / 'shorts' / f"theme_{int(theme_number):03d}.json"
+        theme_words = []
+        if theme_json_path.exists():
+            with open(theme_json_path, 'r', encoding='utf-8') as f:
+                theme_words = json.load(f).get('words', [])
+        
+        # Instantiate renderer just for splitting logic
+        renderer = UniversalSubtitleRenderer(str(folder), theme_words, settings)
+        
+        # We need to handle persistent edits BEFORE splitting so they are included in the split
+        # but the edits are keyed by "start_end". We need to merge them into filtered_cues.
+        for cue in filtered_cues:
+            key = f"{cue['start']}_{cue['end']}"
+            if key in edits:
+                cue['text'] = edits[key]
+        
+        # Now split
+        filtered_cues = renderer.split_segments_by_max_lines(filtered_cues, theme_words)
+    except Exception as e:
+        app_logger.warning(f"Failed to split segments in get_theme_subtitles: {e}")
+
     return jsonify({
         'cues': filtered_cues,
         'is_adjusted': has_adjusted,
@@ -1112,6 +1151,31 @@ def get_all_subtitles(folder_number: str):
                     edits = json.load(f)
             except:
                 pass
+
+    # ENFORCE MAX LINES: Split segments for the UI
+    try:
+        from subtitle_renderer import UniversalSubtitleRenderer
+        # Get all words for the video
+        word_timestamps_file = next(folder.glob('*_word_timestamps.json'), None)
+        all_words = []
+        if word_timestamps_file:
+            with open(word_timestamps_file, 'r', encoding='utf-8') as f:
+                all_words = json.load(f).get('words', [])
+        
+        # Instantiate renderer just for splitting logic
+        renderer = UniversalSubtitleRenderer(str(folder), all_words, settings)
+        
+        # Apply edits first
+        if edits:
+            for cue in all_cues:
+                key = f"{cue['start']}_{cue['end']}"
+                if key in edits:
+                    cue['text'] = edits[key]
+        
+        # Split
+        all_cues = renderer.split_segments_by_max_lines(all_cues, all_words)
+    except Exception as e:
+        app_logger.warning(f"Failed to split segments in get_all_subtitles: {e}")
 
     return jsonify({
         'cues': all_cues,

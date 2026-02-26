@@ -62,6 +62,7 @@ def load_settings(settings_file: str = 'settings.ini') -> configparser.ConfigPar
             'crf': '23'                   # Quality factor (lower is higher quality)
         }
         config['subtitle'] = {
+            'max_subtitle_lines': '2',    # Maximum number of lines for subtitles
             'font_name': 'Arial',         # Subtitle font
             'font_size': '24',            # Base font size
             'primary_colour': '&HFFFFFF', # Text color (ASS format)

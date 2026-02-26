@@ -86,6 +86,7 @@ class UniversalSubtitleRenderer:
         # Use exact values from settings/adjust.md
         self.font_size = to_int(get_val(['fontSize', 'subtitle_font_size'], None), 80)
         self.font_name = get_val(['fontName', 'subtitle_font_name'], 'Arial')
+        self.max_subtitle_lines = to_int(get_val('max_subtitle_lines', None), 2)
         
         # Colors
         self.text_color = self._hex_to_rgb(get_val(['textColor', 'textColor'], '#ffff00'))
@@ -199,6 +200,113 @@ class UniversalSubtitleRenderer:
         render_size = int(self.font_size * word_info.get('sizeMultiplier', 1.0) * self.pixel_to_pt)
         return self._get_font(render_size, self.font_name)
 
+    def _get_lines(self, colored_words: List[Dict], max_w: int = 940) -> List[List[Dict]]:
+        """Splits colored words into lines based on width."""
+        lines = [[]]
+        cur_w = 0
+        
+        # We need a dummy draw object for measurements
+        dummy_img = Image.new("RGBA", (1, 1))
+        draw = ImageDraw.Draw(dummy_img)
+
+        for i, w_info in enumerate(colored_words):
+            f = self._get_word_font(w_info)
+            bbox = draw.textbbox((0, 0), w_info['text'], font=f)
+            w_w = bbox[2] - bbox[0]
+            s_w = draw.textbbox((0, 0), " ", font=f)[2] - draw.textbbox((0, 0), " ", font=f)[0]
+            
+            if not lines[-1] or cur_w + s_w + w_w <= max_w:
+                lines[-1].append({**w_info, 'font': f, 'width': w_w, 'space': s_w})
+                cur_w += (s_w + w_w)
+            else:
+                lines.append([{**w_info, 'font': f, 'width': w_w, 'space': s_w}])
+                cur_w = w_w
+        return lines
+
+    def split_segments_by_max_lines(self, segments: List[Dict], word_timestamps: List[Dict]) -> List[Dict]:
+        """Ensures each segment results in no more than self.max_subtitle_lines."""
+        if not segments: return []
+        
+        final_segments = []
+        for seg in segments:
+            # Get words for this segment
+            seg_text = seg.get('text', '')
+            words = seg_text.split()
+            if not words:
+                final_segments.append(seg)
+                continue
+            
+            # Map words to timestamps if available
+            seg_words_ts = []
+            s_abs = seg['start'] if isinstance(seg['start'], (int, float)) else parse_srt_time(seg['start'])
+            e_abs = seg['end'] if isinstance(seg['end'], (int, float)) else parse_srt_time(seg['end'])
+            
+            for w in word_timestamps:
+                if w['start'] < e_abs - 0.02 and w['end'] > s_abs + 0.02:
+                    seg_words_ts.append(w)
+            
+            # Create word info for measurement
+            colored_words = [{'text': w, 'sizeMultiplier': 1.0} for w in words]
+            lines = self._get_lines(colored_words)
+            
+            if len(lines) <= self.max_subtitle_lines:
+                final_segments.append(seg)
+                continue
+            
+            # Need to split. Let's group lines into chunks of max_subtitle_lines
+            for chunk_idx, i in enumerate(range(0, len(lines), self.max_subtitle_lines)):
+                chunk = lines[i : i + self.max_subtitle_lines]
+                chunk_words = []
+                for line in chunk:
+                    for w in line:
+                        chunk_words.append(w['text'])
+                
+                first_word_idx = sum(len(l) for l in lines[:i])
+                last_word_idx = first_word_idx + sum(len(l) for l in chunk) - 1
+                
+                s_t = s_abs
+                e_t = e_abs
+                
+                if seg_words_ts:
+                    if first_word_idx < len(seg_words_ts):
+                        s_t = seg_words_ts[first_word_idx]['start']
+                    elif first_word_idx > 0:
+                        s_t = seg_words_ts[-1]['end']
+                        
+                    if last_word_idx < len(seg_words_ts):
+                        e_t = seg_words_ts[last_word_idx]['end']
+                    
+                    if i + self.max_subtitle_lines < len(lines):
+                        next_first_idx = last_word_idx + 1
+                        if next_first_idx < len(seg_words_ts):
+                            e_t = seg_words_ts[next_first_idx]['start']
+                else:
+                    total_words = len(words)
+                    duration = e_abs - s_abs
+                    s_t = s_abs + (first_word_idx / total_words) * duration
+                    e_t = s_abs + ((last_word_idx + 1) / total_words) * duration
+                
+                # Format for UI/SRT
+                def format_time(secs):
+                    h = int(secs // 3600)
+                    m = int((secs % 3600) // 60)
+                    s = secs % 60
+                    return f"{h:02d}:{m:02d}:{s:06.3f}".replace('.', ',')
+
+                new_seg = {
+                    'start': format_time(s_t) if isinstance(seg['start'], str) else s_t,
+                    'end': format_time(e_t) if isinstance(seg['end'], str) else e_t,
+                    'text': ' '.join(chunk_words)
+                }
+                
+                # Preserve and adjust sequence number for UI
+                if 'sequence' in seg:
+                    new_seg['sequence'] = f"{seg['sequence']}.{chunk_idx+1}"
+                
+                final_segments.append(new_seg)
+                
+        return final_segments
+
     def get_words_at_time_for_subtitle(self, current_time: float, subtitle_data: str, subtitle_start: float, subtitle_end: float) -> Tuple[List[Dict], int, List[Dict]]:
         words = subtitle_data.split()
         cache_key = f"{subtitle_start}_{subtitle_end}_{subtitle_data[:50]}"
@@ -250,22 +358,10 @@ class UniversalSubtitleRenderer:
         if subtitle_text and subtitle_text.strip():
             colored_words, highlight_idx, sub_ts = self.get_words_at_time_for_subtitle(current_time, subtitle_text, subtitle_start, subtitle_end)
             
-            max_w = 980 
-            lines = [[]]
-            cur_w = 0
-            
-            for i, w_info in enumerate(colored_words):
-                f = self._get_word_font(w_info)
-                bbox = draw.textbbox((0, 0), w_info['text'], font=f)
-                w_w = bbox[2] - bbox[0]
-                s_w = draw.textbbox((0, 0), " ", font=f)[2] - draw.textbbox((0, 0), " ", font=f)[0]
-                
-                if not lines[-1] or cur_w + s_w + w_w <= max_w:
-                    lines[-1].append({**w_info, 'font': f, 'width': w_w, 'space': s_w})
-                    cur_w += (s_w + w_w)
-                else:
-                    lines.append([{**w_info, 'font': f, 'width': w_w, 'space': s_w}])
-                    cur_w = w_w
+            lines = self._get_lines(colored_words)
+            # Hard limit lines to max_subtitle_lines
+            if len(lines) > self.max_subtitle_lines:
+                lines = lines[:self.max_subtitle_lines]
             
             line_h = self.font_size * self.pixel_to_pt * 1.3
             total_h = len(lines) * line_h
@@ -470,8 +566,10 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
         # Re-sort everything by start time
         subtitles = sorted(final_segments, key=lambda s: s['start'])
     
-
     renderer = UniversalSubtitleRenderer(video_path, words, settings)
+    
+    # ENFORCE MAX LINES: Split segments if they result in too many lines
+    subtitles = renderer.split_segments_by_max_lines(subtitles, words)
     
     # CRITICAL: If we are using the master (untrimmed) video, we MUST seek to start_time
     if not is_already_trimmed and start_time > 0:

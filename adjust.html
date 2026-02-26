@@ -2693,7 +2693,7 @@
                     ctx.font = `${style} ${weight} ${size}px ${fontFamily}`;
                 };
 
-                const maxWidth = canvas.width - (80 * scale);
+                const maxWidth = canvas.width - (140 * scale); // Match server's conservative width (roughly 940/1080)
                 ctx.font = `${baseFontWeight} ${baseFontSize}px ${fontFamily}`;
                 const spaceWidth = ctx.measureText(' ').width;
                 const lines = [];
