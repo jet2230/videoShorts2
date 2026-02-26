@@ -473,12 +473,16 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
     temp_dir.mkdir(exist_ok=True)
     tmp_out = temp_dir / "out.mp4"
     
+    crf = str(settings.get('export_crf', '22'))
+    preset = settings.get('export_preset', 'ultrafast')
+    
     ffmpeg_cmd = [
         'ffmpeg', '-nostdin', '-y', '-f', 'rawvideo', '-vcodec', 'rawvideo',
         '-s', '1080x1920', '-pix_fmt', 'rgb24', '-r', '30', '-i', '-',
         '-i', str(Path(video_path).absolute()),
         '-t', str(end_time - start_time), # Limit audio input length
-        '-map', '0:v:0', '-map', '1:a:0?', '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '22',
+        '-map', '0:v:0', '-map', '1:a:0?', '-c:v', 'libx264', '-preset', preset, '-crf', crf,
+        '-pix_fmt', 'yuv420p', '-profile:v', 'baseline', '-level', '3.0',
         '-c:a', 'aac', '-b:a', '128k', 
         '-t', str(end_time - start_time), # FINAL duration limit for output
         str(tmp_out)
