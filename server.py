@@ -80,6 +80,21 @@ def set_headers(response):
     response.headers['Cross-Origin-Opener-Policy'] = 'same-origin'
     return response
 
+@app.route('/api/font/<name>')
+def serve_font(name):
+    """Serve font files from media/fonts."""
+    fonts_dir = Path('media/fonts')
+    if not fonts_dir.exists():
+        return "Fonts directory not found", 404
+        
+    # Try common extensions
+    for ext in ['.ttf', '.otf', '.woff', '.woff2']:
+        font_path = fonts_dir / (name + ext)
+        if font_path.exists():
+            return send_file(str(font_path))
+            
+    return "Font not found", 404
+
 # Global state
 creator = YouTubeShortsCreator()
 settings = load_settings()
@@ -251,6 +266,21 @@ def _process_wrapper(task_id, func, shared_tasks, args, kwargs):
 
 
 
+def get_available_fonts():
+    """Returns a list of available font names by scanning media/fonts and system fonts."""
+    fonts = ['Arial', 'Calibri', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana', 'Impact', 'Comic Sans MS']
+    
+    # Scan media/fonts directory
+    fonts_dir = Path('media/fonts')
+    if fonts_dir.exists():
+        for font_file in fonts_dir.glob('*.*'):
+            if font_file.suffix.lower() in ['.ttf', '.otf', '.woff', '.woff2']:
+                # Use filename without extension as font name
+                fonts.append(font_file.stem)
+            
+    # Remove duplicates and sort
+    return sorted(list(set(fonts)))
+
 @app.route('/')
 def index():
     """Serve the HTML frontend."""
@@ -303,6 +333,7 @@ def get_settings():
             'font_name': settings.get('subtitle', 'font_name'),
             'font_size': settings.get('subtitle', 'font_size'),
             'max_subtitle_lines': int(settings.get('subtitle', 'max_subtitle_lines', fallback=2)),
+            'available_fonts': get_available_fonts()
         }
     })
 
@@ -1788,7 +1819,8 @@ def get_global_position():
             'title_outline_width': float(tow_match.group(1)) if tow_match else None,
             'title_outline_color': toc_match.group(1) if toc_match else None,
             'title_all_caps': tac_match.group(1) == 'true' if tac_match else None,
-            'show_title': st_match.group(1) == 'true' if st_match else None
+            'show_title': st_match.group(1) == 'true' if st_match else None,
+            'available_fonts': get_available_fonts()
         }
 
         # Check if it's a custom position with coordinates
@@ -1822,7 +1854,10 @@ def get_global_position():
 
     # No position found, return default
     print(f"[DEBUG] No global position found: folder={folder_number}, theme={theme_number}, using default='bottom'")
-    return jsonify({'position': 'bottom'})
+    return jsonify({
+        'position': 'bottom',
+        'available_fonts': get_available_fonts()
+    })
 
 
 @app.route('/api/shorts', methods=['GET'])

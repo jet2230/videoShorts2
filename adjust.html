@@ -2480,6 +2480,7 @@
 
         let canvasRenderer = null;
         let originalCanvasRenderer = null;
+        let availableFonts = [];
 
         // UniversalSubtitleRenderer class for canvas-based rendering of all subtitle styles
         class UniversalSubtitleRenderer {
@@ -2665,7 +2666,7 @@
 
                 const scale = canvas.height / 1920;
                 const baseFontSize = (this.settings.fontSize || 80) * scale;
-                const fontFamily = this.settings.font_name || 'Arial';
+                const fontFamily = this.settings.fontName || this.settings.font_name || 'Arial';
                 const baseFontWeight = this.settings.font_weight || 'normal';
                 const outlineColor = this.settings.outlineColor || '#000000';
                 const primaryColor = this.settings.primaryColor || '#ffffff';
@@ -3495,6 +3496,30 @@
             }
         }
 
+        function injectFontFaces(fonts) {
+            let styleEl = document.getElementById('dynamic-fonts');
+            if (!styleEl) {
+                styleEl = document.createElement('style');
+                styleEl.id = 'dynamic-fonts';
+                document.head.appendChild(styleEl);
+            }
+
+            let css = '';
+            fonts.forEach(font => {
+                // Only inject for non-system fonts (those likely in media/fonts)
+                // For simplicity, we can try to inject all - system fonts will just fail to load from /api/font/
+                css += `
+                @font-face {
+                    font-family: "${font}";
+                    src: url("/api/font/${encodeURIComponent(font)}") format("truetype");
+                    font-weight: normal;
+                    font-style: normal;
+                }
+                `;
+            });
+            styleEl.innerHTML = css;
+        }
+
         // Load global position from server
         async function loadGlobalPosition() {
 
@@ -3507,11 +3532,26 @@
                     return 'bottom';
                 }
 
-                const data = await response.json();
-                globalPosition = data.position || 'bottom';
-
-                // Get preview video element to calculate scale factor
-                const previewVideo = document.getElementById('preview-video');
+                                 const data = await response.json();
+                                 globalPosition = data.position || 'bottom';
+                 
+                                                  // Populate font dropdown if available
+                                                  if (data.available_fonts && data.available_fonts.length > 0) {
+                                                      availableFonts = data.available_fonts;
+                                                      injectFontFaces(availableFonts);
+                                 
+                                                      const fontSelect = document.getElementById('subtitle-font');                                     const currentVal = data.font_name || fontSelect.value;
+                                     fontSelect.innerHTML = '';
+                                     data.available_fonts.forEach(font => {
+                                         const option = document.createElement('option');
+                                         option.value = font;
+                                         option.textContent = font;
+                                         if (font === currentVal) option.selected = true;
+                                         fontSelect.appendChild(option);
+                                     });
+                                 }
+                
+                                 // Get preview video element to calculate scale factor                const previewVideo = document.getElementById('preview-video');
                 const previewHeight = previewVideo?.offsetHeight || 500;
                 const previewWidth = previewVideo?.offsetWidth || 281;
 
