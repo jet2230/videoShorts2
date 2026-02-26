@@ -273,11 +273,6 @@ def serve_video(filepath):
     # Flask automatically decodes URL-encoded paths
     video_path = base_dir / filepath
 
-    # Debug logging
-    print(f"Video request: {filepath}", file=sys.stderr)
-    print(f"Full path: {video_path}", file=sys.stderr)
-    print(f"Exists: {video_path.exists()}", file=sys.stderr)
-
     if not video_path.exists():
         return jsonify({'error': f'File not found: {filepath}'}), 404
 
@@ -1203,7 +1198,7 @@ def save_cue_text():
         cue_end = data.get('cue_end')
         text = data.get('text')
 
-        if not folder_number or not theme_number or cue_start is None or cue_end is None or not text:
+        if not folder_number or not theme_number or cue_start is None or cue_end is None or text is None:
             return jsonify({'error': 'Missing required fields'}), 400
 
         base_dir = Path(settings.get('video', 'output_dir'))
@@ -2683,9 +2678,25 @@ def upload_media():
         # Save the file (overwrites if already exists, stopping replication)
         file.save(str(target_path))
         
+        # Try to get duration if it's a video
+        duration = None
+        if filename.lower().endswith(('.mp4', '.mkv', '.webm', '.mov', '.avi')):
+            try:
+                import subprocess
+                cmd = [
+                    'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+                    '-of', 'default=noprint_wrappers=1:nokey=1', str(target_path)
+                ]
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode == 0:
+                    duration = float(result.stdout.strip())
+            except Exception as e:
+                app_logger.warning(f"Could not get duration for {filename}: {e}")
+
         return jsonify({
             'filename': filename,
-            'url': f'/media/{filename}'
+            'url': f'/media/{filename}',
+            'duration': duration
         })
 
 @app.route('/api/process-edit', methods=['POST'])
@@ -2698,6 +2709,18 @@ def process_video_edit():
     app_logger.info(f"RAW INCOMING DATA: {data}")
     video_path = data.get('video_path')
     edit_settings = data.get('settings', {})
+    quality_preset = data.get('quality', 'standard')
+
+    # CRF Mapping for quality
+    crf_map = {
+        'fast': 28,
+        'standard': 22,
+        'high': 18,
+        'ultra': 12
+    }
+    crf = crf_map.get(quality_preset, 22)
+    edit_settings['export_crf'] = crf
+    edit_settings['export_preset'] = 'veryfast' if quality_preset == 'fast' else 'medium'
 
     if not video_path:
         return jsonify({'error': 'video_path is required'}), 400
@@ -2899,7 +2922,7 @@ def process_video_edit():
     # Generate output path
     # Sanitize filename to avoid issues with special characters like | or pipes
     clean_stem = "".join([c if c.isalnum() or c in (' ', '_', '-') else '_' for c in input_video.stem])
-    output_filename = f"edited_{clean_stem.strip()}.mp4"
+    output_filename = f"edited_{clean_stem.strip()}_{quality_preset}.mp4"
     output_video = output_dir / output_filename
 
     with task_lock:
@@ -2915,7 +2938,7 @@ def process_video_edit():
     # Start background task (daemon=True to allow Ctrl+C)
     thread = threading.Thread(
         target=run_edit_task,
-        args=(edit_id, str(input_video), str(output_video), edit_settings, is_editing_theme_clip),
+        args=(edit_id, str(input_video), str(output_video), edit_settings, is_editing_theme_clip, quality_preset),
         daemon=True
     )
     thread.start()
@@ -2923,8 +2946,9 @@ def process_video_edit():
     return jsonify({'edit_id': edit_id, 'status': 'started'})
 
 
-def run_edit_task(edit_id: str, input_video: str, output_video: str, edit_settings: dict, is_editing_theme_clip: bool = False):
+def run_edit_task(edit_id: str, input_video: str, output_video: str, edit_settings: dict, is_editing_theme_clip: bool = False, quality_preset: str = 'standard'):
     """Run video edit in background thread."""
+    app_logger.info(f"THREAD ENTERED: run_edit_task for {edit_id}")
     from video_processor import VideoProcessor
     from subtitle_renderer import render_canvas_karaoke_video
     import os
@@ -3864,7 +3888,7 @@ def encode_canvas_karaoke():
                         'progress': progress,
                         'stage': stage,
                         'message': message,
-                        'complete': (stage == 'complete'),
+                        'complete': (stage == 'completed'),
                         'error': (message if stage == 'error' else None)
                     })
 
@@ -3933,7 +3957,7 @@ def encode_canvas_karaoke():
                     except Exception as me:
                         app_logger.warning(f"Failed to save metadata: {me}")
 
-                    progress_callback(100, 'complete', 'Video saved successfully')
+                    progress_callback(100, 'completed', 'Video saved successfully')
 
             except Exception as e:
                 import traceback
@@ -3958,6 +3982,7 @@ def encode_canvas_karaoke():
 
 
 @app.route('/api/canvas-karaoke-progress/<job_id>')
+@app.route('/api/export-canvas-karaoke/<job_id>/status')
 def canvas_karaoke_progress_endpoint(job_id):
     """Get progress for a canvas karaoke export job."""
     ensure_manager()
@@ -4023,29 +4048,37 @@ def export_canvas_karaoke():
         theme_start_provided = data.get('themeStart')
         theme_end_provided = data.get('themeEnd')
         karaoke_settings = data.get('settings', {})
+        quality = data.get('quality', 'standard')
 
         if not folder_number or not theme_number:
             return jsonify({'error': 'Missing folder or theme number'}), 400
 
-        # Create a unique job ID
-        import uuid
-        job_id = str(uuid.uuid4())
-        
-        # Initialize task state
+        # Create job ID
+        job_id = f"{folder_number}_{theme_number}_{int(datetime.now().timestamp())}"
+
+        # Initialize progress tracking
         with canvas_karaoke_lock:
             canvas_karaoke_progress[job_id] = {
-                'status': 'processing',
+                'status': 'starting',
                 'progress': 0,
-                'message': 'Starting export...',
-                'folder': folder_number,
-                'theme': theme_number,
-                'complete': False,
-                'error': None
+                'message': 'Initializing export...',
+                'complete': False
             }
 
-        def run_export_thread(jid, f_num, t_num, settings_dict, start_override=None, end_override=None):
-            app_logger.info(f"THREAD START: run_export_thread jid={jid} folder={f_num} theme={t_num}")
+        def run_export_thread(jid, f_num, t_num, settings_dict, start_override=None, end_override=None, quality_preset='standard'):
+            app_logger.info(f"THREAD START: run_export_thread jid={jid} folder={f_num} theme={t_num} quality={quality_preset}")
             try:
+                # CRF Mapping for quality
+                crf_map = {
+                    'fast': 28,
+                    'standard': 22,
+                    'high': 18,
+                    'ultra': 12
+                }
+                crf = crf_map.get(quality_preset, 22)
+                settings_dict['export_crf'] = crf
+                settings_dict['export_preset'] = 'veryfast' if quality_preset == 'fast' else 'medium'
+
                 # Get folder path
                 base_dir = Path(settings.get('video', 'output_dir'))
                 folder = None
@@ -4165,7 +4198,7 @@ def export_canvas_karaoke():
                 
                 # Determine suffix based on mode
                 suffix = "standard" if settings_dict.get('effect_type') == 'none' else "canvas_karaoke"
-                output_filename = f'theme_{int(t_num):03d}_{sanitized_title}_{suffix}.mp4'
+                output_filename = f'theme_{int(t_num):03d}_{sanitized_title}_{suffix}_{quality_preset}.mp4'
                 
                 output_path = folder / 'shorts' / output_filename
                 output_path.parent.mkdir(exist_ok=True)
@@ -4336,7 +4369,7 @@ def export_canvas_karaoke():
                 with canvas_karaoke_lock:
                     if success:
                         canvas_karaoke_progress[jid] = {
-                            'status': 'complete',
+                            'status': 'completed',
                             'progress': 100,
                             'complete': True,
                             'output_path': str(output_path),
@@ -4352,15 +4385,9 @@ def export_canvas_karaoke():
                     canvas_karaoke_progress[jid] = {'status': 'error', 'error': str(e), 'complete': False}
 
         # Start the thread
-        threading.Thread(target=run_export_thread, args=(job_id, folder_number, theme_number, karaoke_settings, theme_start_provided, theme_end_provided)).start()
+        threading.Thread(target=run_export_thread, args=(job_id, folder_number, theme_number, karaoke_settings, theme_start_provided, theme_end_provided, quality)).start()
 
         return jsonify({'success': True, 'job_id': job_id})
-
-    except Exception as e:
-        import traceback
-        app_logger.error(f"Export error: {traceback.format_exc()}")
-        return jsonify({'error': str(e)}), 500
-
 
     except subprocess.TimeoutExpired:
         return jsonify({'error': 'Export timed out (5 minutes)'}), 500

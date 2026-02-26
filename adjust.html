@@ -62,6 +62,66 @@
             padding: 20px;
         }
 
+        /* Export Quality Dropdown */
+        .export-container {
+            position: relative !important;
+            width: 100%;
+            z-index: 999999 !important; /* Extremely high to beat any other context */
+        }
+
+        .export-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            width: 100%;
+            background: #1e1e2d;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+            z-index: 999999 !important;
+            padding-top: 4px; /* Use padding instead of margin to prevent hover gap */
+        }
+
+        .export-container:hover .export-dropdown {
+            display: flex;
+        }
+
+        .export-option {
+            padding: 12px 16px;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .export-option:last-child {
+            border-bottom: none;
+        }
+
+        .export-option:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        .export-option .title {
+            font-weight: 600;
+            font-size: 13px;
+        }
+
+        .export-option .desc {
+            font-size: 11px;
+            opacity: 0.6;
+        }
+
+        .export-option.fast .title { color: #8bc34a; }
+        .export-option.standard .title { color: #00ff9d; }
+        .export-option.high .title { color: #2196f3; }
+        .export-option.ultra .title { color: #e91e63; }
+
         .panel h2 {
             color: #00ff9d;
             font-size: 16px;
@@ -922,8 +982,19 @@
         /* Subtitle editor */
         .subtitle-editor {
             margin-top: 20px;
+            position: relative;
+            z-index: 1000; /* Ensure it stays above other content */
         }
 
+        .subtitle-section {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            margin-bottom: 12px;
+            overflow: visible !important; /* CRITICAL: Allow dropdown to spill out */
+            position: relative;
+            z-index: 1001;
+        }
         .lock-btn {
             padding: 8px 12px;
             background: rgba(255, 255, 255, 0.1);
@@ -2142,7 +2213,27 @@
 
                 <!-- Export Video Button (Outside collapsible areas) -->
                 <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: center;">
-                    <button id="export-canvas-video" style="width: 100%; padding: 12px 24px; background: linear-gradient(135deg, #4CAF50, #45a049); color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.2); transition: transform 0.2s, box-shadow 0.2s;">🎬 Export Final Short (with Subtitles)</button>
+                    <div class="export-container">
+                        <div class="export-dropdown">
+                            <div class="export-option fast" onclick="exportWithQuality('fast', event)">
+                                <span class="title">⚡ Fast Export</span>
+                                <span class="desc">Smaller file, faster processing (CRF 28)</span>
+                            </div>
+                            <div class="export-option standard" onclick="exportWithQuality('standard', event)">
+                                <span class="title">✅ Standard (Default)</span>
+                                <span class="desc">Balanced quality and speed (CRF 22)</span>
+                            </div>
+                            <div class="export-option high" onclick="exportWithQuality('high', event)">
+                                <span class="title">💎 High Quality</span>
+                                <span class="desc">Better visuals, larger file (CRF 18)</span>
+                            </div>
+                            <div class="export-option ultra" onclick="exportWithQuality('ultra', event)">
+                                <span class="title">🌟 Ultra HQ</span>
+                                <span class="desc">Maximum quality (CRF 12)</span>
+                            </div>
+                        </div>
+                        <button id="export-canvas-video" style="width: 100%; padding: 12px 24px; background: linear-gradient(135deg, #4CAF50, #45a049); color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.2); transition: transform 0.2s, box-shadow 0.2s;">🎬 Export Final Short (Standard)</button>
+                    </div>
                 </div>
             </div>  <!-- End of karaoke-section -->
             </div>
@@ -3864,54 +3955,76 @@
                 clearTimeout(subtitleAutoSaveTimeout);
             }
 
+            // Capture the cue info NOW, so we save to the correct cue even if we move to another one during the timeout
+            if (!currentCueInfo || currentCueInfo.start == null || currentCueInfo.end == null) {
+                return;
+            }
+            
+            const cueToSave = { ...currentCueInfo };
+            const textarea = document.getElementById('subtitle-text');
+            const newText = textarea.innerText.trim();
+            const newHtml = textarea.innerHTML;
+
             subtitleAutoSaveTimeout = setTimeout(async () => {
                 try {
-                    const textarea = document.getElementById('subtitle-text');
-                    const newText = textarea.innerText.trim();
-
-                    // Don't save if there's no text or no current cue
-                    if (!newText || !currentCueInfo || currentCueInfo.start == null || currentCueInfo.end == null) {
-                        return;
-                    }
-
                     // Show saving indicator
                     const indicator = document.getElementById('preview-autosave-indicator');
                     indicator.textContent = '⏳ Saving...';
                     indicator.classList.add('show', 'saving');
 
-                    // Save to server
-                    const themeStart = parseFloat(previewVideo.dataset.themeStart) || 0;
-                    const saveResponse = await fetch('/api/save-cue-text', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            folder: folderNumber,
-                            theme: themeNumber,
-                            theme_start: themeStart,
-                            cue_start: currentCueInfo.start,
-                            cue_end: currentCueInfo.end,
-                            text: newText
-                        })
-                    });
-
-                    if (!saveResponse.ok) {
-                        const errorData = await saveResponse.json();
-                        throw new Error(errorData.error || 'Failed to save to server');
-                    }
-
-                    const saveResult = await saveResponse.json();
-
-                    // Store edit in local cache for persistence across page interactions
-                    const editKey = `${currentCueInfo.start}_${currentCueInfo.end}`;
+                    // 1. Update local cache and in-memory cues immediately
+                    const editKey = `${cueToSave.start}_${cueToSave.end}`;
                     subtitleEdits[editKey] = newText;
-
-                    // Update in-memory cues
+                    
                     const cueIndex = allThemeCues.findIndex(cue =>
-                        cue.start === currentCueInfo.start && cue.end === currentCueInfo.end
+                        cue.start === cueToSave.start && cue.end === cueToSave.end
                     );
-
                     if (cueIndex !== -1) {
                         allThemeCues[cueIndex].text = newText;
+                    }
+
+                    // 2. Update formatting cache with current HTML
+                    if (cueToSave.sequence !== null) {
+                        if (!allCueFormatting[cueToSave.sequence]) {
+                            allCueFormatting[cueToSave.sequence] = {
+                                sequence: cueToSave.sequence,
+                                timestamp: cueToSave.timestamp
+                            };
+                        }
+                        allCueFormatting[cueToSave.sequence].html = newHtml;
+                        allCueFormatting[cueToSave.sequence]._text = newText;
+                    }
+
+                    // 3. Save to server (both text/SRT and formatting)
+                    const themeStart = parseFloat(previewVideo.dataset.themeStart) || 0;
+                    
+                    const [textResponse, formatResponse] = await Promise.all([
+                        fetch('/api/save-cue-text', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                folder: folderNumber,
+                                theme: themeNumber,
+                                theme_start: themeStart,
+                                cue_start: cueToSave.start,
+                                cue_end: cueToSave.end,
+                                text: newText
+                            })
+                        }),
+                        fetch('/api/save-subtitle-formatting', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                folder: folderNumber,
+                                theme: themeNumber,
+                                formatting: allCueFormatting
+                            })
+                        })
+                    ]);
+
+                    if (!textResponse.ok) {
+                        const errorData = await textResponse.json();
+                        throw new Error(errorData.error || 'Failed to save text');
                     }
 
                     // Update canvas renderer
@@ -4223,6 +4336,7 @@
                           
                                               const newCueInfo = {
                                                   sequence: matchingCue.sequence,
+                                                  timestamp: matchingCue.start,
                                                   start: matchingCue.start,
                                                   end: matchingCue.end,
                                                   text: currentCueText
@@ -4260,12 +4374,16 @@
                                           } else {
                                               // No active cue
                                               if (currentCueInfo !== null) {
+                                                  isProgrammaticUpdate = true;
                                                   currentCueInfo = null;
                                                   subtitleText.innerHTML = '';
                                                   if (durationValueEl) {
                                                       durationValueEl.textContent = '0.00s';
                                                       durationValueEl.style.color = '#00ff9d';
                                                   }
+                                                  if (prevCueEl) prevCueEl.textContent = '';
+                                                  if (nextCueEl) nextCueEl.textContent = '';
+                                                  isProgrammaticUpdate = false;
                                                   updateSubtitlePreview();
                                               }
                                           }
@@ -5892,8 +6010,20 @@
         // ============================================
 
         // Export video using server-side Flask mode
-        async function exportCanvasKaraokeVideo() {
-            console.log('🎬 exportCanvasKaraokeVideo triggered');
+        window.exportWithQuality = function(quality, event) {
+            if (event) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+            console.log(`🚀 Exporting with quality: ${quality}`);
+            exportCanvasKaraokeVideo(quality);
+        };
+
+        async function exportCanvasKaraokeVideo(quality = 'standard') {
+            // Normalize quality if called from event listener
+            if (typeof quality !== 'string') quality = 'standard';
+            
+            console.log('🎬 exportCanvasKaraokeVideo triggered with quality:', quality);
             if (!folderNumber || !themeNumber) {
                 console.error('❌ Missing folder or theme info', {folderNumber, themeNumber});
                 showToast('Missing folder or theme info', 'error');
@@ -5944,7 +6074,8 @@
                         theme: themeNumber,
                         themeStart: startSeconds,
                         themeEnd: endSeconds,
-                        settings: settings
+                        settings: settings,
+                        quality: quality
                     })
                 })
                 .catch(err => {
@@ -5968,7 +6099,7 @@
                                 const progData = await progRes.json();
                                 updateProgress(progData.message || 'Processing...', progData.progress, `${progData.progress}%`);
                                 
-                                if (progData.status === 'complete') {
+                                if (progData.status === 'completed') {
                                     finalizeExport(progData.output_path || 'the shorts folder');
                                 } else if (progData.status === 'error') {
                                     throw new Error(progData.error || 'Server processing error');
