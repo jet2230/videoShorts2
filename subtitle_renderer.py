@@ -84,8 +84,8 @@ class UniversalSubtitleRenderer:
             return default
 
         # Use exact values from settings/adjust.md
-        self.font_size = to_int(get_val(['fontSize', 'subtitle_font_size'], None), 80)
-        self.font_name = get_val(['fontName', 'subtitle_font_name'], 'Arial')
+        self.font_size = to_int(get_val(['fontSize', 'subtitle_font_size'], None), 100)
+        self.font_name = get_val(['fontName', 'subtitle_font_name'], 'Avenir Black')
         self.max_subtitle_lines = to_int(get_val('max_subtitle_lines', None), 2)
 
         # DEBUG: Log what font was loaded

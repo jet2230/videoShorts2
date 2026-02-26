@@ -2992,7 +2992,10 @@ def process_video_edit():
                 user_end_str = user_trim.get('end', '')
                 user_start_sec = creator.parse_timestamp_to_seconds(user_start_str)
                 user_end_sec = creator.parse_timestamp_to_seconds(user_end_str) if user_end_str else 0
-                
+
+                app_logger.info(f"DEBUG: User trim: start={user_start_str} ({user_start_sec}s), end={user_end_str} ({user_end_sec}s)")
+                app_logger.info(f"DEBUG: theme_meta: start={theme_meta_start}s, end={theme_meta_end}s, reburn={reburn_enabled}")
+
                 # ALWAYS use theme metadata as the base if available AND we are reburning (using master)
                 if theme_meta_start > 0 and reburn_enabled:
                     if 'trim' not in edit_settings: edit_settings['trim'] = {}
@@ -4004,8 +4007,8 @@ def encode_canvas_karaoke():
         final_settings = karaoke_settings.copy()
         
         # Ensure base fields are present if missing
-        if 'fontSize' not in final_settings: final_settings['fontSize'] = 80
-        if 'fontName' not in final_settings: final_settings['fontName'] = 'Arial'
+        if 'fontSize' not in final_settings: final_settings['fontSize'] = 100
+        if 'fontName' not in final_settings: final_settings['fontName'] = 'Avenir Black'
         if 'bgColor' not in final_settings: final_settings['bgColor'] = '#000000'
         if 'bgOpacity' not in final_settings: final_settings['bgOpacity'] = 0.63
         
@@ -4483,8 +4486,8 @@ def export_canvas_karaoke():
                     
                     # ... (keep existing merging/mapping logic)
                     # Ensure base subtitle fields are present if missing
-                    if 'fontSize' not in final_render_settings: final_render_settings['fontSize'] = 80
-                    if 'fontName' not in final_render_settings: final_render_settings['fontName'] = 'Arial'
+                    if 'fontSize' not in final_render_settings: final_render_settings['fontSize'] = 100
+                    if 'fontName' not in final_render_settings: final_render_settings['fontName'] = 'Avenir Black'
                     if 'bgColor' not in final_render_settings: final_render_settings['bgColor'] = '#000000'
                     if 'bgOpacity' not in final_render_settings: final_render_settings['bgOpacity'] = 0.63
                     
@@ -4664,6 +4667,6 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT, signal_handler)  # Ctrl+C
     signal.signal(signal.SIGTERM, signal_handler)
 
-    # Note: use_reloader=False is recommended when using background threading 
-    # to prevent the server from starting threads twice.
-    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)
+    # Note: use_reloader=True enables auto-reload on code changes.
+    # This may start the process twice initially, but enables development workflow.
+    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=True)

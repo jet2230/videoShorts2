@@ -5830,12 +5830,14 @@
             const settings = {
                 folder_number: folderNumber,
                 theme_number: themeNumber,
-                trim: {
-                    start: document.getElementById('startTime').value,
-                    end: document.getElementById('endTime').value,
-                    removeIntro: document.getElementById('trimIntro').checked,
-                    removeOutro: document.getElementById('trimOutro').checked
-                },
+                // NOTE: Don't save trim settings in presets - they contain absolute timestamps
+                // that become invalid when video is shortened in adjust. Let adjust.md control trim.
+                // trim: {
+                //     start: document.getElementById('startTime').value,
+                //     end: document.getElementById('endTime').value,
+                //     removeIntro: document.getElementById('trimIntro').checked,
+                //     removeOutro: document.getElementById('trimOutro').checked
+                // },
                 speed: document.getElementById('playbackSpeed').value,
                 reverse: document.getElementById('effectReverse').checked,
                 subtitles: {
@@ -6453,13 +6455,17 @@
         // Apply settings
         function applySettings(settings) {
             console.log('Applying settings:', settings);
-            // Apply trim settings
+            // NOTE: Don't restore trim settings from presets - they contain absolute timestamps
+            // that become invalid when video is shortened in adjust. The adjust.md file controls trim.
+            // Trim settings are intentionally NOT saved in presets (see getCurrentSettings).
+            /*
             if (settings.trim) {
                 document.getElementById('startTime').value = settings.trim.start || '00:00:00';
                 document.getElementById('endTime').value = settings.trim.end || formatTime(video.duration);
                 document.getElementById('trimIntro').checked = settings.trim.removeIntro || false;
                 document.getElementById('trimOutro').checked = settings.trim.removeOutro || false;
             }
+            */
 
             // Apply speed
             if (settings.speed) {

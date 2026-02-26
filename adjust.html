@@ -1939,6 +1939,8 @@
 
                                                 <select id="subtitle-font">
 
+                                                    <option value="Avenir Black" selected>Avenir Black</option>
+
                                                     <option value="Arial">Arial</option>
 
                                                     <option value="Calibri">Calibri</option>
@@ -1961,7 +1963,7 @@
 
                                                 <div style="display: flex; align-items: center; gap: 10px;">
 
-                                                    <input type="number" id="subtitle-size" value="80" min="20" max="200" style="flex: 1;">
+                                                    <input type="number" id="subtitle-size" value="100" min="20" max="200" style="flex: 1;">
 
                                                     <label style="display: flex; align-items: center; gap: 5px; margin-bottom: 0; cursor: pointer; white-space: nowrap;">
 
@@ -3322,17 +3324,17 @@
         function getCurrentSubtitleSettings() {
             const effectType = document.getElementById('effect-type')?.value || 'none';
             return {
-                mode: effectType !== 'none' ? 
+                mode: effectType !== 'none' ?
                       (document.getElementById('karaoke-mode')?.value || 'normal') : 'standard',
                 effect_type: effectType,
                 auto_emoji: document.getElementById('auto-emoji')?.checked || false,
                 keyword_scaling: document.getElementById('keyword-scaling')?.checked || false,
-                fontSize: parseInt(document.getElementById('subtitle-size')?.value || '80'),
+                fontSize: parseInt(document.getElementById('subtitle-size')?.value || '100'),
                 primaryColor: document.getElementById('subtitle-color')?.value || '#ffffff',
                 textColor: document.getElementById('highlight-text-color')?.value || '#ffff00',
                 pastColor: document.getElementById('past-color')?.value || '#808080',
-                font_name: document.getElementById('subtitle-font')?.value || 'Arial',
-                fontName: document.getElementById('subtitle-font')?.value || 'Arial',
+                font_name: document.getElementById('subtitle-font')?.value || 'Avenir Black',
+                fontName: document.getElementById('subtitle-font')?.value || 'Avenir Black',
                 font_weight: document.getElementById('subtitle-bold')?.checked ? 'bold' : 'normal',
                 glowColor: document.getElementById('highlight-glow-color')?.value || '#ffff00',
                 glowBlur: parseInt(document.getElementById('highlight-glow-blur')?.value || '10'),
