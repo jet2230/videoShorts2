@@ -2771,43 +2771,88 @@ def serve_media(filename):
 @app.route('/api/upload-media', methods=['POST'])
 def upload_media():
     """Handle media upload (images, audio, b-roll) for video editing."""
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file part'}), 400
-    
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No selected file'}), 400
-    
-    if file:
-        filename = secure_filename(file.filename)
-        # Ensure media directory exists
-        media_dir = Path('media')
-        media_dir.mkdir(exist_ok=True)
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file part'}), 400
         
-        target_path = media_dir / filename
-        # Save the file (overwrites if already exists, stopping replication)
-        file.save(str(target_path))
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No selected file'}), 400
         
-        # Try to get duration if it's a video
-        duration = None
-        if filename.lower().endswith(('.mp4', '.mkv', '.webm', '.mov', '.avi')):
-            try:
-                import subprocess
-                cmd = [
-                    'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
-                    '-of', 'default=noprint_wrappers=1:nokey=1', str(target_path)
-                ]
-                result = subprocess.run(cmd, capture_output=True, text=True)
-                if result.returncode == 0:
-                    duration = float(result.stdout.strip())
-            except Exception as e:
-                app_logger.warning(f"Could not get duration for {filename}: {e}")
+        if file:
+            filename = secure_filename(file.filename)
+            # Ensure media directory exists
+            media_dir = Path('media')
+            media_dir.mkdir(exist_ok=True)
 
-        return jsonify({
-            'filename': filename,
-            'url': f'/media/{filename}',
-            'duration': duration
-        })
+            # Handle EPS conversion if necessary
+            is_eps = filename.lower().endswith('.eps')
+            if is_eps:
+                # Change extension to .png for the saved file
+                filename = Path(filename).with_suffix('.png').name
+
+            target_path = media_dir / filename
+            
+            if is_eps:
+                # Convert EPS to PNG using direct Ghostscript call (more robust than Pillow for EPS)
+                try:
+                    # We need to save the uploaded file temporarily first
+                    temp_eps = media_dir / f"temp_{filename}.eps"
+                    file.save(str(temp_eps))
+                    
+                    # Run Ghostscript to convert EPS to PNG
+                    # -dEPSCrop: crop to EPS bounding box
+                    # -sDEVICE=pngalpha: PNG with transparency
+                    # -r300: 300 DPI for good quality
+                    import subprocess
+                    gs_cmd = [
+                        "gs", "-dSAFER", "-dBATCH", "-dNOPAUSE", "-dEPSCrop",
+                        "-sDEVICE=pngalpha", "-r300",
+                        f"-sOutputFile={target_path}", str(temp_eps)
+                    ]
+                    app_logger.info(f"Running GS: {' '.join(gs_cmd)}")
+                    gs_res = subprocess.run(gs_cmd, capture_output=True, text=True)
+                    
+                    # Remove temporary EPS
+                    if temp_eps.exists():
+                        temp_eps.unlink()
+                        
+                    if gs_res.returncode != 0:
+                        raise Exception(f"Ghostscript error: {gs_res.stderr}")
+                        
+                    app_logger.info(f"Converted EPS logo to PNG via Ghostscript: {filename}")
+                except Exception as e:
+                    import traceback
+                    app_logger.error(f"Failed to convert EPS to PNG via GS: {e}\n{traceback.format_exc()}")
+                    return jsonify({'error': f'Failed to process EPS file: {str(e)}'}), 500
+            else:
+                # Save the file normally
+                file.save(str(target_path))
+
+            # Try to get duration if it's a video
+            duration = None
+            if filename.lower().endswith(('.mp4', '.mkv', '.webm', '.mov', '.avi')):
+                try:
+                    import subprocess
+                    cmd = [
+                        'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+                        '-of', 'default=noprint_wrappers=1:nokey=1', str(target_path)
+                    ]
+                    result = subprocess.run(cmd, capture_output=True, text=True)
+                    if result.returncode == 0:
+                        duration = float(result.stdout.strip())
+                except Exception as e:
+                    app_logger.warning(f"Could not get duration for {filename}: {e}")
+
+            return jsonify({
+                'filename': filename,
+                'url': f'/media/{filename}',
+                'duration': duration
+            })
+    except Exception as e:
+        import traceback
+        app_logger.error(f"CRITICAL UPLOAD ERROR: {e}\n{traceback.format_exc()}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/process-edit', methods=['POST'])
 def process_video_edit():
@@ -3015,7 +3060,9 @@ def process_video_edit():
                 if theme_title:
                     edit_settings['title'] = theme_title
                     edit_settings['subtitles']['title'] = theme_title
-                    edit_settings['subtitles']['show_title'] = True
+                    # Respect the show_title setting from adjust.md (default to True only if not set)
+                    show_title_from_adjust = adjust_settings.get('show_title', True)
+                    edit_settings['subtitles']['show_title'] = show_title_from_adjust
                 
                 # IMPORTANT: Find the correct SRT file for this specific theme
                 # This ensures we use the theme boundaries and any manual edits

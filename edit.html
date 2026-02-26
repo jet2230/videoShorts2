@@ -2430,7 +2430,7 @@
         <button class="close-panel" onclick="closePanel('logo')">×</button>
         <h3><span class="icon">🏢</span> Logo Settings</h3>
         <div class="file-upload" onclick="document.getElementById('logoFile').click()">
-            <input type="file" id="logoFile" accept="image/*" onchange="handleLogoUpload(this)">
+            <input type="file" id="logoFile" accept="image/*,.eps" onchange="handleLogoUpload(this)">
             <div class="icon">🏢</div>
             <div class="text">Add Logo</div>
         </div>
@@ -2440,6 +2440,17 @@
                 <input type="checkbox" id="logoStretchWidth" onchange="activeLogo.stretchWidth = this.checked; renderLogo();">
                 <span>Stretch width to video</span>
             </label>
+        </div>
+
+        <div class="control-group" style="margin-top: 15px;">
+            <label style="display: block; font-size: 11px; color: #aaa; margin-bottom: 8px; text-transform: uppercase;">Preset Alignment</label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <button class="action-btn secondary" style="padding: 6px; font-size: 10px;" onclick="setLogoAlignment('top-left')">Top Left</button>
+                <button class="action-btn secondary" style="padding: 6px; font-size: 10px;" onclick="setLogoAlignment('top-right')">Top Right</button>
+                <button class="action-btn secondary" style="padding: 6px; font-size: 10px;" onclick="setLogoAlignment('bottom-left')">Bottom Left</button>
+                <button class="action-btn secondary" style="padding: 6px; font-size: 10px;" onclick="setLogoAlignment('bottom-right')">Bottom Right</button>
+                <button class="action-btn secondary" style="padding: 6px; font-size: 10px; grid-column: span 2;" onclick="setLogoAlignment('custom')">Custom (Drag to move)</button>
+            </div>
         </div>
         <p style="font-size: 11px; color: #888; margin-top: 10px;">
             * The logo remains visible throughout the entire video. Toggle it on/off using the checkbox next to the timeline zoom.
@@ -2576,7 +2587,8 @@
             posX: 50,
             posY: 90,
             scale: 0.5,
-            stretchWidth: false
+            stretchWidth: false,
+            alignment: 'custom' // 'top-left', 'top-right', 'bottom-left', 'bottom-right', 'custom'
         };
         let currentLightingPreset = null;
         let activeAnimations = {
@@ -3869,8 +3881,10 @@
                     const result = await response.json();
                     
                     if (result.filename) {
+                        const isConvertedEps = file.name.toLowerCase().endsWith('.eps');
                         logoFiles.push({
-                            file: file,
+                            // If it was EPS, don't use the local file for preview as it won't work in browser
+                            file: isConvertedEps ? null : file,
                             id: 'logo_' + Math.random().toString(36).substr(2, 9),
                             name: result.filename,
                             serverPath: result.filename
@@ -3966,6 +3980,28 @@
                     previewAudio.pause();
                 }
             }
+        }
+
+        // Set logo alignment
+        // Note: Positions are optimized for BOTH browser preview (CSS transform centering)
+        // AND FFmpeg export (uses center-based positioning: main_w*pct/100 - overlay_w/2)
+        // Default logo is ~40% of 1080px = 432px wide, so half-width is ~20%
+        function setLogoAlignment(alignment) {
+            activeLogo.alignment = alignment;
+            if (alignment === 'top-left') {
+                activeLogo.posX = 22;  // ~20% (half logo width) + 2% padding
+                activeLogo.posY = 8;
+            } else if (alignment === 'top-right') {
+                activeLogo.posX = 78;  // 100% - 20% (half logo width) - 2% padding
+                activeLogo.posY = 8;
+            } else if (alignment === 'bottom-left') {
+                activeLogo.posX = 22;
+                activeLogo.posY = 92;
+            } else if (alignment === 'bottom-right') {
+                activeLogo.posX = 78;
+                activeLogo.posY = 92;
+            }
+            renderLogo();
         }
 
         // Remove logo
@@ -4092,6 +4128,7 @@
                         const rect = overlay.getBoundingClientRect();
                         activeLogo.posX = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
                         activeLogo.posY = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+                        activeLogo.alignment = 'custom'; // Reset alignment to custom when dragged
                         container.style.left = `${activeLogo.posX}%`;
                         container.style.top = `${activeLogo.posY}%`;
                     }
