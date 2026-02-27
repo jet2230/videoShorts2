@@ -1300,11 +1300,12 @@ Video Path: {video_info['video_path']}
         with open(output_path, 'w', encoding='utf-8') as f:
             for i, segment in enumerate(final_segments, start=1):
                 # Adjust timestamps relative to theme start
-                # CLAMP TO ZERO for pretty output
+                # CLAMP TO RANGE for clean output and accurate duration
                 seg_start = max(0.0, segment['start'] - start_seconds)
-                seg_end = segment['end'] - start_seconds
+                seg_end = min(end_seconds - start_seconds, segment['end'] - start_seconds)
 
-                if seg_end <= 0:
+                # Skip if the segment is now zero-length or invalid
+                if seg_end <= seg_start:
                     continue
 
                 start_ts = self.seconds_to_timestamp(seg_start)

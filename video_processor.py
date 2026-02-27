@@ -36,6 +36,27 @@ class VideoProcessor:
         self.height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
+    def find_media(self, filename):
+        """Recursively find a media file in the media directory."""
+        if not filename: return None
+        media_root = Path('media')
+        
+        # 1. Try direct path
+        p = media_root / filename
+        if p.exists(): return p
+        
+        # 2. Try recursive search
+        try:
+            matches = list(media_root.rglob(filename))
+            if matches: return matches[0]
+        except: pass
+        
+        # 3. Try absolute or relative to CWD
+        p = Path(filename)
+        if p.exists(): return p
+        
+        return None
+
     def apply_effects(self, output_path: str, settings: dict, cancel_flag=None, log_callback=None):
         """
         Apply time-based effects using a single-pass FFmpeg complex filter.
@@ -166,10 +187,9 @@ class VideoProcessor:
         # Add additional inputs for images
         image_inputs = []
         for img in image_settings:
-            img_path = Path('media') / img['name']
-            if not img_path.exists(): img_path = Path(img['name'])
+            img_path = self.find_media(img['name'])
             
-            if img_path.exists():
+            if img_path and img_path.exists():
                 # Loop image for duration
                 cmd.extend(['-loop', '1', '-i', str(img_path.absolute())])
                 image_inputs.append({
@@ -183,10 +203,9 @@ class VideoProcessor:
         # Add additional inputs for B-roll
         broll_inputs = []
         for marker in broll_markers:
-            br_path = Path('media') / marker['name']
-            if not br_path.exists(): br_path = Path(marker['name'])
+            br_path = self.find_media(marker['name'])
             
-            if br_path.exists():
+            if br_path and br_path.exists():
                 # Stream loop for B-roll files
                 cmd.extend(['-stream_loop', '-1', '-i', str(br_path.absolute())])
                 broll_inputs.append({
@@ -200,8 +219,8 @@ class VideoProcessor:
         # Add additional input for custom audio
         custom_audio_index = None
         if audio_settings.get('file'):
-            audio_path = Path('media') / audio_settings['file']
-            if audio_path.exists():
+            audio_path = self.find_media(audio_settings['file'])
+            if audio_path and audio_path.exists():
                 # Optimize audio input: only read the required duration
                 # Use same seek logic as main video for sync
                 if internal_start != 0:

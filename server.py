@@ -810,9 +810,11 @@ def update_theme():
                     if w['end'] > start_secs - 0.1 and w['start'] < end_secs + 0.1:
                         rw = w.copy()
                         # Timestamps are relative to the start of the theme clip
+                        # CLAMP TO RANGE for clean output
                         rw['start'] = max(0, rw['start'] - start_secs)
-                        rw['end'] = max(0, rw['end'] - start_secs)
-                        theme_words.append(rw)
+                        rw['end'] = min(end_secs - start_secs, rw['end'] - start_secs)
+                        if rw['end'] > rw['start']:
+                            theme_words.append(rw)
                     
                 with open(theme_json_path, 'w', encoding='utf-8') as f:
                     json.dump({
@@ -960,9 +962,11 @@ def get_theme_subtitles(folder_number: str, theme_number: str):
                     if w['end'] > theme_start_sec - 0.1 and w['start'] < theme_end_sec + 0.1:
                         rw = w.copy()
                         # Timestamps are relative to the start of the theme clip
-                        rw['start'] = max(0, w['start'] - theme_start_sec)
-                        rw['end'] = max(0, w['end'] - theme_start_sec)
-                        theme_words.append(rw)
+                        # CLAMP TO RANGE for clean output
+                        rw['start'] = max(0, rw['start'] - theme_start_sec)
+                        rw['end'] = min(theme_end_sec - theme_start_sec, rw['end'] - theme_start_sec)
+                        if rw['end'] > rw['start']:
+                            theme_words.append(rw)
                         
                 with open(theme_json_path, 'w', encoding='utf-8') as f:
                     json.dump({
@@ -1321,9 +1325,11 @@ def get_all_subtitles(folder_number: str):
                             if w['end'] > theme_start_sec - 0.1 and w['start'] < theme_end_sec + 0.1:
                                 rw = w.copy()
                                 # Timestamps are relative to the start of the theme clip
+                                # CLAMP TO RANGE for clean output
                                 rw['start'] = max(0, rw['start'] - theme_start_sec)
-                                rw['end'] = max(0, rw['end'] - theme_start_sec)
-                                theme_words.append(rw)
+                                rw['end'] = min(theme_end_sec - theme_start_sec, rw['end'] - theme_start_sec)
+                                if rw['end'] > rw['start']:
+                                    theme_words.append(rw)
                             
                         with open(theme_json_path, 'w', encoding='utf-8') as f:
                             json.dump({
@@ -3178,10 +3184,17 @@ def process_video_edit():
                         app_logger.info(f"Applying relative user offset {user_start_sec} to theme start {theme_meta_start}")
 
                     # Calculate end time
+                    meta_duration = theme_meta_end - theme_meta_start
+                    
                     if user_end_sec == 0 or abs(user_end_sec - theme_meta_end) < 60:
                         new_end = theme_meta_end
+                    elif abs(user_end_sec - meta_duration) < 10:
+                        # If user_end_sec is close to meta duration, it is likely the full clip duration from UI
+                        new_end = theme_meta_end
+                        app_logger.info(f"User end {user_end_sec} is close to metadata duration {meta_duration}, using metadata end {new_end}")
                     else:
                         new_end = theme_meta_start + user_end_sec
+                        app_logger.info(f"Using relative user end offset {user_end_sec} -> absolute {new_end}")
                         
                     edit_settings['trim']['start'] = format_srt_time(new_start).replace(',', '.')
                     edit_settings['trim']['end'] = format_srt_time(new_end).replace(',', '.')
@@ -3486,7 +3499,17 @@ def run_edit_task(edit_id: str, input_video: str, output_video: str, edit_settin
         outro_video_data = outro_conf.get('outroVideo')
         if outro_video_data and outro_video_data.get('path'):
             log_message("STEP 4: Appending Outro Video...")
-            outro_path = Path('media') / outro_video_data['path']
+            outro_path = folder_path / 'media' / outro_video_data['path']
+            if not outro_path.exists():
+                outro_path = Path('media') / outro_video_data['path']
+            
+            if not outro_path.exists():
+                # Recursive search fallback
+                try:
+                    matches = list(Path('media').rglob(outro_video_data['path']))
+                    if matches: outro_path = matches[0]
+                except: pass
+            
             if not outro_path.exists():
                 outro_path = Path(outro_video_data['path'])
             
@@ -4396,12 +4419,14 @@ def encode_canvas_karaoke():
                         # Filter word timestamps for this theme
                         theme_words = []
                         for w in all_words:
-                            if w['start'] >= start_time - 1.0 and w['end'] <= end_time + 1.0:
+                            if w['end'] > start_time - 0.1 and w['start'] < end_time + 0.1:
                                 # Create relative timestamps for the JSON
+                                # CLAMP TO RANGE for clean output
                                 rw = w.copy()
                                 rw['start'] = max(0, w['start'] - start_time)
-                                rw['end'] = max(0, w['end'] - start_time)
-                                theme_words.append(rw)
+                                rw['end'] = min(end_time - start_time, w['end'] - start_time)
+                                if rw['end'] > rw['start']:
+                                    theme_words.append(rw)
                         
                         with open(dest_json, 'w', encoding='utf-8') as f:
                             json.dump({
