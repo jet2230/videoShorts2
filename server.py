@@ -303,6 +303,12 @@ def adjust_page():
     return send_from_directory('.', 'adjust.html')
 
 
+@app.route('/finalcut.html')
+def finalcut_page():
+    """Serve the final cut editor page."""
+    return send_from_directory('.', 'finalcut.html')
+
+
 @app.route('/videos/<path:filepath>')
 def serve_video(filepath):
     """Serve video files from the videos directory."""
@@ -1567,12 +1573,18 @@ def get_subtitle_formatting(folder_number: str, theme_number: str):
     # Check if formatting file exists
     formatting_file = folder / 'shorts' / f'theme_{int(theme_number):03d}_formatting.json'
 
+    formatting = {}
     if formatting_file.exists():
         with open(formatting_file, 'r', encoding='utf-8') as f:
             formatting = json.load(f)
-        return jsonify({'formatting': formatting})
-    else:
-        return jsonify({'formatting': {}})
+
+    # Also load theme adjust settings which contain subtitle positioning and styling
+    adjust_settings = get_theme_adjust_settings(folder, int(theme_number))
+
+    # Merge adjust settings into formatting (adjust settings take precedence)
+    result = {**formatting, **adjust_settings}
+
+    return jsonify({'formatting': result})
 
 
 @app.route('/api/save-cue-text', methods=['POST'])

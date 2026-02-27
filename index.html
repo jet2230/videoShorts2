@@ -719,6 +719,26 @@
             background: #3a5fad;
         }
 
+        .theme-finalcut-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            background: #d32f2f;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-left: 4px;
+            transition: background 0.2s;
+        }
+
+        .theme-finalcut-btn:hover {
+            background: #f44336;
+        }
+
         .theme-header-row {
             display: flex;
             flex-direction: column;
@@ -2418,7 +2438,11 @@
                     <input type="checkbox" class="theme-checkbox" data-theme="${theme.number}">
                     <div class="theme-content">
                         <div class="theme-header">
-                            <span class="theme-number">Theme ${theme.number} <button class="theme-adjust-btn" data-theme-number="${theme.number}" data-folder="${selectedFolder}">Adjust</button> ${theme.short_created ? `<button class="theme-play-btn" data-video-path="${theme.short_info.path}">Play</button>` : ''}</span>
+                            <span class="theme-number">Theme ${theme.number}
+                                <button class="theme-adjust-btn" data-theme-number="${theme.number}" data-folder="${selectedFolder}">Adjust</button>
+                                <button class="theme-finalcut-btn" data-theme-number="${theme.number}" data-folder="${selectedFolder}">Final Cut</button>
+                                ${theme.short_created ? `<button class="theme-play-btn" data-video-path="${theme.short_info.path}">Play</button>` : ''}
+                            </span>
                             <div class="theme-header-row">
                                 ${theme.short_created ? '<span class="theme-created-badge">Short Created</span>' : `<span class="theme-duration">${theme.end}</span>`}
                             </div>
@@ -2489,6 +2513,18 @@
                     const folder = btn.dataset.folder;
                     // Open adjust.html in new tab with theme details
                     window.open(`/adjust.html?folder=${encodeURIComponent(folder)}&theme=${encodeURIComponent(themeNumber)}`, '_blank');
+                });
+            });
+
+            // Add click handlers for Final Cut buttons
+            container.querySelectorAll('.theme-finalcut-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    const themeNumber = btn.dataset.themeNumber;
+                    const folder = btn.dataset.folder;
+                    window.open(`/finalcut.html?folder=${encodeURIComponent(folder)}&theme=${encodeURIComponent(themeNumber)}`, '_blank');
                 });
             });
 
