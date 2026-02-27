@@ -55,6 +55,7 @@ class VideoProcessor:
         image_settings = settings.get('images', [])
         broll_markers = settings.get('broll_markers', [])
         audio_settings = settings.get('audio', {})
+        outro_settings = settings.get('outro', {})
         global_effects = settings.get('effects', {})
         lighting = settings.get('lighting', {})
         animations = settings.get('animations', {})
@@ -385,6 +386,13 @@ class VideoProcessor:
             
             s = marker['start_time']
             e = marker['end_time']
+            
+            # If hideLogo is enabled, clamp end time to main video duration
+            if outro_settings.get('hideLogo', True) and end_time:
+                main_dur = to_sec(end_time) - to_sec(start_time)
+                if e > main_dur:
+                    e = main_dur
+            
             duration = max(0.1, e - s)
             transition = marker.get('transition', 'fade')
             trans_dur = min(0.4, duration / 2) # Match CSS 0.4s, but cap at half duration
@@ -449,6 +457,14 @@ class VideoProcessor:
                 
                 s = marker['start_time']
                 e = marker['end_time']
+                
+                # If hideLogo is enabled, we clamp the end time to the main video duration
+                # to prevent logos/images from showing over the outro clip
+                if outro_settings.get('hideLogo', True) and end_time:
+                    main_dur = to_sec(end_time) - to_sec(start_time)
+                    if e > main_dur:
+                        e = main_dur
+                
                 x_pct = marker.get('x', 50)
                 y_pct = marker.get('y', 50)
                 scale_factor = marker.get('scale', 1.0)
@@ -521,6 +537,37 @@ class VideoProcessor:
                 filter_complex.append(f"{last_v}" + ",".join(final_vf) + "[v_final]")
                 last_v = "[v_final]"
 
+            # Add Outro Effect (Fade out, Slide out, etc)
+            outro_type = outro_settings.get('effect', 'none')
+            if outro_type != 'none' and end_time:
+                main_dur = to_sec(end_time) - to_sec(start_time)
+                outro_dur = float(outro_settings.get('duration', 1.0))
+                s = max(0, main_dur - outro_dur)
+                enable = f"between(t,{s},{main_dur})"
+                
+                if outro_type == 'fade-out':
+                    filter_complex.append(f"{last_v}fade=t=out:st={s}:d={outro_dur}[v_outro_fade]")
+                    last_v = "[v_outro_fade]"
+                elif outro_type == 'slide-out-left':
+                    filter_complex.append(f"{last_v}overlay=x='-w*(t-{s})/{outro_dur}':y=0:enable='{enable}'[v_outro_slide]")
+                    last_v = "[v_outro_slide]"
+                elif outro_type == 'slide-out-right':
+                    filter_complex.append(f"{last_v}overlay=x='w*(t-{s})/{outro_dur}':y=0:enable='{enable}'[v_outro_slide]")
+                    last_v = "[v_outro_slide]"
+                elif outro_type == 'zoom-out':
+                    filter_complex.append(f"{last_v}zoompan=z='1.0+(0.2*(1-(t-{s})/{outro_dur}))':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:enable='{enable}'[v_outro_zoom]")
+                    last_v = "[v_outro_zoom]"
+                elif outro_type == 'blur-out':
+                    filter_complex.append(f"{last_v}boxblur=luma_radius='20*(t-{s})/{outro_dur}':enable='{enable}'[v_outro_blur]")
+                    last_v = "[v_outro_blur]"
+
+            # Add audio fade out if enabled (MUST be in filter_complex if we already used it for mixing)
+            if outro_settings.get('fadeAudio') and end_time:
+                main_dur = to_sec(end_time) - to_sec(start_time)
+                fade_st = max(0, main_dur - 1)
+                filter_complex.append(f"{last_a}afade=t=out:st={fade_st}:d=1[a_faded]")
+                last_a = "[a_faded]"
+
             cmd.extend(['-filter_complex', ";".join(filter_complex)])
             # Map the last result
             cmd.extend(['-map', f"{last_v}", '-map', last_a])
@@ -552,7 +599,7 @@ class VideoProcessor:
             '-c:v', 'libx264', '-preset', preset, '-crf', crf,
             '-pix_fmt', 'yuv420p',
             '-r', '30',
-            '-c:a', 'aac', '-b:a', '192k',
+            '-c:a', 'aac', '-b:a', '192k', '-ar', '44100',
             '-async', '1',
             '-movflags', '+faststart',
             '-threads', '4'

@@ -3308,6 +3308,96 @@ def run_edit_task(edit_id: str, input_video: str, output_video: str, edit_settin
         if not os.path.exists(output_video) or os.path.getsize(output_video) < 1000:
             raise Exception("Output video is missing or empty. FFmpeg may have failed due to invalid seek range.")
 
+        # --- STEP 4: APPEND OUTRO VIDEO ---
+        outro_conf = edit_settings.get('outro', {})
+        outro_video_data = outro_conf.get('outroVideo')
+        if outro_video_data and outro_video_data.get('path'):
+            log_message("STEP 4: Appending Outro Video...")
+            outro_path = Path('media') / outro_video_data['path']
+            if not outro_path.exists():
+                outro_path = Path(outro_video_data['path'])
+            
+            if outro_path.exists():
+                try:
+                    # 1. Transcode outro to match the main video format (1080x1920, libx264, aac)
+                    # This ensures the concat demuxer works reliably.
+                    temp_outro = os.path.join(tempfile.gettempdir(), f"outro_ready_{edit_id}.mp4")
+                    
+                    # Robust check for audio in the outro clip
+                    check_outro_audio_cmd = ['ffprobe', '-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index', '-of', 'csv=p=0', str(outro_path)]
+                    outro_has_audio = subprocess.run(check_outro_audio_cmd, capture_output=True).stdout.strip() != b""
+                    
+                    # Build transcode command
+                    trans_cmd = ['ffmpeg', '-nostdin', '-y']
+                    
+                    if not outro_has_audio:
+                        # Add silent audio source if outro has none
+                        trans_cmd.extend(['-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo'])
+                    
+                    trans_cmd.extend(['-i', str(outro_path.absolute())])
+                    
+                    # Common video filters
+                    vf = 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(iw-ow)/2:(ih-oh)/2'
+                    
+                    if not outro_has_audio:
+                        # Map silence (input 0) and video (input 1)
+                        trans_cmd.extend(['-filter_complex', f'[1:v]{vf}[v]', '-map', '[v]', '-map', '0:a'])
+                        # Ensure we don't generate infinite silence
+                        dur_cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', str(outro_path)]
+                        outro_dur = subprocess.run(dur_cmd, capture_output=True).stdout.strip()
+                        if outro_dur:
+                            trans_cmd.extend(['-t', outro_dur.decode()])
+                    else:
+                        trans_cmd.extend(['-vf', vf])
+                        # Add audio fade if requested and has audio
+                        if outro_conf.get('fadeAudio'):
+                            dur = float(outro_video_data.get('duration', 3))
+                            trans_cmd.extend(['-af', f'afade=t=out:st={max(0, dur-1)}:d=1'])
+                    
+                    trans_cmd.extend([
+                        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', str(edit_settings.get('export_crf', 22)),
+                        '-r', '30', '-pix_fmt', 'yuv420p',
+                        '-c:a', 'aac', '-b:a', '192k', '-ar', '44100', 
+                        temp_outro
+                    ])
+                    
+                    log_message(f"Transcoding outro clip (has_audio={outro_has_audio}): {' '.join(trans_cmd)}")
+                    subprocess.run(trans_cmd, capture_output=True, check=True)
+                    
+                    # 2. Concatenate the main video and the prepared outro
+                    final_combined = os.path.join(tempfile.gettempdir(), f"final_combined_{edit_id}.mp4")
+                    
+                    # We use a robust re-encoding join.
+                    # First, we check if the main video has audio.
+                    check_audio_cmd = ['ffprobe', '-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index', '-of', 'csv=p=0', str(output_video)]
+                    has_audio = subprocess.run(check_audio_cmd, capture_output=True).stdout.strip() != b""
+                    
+                    log_message(f"Joining main video (has_audio={has_audio}) and outro...")
+                    
+                    # If both have audio, we can use simple concat
+                    if has_audio:
+                        cmd_str = f"ffmpeg -nostdin -y -i '{output_video}' -i '{temp_outro}' -filter_complex '[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[v][a]' -map '[v]' -map '[a]' -c:v libx264 -preset ultrafast -crf {edit_settings.get('export_crf', 22)} -c:a aac -b:a 192k -ar 44100 '{final_combined}'"
+                    else:
+                        # Add silence to main video if it doesn't have it
+                        cmd_str = f"ffmpeg -nostdin -y -i '{output_video}' -i '{temp_outro}' -f lavfi -i anullsrc=r=44100:cl=stereo -filter_complex '[0:v][2:a][1:v][1:a]concat=n=2:v=1:a=1[v][a]' -map '[v]' -map '[a]' -c:v libx264 -preset ultrafast -crf {edit_settings.get('export_crf', 22)} -c:a aac -b:a 192k -ar 44100 '{final_combined}'"
+                    
+                    log_message(f"Running Join Command: {cmd_str}")
+                    subprocess.run(cmd_str, shell=True, check=True, capture_output=True)
+                    
+                    # 3. Swap the combined video for the output_video
+                    if os.path.exists(final_combined):
+                        if os.path.exists(output_video): os.remove(output_video)
+                        shutil.move(final_combined, output_video)
+                        log_message("Outro successfully appended.")
+                    
+                    # Cleanup
+                    if os.path.exists(temp_outro): os.remove(temp_outro)
+                    
+                except Exception as e:
+                    log_message(f"Warning: Failed to append outro: {e}")
+            else:
+                log_message(f"Warning: Outro video file not found: {outro_path}")
+
         with task_lock:
             edit_processes[edit_id]['status'] = 'completed'
             edit_processes[edit_id]['success'] = True

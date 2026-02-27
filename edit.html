@@ -1183,21 +1183,22 @@
         .position-marker {
             position: absolute;
             top: 0;
-            width: 3px;
+            width: 2px;
             height: 100%;
-            background: #fff;
+            background: rgba(0, 204, 255, 0.5);
             pointer-events: none;
             z-index: 5;
-            box-shadow: 0 0 4px rgba(255, 255, 255, 0.8);
+            box-shadow: 0 0 4px rgba(0, 204, 255, 0.4);
         }
 
         .position-marker::before {
-            content: '▼';
+            content: '📍';
             position: absolute;
             top: -18px;
             left: 50%;
             transform: translateX(-50%);
-            font-size: 12px;
+            font-size: 10px;
+        }
             color: #fff;
         }
 
@@ -1362,6 +1363,36 @@
             text-shadow: 0 1px 3px rgba(0,0,0,1);
             font-weight: 600;
             z-index: 20;
+        }
+
+        .outro-block {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            background: repeating-linear-gradient(
+                45deg,
+                rgba(255, 107, 107, 0.2),
+                rgba(255, 107, 107, 0.2) 10px,
+                rgba(255, 107, 107, 0.3) 10px,
+                rgba(255, 107, 107, 0.3) 20px
+            );
+            border-left: 2px solid #ff6b6b;
+            z-index: 4;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ff6b6b;
+            font-size: 10px;
+            font-weight: bold;
+            overflow: hidden;
+            opacity: 0.8;
+        }
+
+        .outro-block::before {
+            content: '📤 OUTRO';
+            white-space: nowrap;
+            padding: 0 5px;
         }
 
         .trim-handle:hover {
@@ -1679,6 +1710,7 @@
                     <button class="control-btn" id="playPauseBtn" onclick="togglePlay()">▶</button>
                 </div>
                 <video id="brollOverlayVideo" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 12 !important; object-fit: cover;" muted></video>
+                <video id="outroOverlayVideo" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 13 !important; object-fit: contain; opacity: 0; transition: opacity 0.3s ease;" muted></video>
                 <canvas id="outlineCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 11 !important; display: none !important;"></canvas>
                 <div id="imageOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10 !important; display: block !important;"></div>
                 <div id="logoOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9 !important; display: block !important;"></div>
@@ -2521,6 +2553,24 @@
     <div class="tool-panel right" id="panel-outro">
         <button class="close-panel" onclick="closePanel('outro')">×</button>
         <h3><span class="icon">📤</span> Outro Effects</h3>
+
+        <!-- Outro Video Clip Section -->
+        <div class="control-group">
+            <label>Outro Video Clip (extends video duration)</label>
+            <div class="file-upload" onclick="document.getElementById('outroVideoFile').click()">
+                <input type="file" id="outroVideoFile" accept="video/*" style="display: none;" onchange="handleOutroVideoUpload(this)">
+                <div class="icon">🎬</div>
+                <div class="text" id="outroVideoText">Add Outro Clip</div>
+            </div>
+            <div id="outroVideoInfo" style="display: none; margin-top: 8px; font-size: 11px; color: #aaa;">
+                <div id="outroVideoName"></div>
+                <div id="outroVideoDuration"></div>
+            </div>
+            <button id="removeOutroVideo" class="action-btn secondary" style="width: 100%; margin-top: 5px; padding: 6px; font-size: 11px; display: none;" onclick="removeOutroVideo()">Remove Outro Clip</button>
+        </div>
+
+        <div style="border-top: 1px solid rgba(255,255,255,0.1); margin: 15px 0;"></div>
+
         <div class="control-group">
             <label>Effect Type</label>
             <select id="outroEffect">
@@ -2552,6 +2602,23 @@
                 <option value="bounce">Bounce</option>
             </select>
         </div>
+
+        <div class="control-group">
+            <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
+                <span>Fade Out Audio</span>
+                <input type="checkbox" id="outroFadeAudio" style="width: auto;">
+            </label>
+            <div style="font-size: 10px; color: #888; margin-top: 4px;">Fade out audio during outro</div>
+        </div>
+
+        <div class="control-group">
+            <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
+                <span>Hide Logo During Outro</span>
+                <input type="checkbox" id="outroHideLogo" style="width: auto;" checked>
+            </label>
+            <div style="font-size: 10px; color: #888; margin-top: 4px;">Hide logo overlay when outro plays</div>
+        </div>
+
         <button class="action-btn secondary" style="width: 100%; margin-top: 10px; padding: 10px;" onclick="previewEffect('outro')">
             👁️ Preview Outro
         </button>
@@ -2590,6 +2657,19 @@
             stretchWidth: false,
             alignment: 'custom' // 'top-left', 'top-right', 'bottom-left', 'bottom-right', 'custom'
         };
+
+        // Outro video clip
+        let outroVideo = {
+            enabled: false,
+            file: null,
+            name: '',
+            path: '',
+            duration: 0
+        };
+        let outroPlaying = false; // Track if we're currently playing the outro
+        let outroStartTime = 0; // Track when the outro started playing
+        let outroCompleted = false; // Track if the outro has finished
+        let lastOutroCheckTime = 0; // Track last time outro was checked for pause adjustment
         let currentLightingPreset = null;
         let activeAnimations = {
             cameraGlare: false,
@@ -2624,6 +2704,7 @@
         let waveformPeaks = [];
         let selectedTimelinePosition = null; // Stores selected position (0-1) on timeline
         let positionMarker = null; // Visual white marker for selected position
+        let outroBlock = null; // Visual block for outro video on timeline
         let effectMarkers = {}; // Stores {marker: element, tooltip: element} by effect name
         let effectPositions = {}; // Stores position (0-1) for each effect type
         let activeEffects = new Set(); // Currently active effects at playhead position
@@ -2678,7 +2759,8 @@
             checkEffectMarkers(); // Check if we've crossed any effect markers
             checkImageMarkers(); // Check if we've crossed any image markers
             checkBrollMarkers(); // Check if we've crossed any b-roll markers
-            
+            checkOutroVideo(); // Check if we should show outro video
+
             // Auto-scroll timeline to keep playhead in view when zoomed
             const zoomLevel = parseFloat(document.getElementById('timelineZoomLevel')?.value || 1);
             if (zoomLevel > 1) {
@@ -2720,10 +2802,16 @@
                 // Ensure volume and muted state are synced
                 const vol = document.getElementById('audioVolume').value;
                 previewAudio.volume = Math.min(1.0, vol / 100);
-                previewAudio.muted = false; 
+                previewAudio.muted = false;
                 previewAudio.play().catch(e => {
                     console.warn('Audio play failed:', e);
                 });
+            }
+
+            // Sync outro video play state
+            const outroVideoEl = document.getElementById('outroOverlayVideo');
+            if (outroVideoEl && outroVideoEl.style.opacity === '1' && outroVideoEl.paused) {
+                outroVideoEl.play().catch(e => console.warn('Outro play failed:', e));
             }
         });
         video.addEventListener('pause', () => {
@@ -2732,6 +2820,10 @@
             document.getElementById('videoAnimationContainer').style.animationPlayState = 'paused';
             video.style.animationPlayState = 'paused';
             previewAudio.pause();
+
+            // Pause outro video
+            const outroVideo = document.getElementById('outroOverlayVideo');
+            if (outroVideo) outroVideo.pause();
         });
         
         video.addEventListener('seeking', () => {
@@ -2740,19 +2832,25 @@
             checkEffectMarkers();
             checkImageMarkers();
             checkBrollMarkers();
-            
-            // Sync B-roll play state during seek
+            checkOutroVideo();
+
+            // Sync B-roll and outro play state during seek
             const brollVideo = document.getElementById('brollOverlayVideo');
             if (brollVideo && !brollVideo.paused && video.paused) {
                 brollVideo.pause();
             }
+            const outroVideoEl = document.getElementById('outroOverlayVideo');
+            if (outroVideoEl && !outroVideoEl.paused && video.paused) {
+                outroVideoEl.pause();
+            }
         });
-        
+
         video.addEventListener('seeked', () => {
             previewAudio.currentTime = video.currentTime;
             checkEffectMarkers();
             checkImageMarkers();
             checkBrollMarkers();
+            checkOutroVideo();
         });
         
         video.addEventListener('ratechange', () => {
@@ -2884,17 +2982,36 @@
             return 0;
         }
 
-        // Update playhead position
+        // Update playhead position based on current time
         function updatePlayhead() {
-            if (video.duration) {
-                const percent = (video.currentTime / video.duration) * 100;
-                playhead.style.left = `${percent}%`;
+            const mainDuration = video.duration || 1;
+            const outroDuration = (outroVideo && outroVideo.enabled) ? outroVideo.duration : 0;
+            const displayDuration = mainDuration + outroDuration;
+            
+            let currentTime = video.currentTime;
+            
+            // If outro is playing, calculate the extended time for the playhead
+            if (outroPlaying) {
+                const elapsed = (Date.now() - outroStartTime) / 1000;
+                currentTime = mainDuration + elapsed;
+            } else if (outroCompleted) {
+                currentTime = mainDuration + outroDuration;
+            }
 
-                // Update global progress bar if active
-                const globalFill = document.getElementById('global-progress-fill');
-                if (globalFill) {
-                    globalFill.style.width = `${percent}%`;
-                }
+            const percent = (currentTime / displayDuration) * 100;
+            if (playhead) {
+                playhead.style.left = `${percent}%`;
+            }
+
+            // Also update any other time-based UI
+            const currentTimeEl = document.getElementById('currentTime');
+            if (currentTimeEl) {
+                currentTimeEl.textContent = formatTimeSeconds(currentTime);
+            }
+
+            const globalFill = document.getElementById('globalProgressFill') || document.getElementById('global-progress-fill');
+            if (globalFill) {
+                globalFill.style.width = `${percent}%`;
             }
         }
 
@@ -2902,13 +3019,41 @@
         function updateTimeline() {
             const start = parseTime(document.getElementById('startTime').value);
             const end = parseTime(document.getElementById('endTime').value);
-            const duration = video.duration || 1;
+            const mainDuration = video.duration || 1;
+            const outroDuration = (outroVideo && outroVideo.enabled) ? outroVideo.duration : 0;
+            const displayDuration = mainDuration + outroDuration;
 
-            const startPercent = (start / duration) * 100;
-            const widthPercent = ((end - start) / duration) * 100;
+            // Update duration display
+            const durationEl = document.getElementById('timelineDuration');
+            if (durationEl) {
+                durationEl.textContent = formatTimeSeconds(displayDuration);
+            }
+
+            const startPercent = (start / displayDuration) * 100;
+            const widthPercent = ((end - start) / displayDuration) * 100;
 
             trimRegion.style.left = `${startPercent}%`;
             trimRegion.style.width = `${widthPercent}%`;
+
+            // Update outro block visibility and position
+            if (outroVideo && outroVideo.enabled && outroVideo.duration > 0) {
+                if (!outroBlock) {
+                    outroBlock = document.createElement('div');
+                    outroBlock.className = 'outro-block';
+                    timelineTrack.appendChild(outroBlock);
+                }
+                
+                // Position it exactly after the main video
+                const outroStartPercent = (mainDuration / displayDuration) * 100;
+                const outroWidthPercent = (outroDuration / displayDuration) * 100;
+                
+                outroBlock.style.left = `${outroStartPercent}%`;
+                outroBlock.style.width = `${outroWidthPercent}%`;
+                outroBlock.style.display = 'flex';
+                outroBlock.title = `📤 Outro: ${outroVideo.name} (${outroVideo.duration.toFixed(1)}s)`;
+            } else if (outroBlock) {
+                outroBlock.style.display = 'none';
+            }
 
             updatePlayhead();
         }
@@ -2931,10 +3076,36 @@
             if (e.target !== trimStart && e.target !== trimEnd) {
                 const rect = timelineTrack.getBoundingClientRect();
                 const percent = (e.clientX - rect.left) / rect.width;
-                selectedTimelinePosition = percent; // Track selected position for effect markers
-                console.log('Timeline clicked, position:', percent);
-                video.currentTime = percent * video.duration;
+                selectedTimelinePosition = percent; // Track selected position relative to full timeline
+
+                const mainDuration = video.duration || 1;
+                const outroDuration = (outroVideo && outroVideo.enabled) ? outroVideo.duration : 0;
+                const displayDuration = mainDuration + outroDuration;
+                
+                // Seek to time based on full timeline duration
+                const targetTime = percent * displayDuration;
+                
+                // If it's in the main video area, seek video
+                if (targetTime <= mainDuration) {
+                    video.currentTime = targetTime;
+                    outroPlaying = false; // Stop outro if we seek back to main video
+                    outroCompleted = false;
+                } else {
+                    // It's in the outro area - video can only be at the end
+                    video.currentTime = mainDuration;
+                    
+                    // Start or seek the outro
+                    if (outroVideo && outroVideo.enabled) {
+                        const elapsedInOutro = targetTime - mainDuration;
+                        outroPlaying = true;
+                        outroStartTime = Date.now() - (elapsedInOutro * 1000);
+                        outroCompleted = false;
+                        checkOutroVideo();
+                    }
+                }
+                
                 updatePositionMarker();
+                updatePlayhead();
             }
         });
 
@@ -2955,16 +3126,26 @@
             const rect = timelineTrack.getBoundingClientRect();
             let percent = (e.clientX - rect.left) / rect.width;
             percent = Math.max(0, Math.min(1, percent));
-            const time = percent * video.duration;
+
+            const mainDuration = video.duration || 1;
+            const outroDuration = (outroVideo && outroVideo.enabled) ? outroVideo.duration : 0;
+            const displayDuration = mainDuration + outroDuration;
+            
+            // Trim time relative to full display duration
+            const time = percent * displayDuration;
 
             if (isDraggingStart) {
-                const endTime = parseTime(document.getElementById('endTime').value);
+                const endTimeStr = document.getElementById('endTime').value;
+                const endTime = parseTime(endTimeStr);
                 if (time < endTime - 0.5) {
                     document.getElementById('startTime').value = formatTimeSeconds(time);
-                    video.currentTime = time;
+                    if (time <= mainDuration) {
+                        video.currentTime = time;
+                    }
                 }
             } else if (isDraggingEnd) {
-                const startTime = parseTime(document.getElementById('startTime').value);
+                const startTimeStr = document.getElementById('startTime').value;
+                const startTime = parseTime(startTimeStr);
                 if (time > startTime + 0.5) {
                     document.getElementById('endTime').value = formatTimeSeconds(time);
                 }
@@ -3403,12 +3584,16 @@
                     item.style.gap = '10px';
                     item.style.marginBottom = '0';
                     
+                    const mainDuration = video.duration || 1;
+                    const outroDuration = (outroVideo && outroVideo.enabled) ? outroVideo.duration : 0;
+                    const displayDuration = mainDuration + outroDuration;
+                    
                     const displayName = marker.brollName.length > 5 ? marker.brollName.substring(0, 5) + "..." : marker.brollName;
                     item.innerHTML = `
                         <div style="flex: 1; font-size: 11px; color: #eee; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${marker.brollName}">
                             🎬 ${displayName}
                             <div style="font-size: 9px; opacity: 0.6; margin-top: 2px;">
-                                ${formatTimeSeconds(marker.start * video.duration)} - ${formatTimeSeconds(marker.end * video.duration)}
+                                ${formatTimeSeconds(marker.start * displayDuration)} - ${formatTimeSeconds(marker.end * displayDuration)}
                             </div>
                         </div>
                         <button onclick="removeBrollMarker('${marker.id}')" style="background: rgba(255, 68, 68, 0.2); color: #ff4444; border: 1px solid rgba(255, 68, 68, 0.3); padding: 4px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='rgba(255, 68, 68, 0.4)'" onmouseout="this.style.background='rgba(255, 68, 68, 0.2)'">✕</button>
@@ -3423,9 +3608,13 @@
         // Add B-roll to timeline
         function addBrollToTimeline(index) {
             const file = brollFiles[index];
-            const startPos = selectedTimelinePosition !== null ? selectedTimelinePosition : (video.currentTime / video.duration);
+            const mainDuration = video.duration || 1;
+            const outroDuration = (outroVideo && outroVideo.enabled) ? outroVideo.duration : 0;
+            const displayDuration = mainDuration + outroDuration;
+            
+            const startPos = selectedTimelinePosition !== null ? selectedTimelinePosition : (video.currentTime / displayDuration);
             const duration = file.duration || 5; // Use file duration if available
-            const endPos = Math.min(1.0, startPos + (duration / video.duration));
+            const endPos = Math.min(1.0, startPos + (duration / displayDuration));
 
             const marker = {
                 id: 'brollmarker_' + Math.random().toString(36).substr(2, 9),
@@ -3765,10 +3954,13 @@
                 return;
             }
 
-            const videoDuration = video.duration || 1;
+            const mainDuration = video.duration || 1;
+            const outroDuration = (outroVideo && outroVideo.enabled) ? outroVideo.duration : 0;
+            const displayDuration = mainDuration + outroDuration;
+            
             const duration = 5; // Default 5 seconds
             const start = selectedTimelinePosition;
-            const end = Math.min(1, start + (duration / videoDuration));
+            const end = Math.min(1, start + (duration / displayDuration));
 
             const markerId = 'imgmarker_' + Math.random().toString(36).substr(2, 9);
             
@@ -4019,6 +4211,118 @@
             renderLogo();
         }
 
+        // Handle outro video upload
+        async function handleOutroVideoUpload(input) {
+            if (input.files && input.files[0]) {
+                const file = input.files[0];
+
+                // Get video duration
+                const tempVideo = document.createElement('video');
+                tempVideo.preload = 'metadata';
+
+                tempVideo.onloadedmetadata = async function() {
+                    const duration = tempVideo.duration;
+                    const formData = new FormData();
+                    formData.append('file', file);
+
+                    try {
+                        showNotification(`Uploading ${file.name}...`, 'info');
+                        const response = await fetch('/api/upload-media', {
+                            method: 'POST',
+                            body: formData
+                        });
+
+                        const result = await response.json();
+
+                        if (result.filename) {
+                            outroVideo.enabled = true;
+                            outroVideo.file = file;
+                            outroVideo.name = result.filename;
+                            outroVideo.path = result.filename;
+                            outroVideo.duration = duration;
+
+                            // Update UI
+                            document.getElementById('outroVideoText').textContent = file.name;
+                            document.getElementById('outroVideoInfo').style.display = 'block';
+                            document.getElementById('outroVideoName').textContent = `📁 ${file.name}`;
+                            document.getElementById('outroVideoDuration').textContent = `⏱️ ${formatTimeSeconds(duration)}`;
+                            document.getElementById('removeOutroVideo').style.display = 'block';
+
+                            // Extend video trim duration
+                            const currentEndTime = parseTime(document.getElementById('endTime').value);
+                            const newEndTime = currentEndTime + duration;
+                            document.getElementById('endTime').value = formatTimeSeconds(newEndTime);
+                            updateTimeline();
+
+                            // Preload outro video element for preview
+                            const outroOverlay = document.getElementById('outroOverlayVideo');
+                            if (outroOverlay) {
+                                outroOverlay.src = '/media/' + encodeURIComponent(result.filename);
+                            }
+
+                            showNotification(`${file.name} added - Duration extended by ${duration.toFixed(1)}s`, 'success');
+                        }
+                    } catch (error) {
+                        console.error('Outro video upload error:', error);
+                        showNotification(`Error uploading ${file.name}`, 'error');
+                    }
+                };
+
+                tempVideo.onerror = function() {
+                    showNotification('Error loading video file', 'error');
+                };
+
+                tempVideo.src = URL.createObjectURL(file);
+            }
+        }
+
+        // Remove outro video
+        function removeOutroVideo() {
+            const duration = outroVideo.duration;
+
+            outroVideo.enabled = false;
+            outroVideo.file = null;
+            outroVideo.name = '';
+            outroVideo.path = '';
+            outroVideo.duration = 0;
+
+            // Reset tracking variables
+            outroPlaying = false;
+            outroStartTime = 0;
+            outroCompleted = false;
+            lastOutroCheckTime = 0;
+
+            // Reset UI
+            document.getElementById('outroVideoFile').value = '';
+            document.getElementById('outroVideoText').textContent = 'Add Outro Clip';
+            document.getElementById('outroVideoInfo').style.display = 'none';
+            document.getElementById('removeOutroVideo').style.display = 'none';
+
+            // Clear outro overlay element
+            const outroOverlay = document.getElementById('outroOverlayVideo');
+            if (outroOverlay) {
+                outroOverlay.src = '';
+                outroOverlay.style.opacity = '0';
+                outroOverlay.pause();
+            }
+
+            // Show logo again if it was hidden
+            const logoOverlay = document.getElementById('logoOverlay');
+            if (logoOverlay) {
+                logoOverlay.style.opacity = '1';
+            }
+
+            // Reduce video trim duration
+            if (duration > 0) {
+                const currentEndTime = parseTime(document.getElementById('endTime').value);
+                const newEndTime = Math.max(0, currentEndTime - duration);
+                document.getElementById('endTime').value = formatTimeSeconds(newEndTime);
+                updateTimeline();
+            }
+
+            showNotification('Outro clip removed', 'info');
+        }
+
         // Remove image marker
         function removeImageMarker(markerId) {
             const index = imageMarkers.findIndex(m => m.id === markerId);
@@ -4194,9 +4498,12 @@
             const durationSeconds = durationValue === 'custom' ? (parseInt(customInput?.value) || 10) : (durationValue === 'all' ? null : parseInt(durationValue));
 
             // Calculate end position
-            const videoDuration = video.duration || 1;
+            const mainDuration = video.duration || 1;
+            const outroDuration = (outroVideo && outroVideo.enabled) ? outroVideo.duration : 0;
+            const displayDuration = mainDuration + outroDuration;
+            
             const startPosition = positionPercent;
-            const endPosition = durationValue === 'all' ? 1 : Math.min(1, startPosition + (durationSeconds / videoDuration));
+            const endPosition = durationValue === 'all' ? 1 : Math.min(1, startPosition + (durationSeconds / displayDuration));
 
             // Create marker as a bar with width
             const marker = document.createElement('div');
@@ -4519,7 +4826,21 @@
         function checkEffectMarkers() {
             if (!video.duration) return;
 
-            const currentPercent = video.currentTime / video.duration;
+            const mainDuration = video.duration || 1;
+            const outroDuration = (outroVideo && outroVideo.enabled) ? outroVideo.duration : 0;
+            const displayDuration = mainDuration + outroDuration;
+            
+            let currentTime = video.currentTime;
+            
+            // If outro is playing, calculate the extended time for the playhead
+            if (outroPlaying) {
+                const elapsed = (Date.now() - outroStartTime) / 1000;
+                currentTime = mainDuration + elapsed;
+            } else if (outroCompleted) {
+                currentTime = mainDuration + outroDuration;
+            }
+
+            const currentPercent = currentTime / displayDuration;
             let shouldUpdate = false;
 
             // Check each effect marker position
@@ -4549,7 +4870,22 @@
         // Check if playhead has crossed any image markers
         function checkImageMarkers() {
             if (!video.duration) return;
-            const currentPercent = video.currentTime / video.duration;
+
+            const mainDuration = video.duration || 1;
+            const outroDuration = (outroVideo && outroVideo.enabled) ? outroVideo.duration : 0;
+            const displayDuration = mainDuration + outroDuration;
+            
+            let currentTime = video.currentTime;
+            
+            // If outro is playing, calculate the extended time for the playhead
+            if (outroPlaying) {
+                const elapsed = (Date.now() - outroStartTime) / 1000;
+                currentTime = mainDuration + elapsed;
+            } else if (outroCompleted) {
+                currentTime = mainDuration + outroDuration;
+            }
+
+            const currentPercent = currentTime / displayDuration;
             const overlay = document.getElementById('imageOverlay');
             if (!overlay) return;
 
@@ -4684,7 +5020,22 @@
         // Check if playhead has crossed any b-roll markers
         function checkBrollMarkers() {
             if (!video.duration) return;
-            const currentPercent = video.currentTime / video.duration;
+            
+            const mainDuration = video.duration || 1;
+            const outroDuration = (outroVideo && outroVideo.enabled) ? outroVideo.duration : 0;
+            const displayDuration = mainDuration + outroDuration;
+            
+            let currentTime = video.currentTime;
+            
+            // If outro is playing, calculate the extended time for the playhead
+            if (outroPlaying) {
+                const elapsed = (Date.now() - outroStartTime) / 1000;
+                currentTime = mainDuration + elapsed;
+            } else if (outroCompleted) {
+                currentTime = mainDuration + outroDuration;
+            }
+
+            const currentPercent = currentTime / displayDuration;
             const brollVideo = document.getElementById('brollOverlayVideo');
             if (!brollVideo) return;
 
@@ -4714,9 +5065,9 @@
                     });
                 }
 
-                // Calculate where we are in the broll segment
-                const segmentDuration = (activeMarker.end - activeMarker.start) * video.duration;
-                const timeInSegment = (currentPercent - activeMarker.start) * video.duration;
+                // Calculate where we are in the broll segment relative to combined duration
+                const segmentDuration = (activeMarker.end - activeMarker.start) * displayDuration;
+                const timeInSegment = (currentPercent - activeMarker.start) * displayDuration;
 
                 // Increased sync precision for fluid seeking
                 if (Math.abs(brollVideo.currentTime - timeInSegment) > 0.01) {
@@ -4751,6 +5102,125 @@
                             brollVideo.className = '';
                         }
                     }, 400); // Match CSS transition duration
+                }
+            }
+        }
+
+        // Check if we should show/play outro video
+        function checkOutroVideo() {
+            const now = Date.now();
+            const delta = lastOutroCheckTime > 0 ? (now - lastOutroCheckTime) / 1000 : 0;
+            lastOutroCheckTime = now;
+
+            if (!video.duration || !outroVideo.enabled) {
+                // Reset if outro is disabled
+                if (outroPlaying) {
+                    const outroOverlay = document.getElementById('outroOverlayVideo');
+                    if (outroOverlay) {
+                        outroOverlay.style.opacity = '0';
+                        outroOverlay.pause();
+                    }
+                    outroPlaying = false;
+                    outroStartTime = 0;
+                    outroCompleted = false;
+                }
+                return;
+            }
+
+            const outroOverlay = document.getElementById('outroOverlayVideo');
+            const logoOverlay = document.getElementById('logoOverlay');
+            const hideLogo = document.getElementById('outroHideLogo')?.checked ?? true;
+            if (!outroOverlay) return;
+
+            const mainVideoDuration = video.duration;
+            const outroDuration = outroVideo.duration;
+            const threshold = 0.5; // Start outro 0.5s before main video ends
+
+            // Check if we're at or near the end of the main video
+            const atEnd = video.currentTime >= mainVideoDuration - threshold;
+
+            // If we seeked back away from the end, stop outro and reset completed status
+            if (video.currentTime < mainVideoDuration - threshold) {
+                if (outroPlaying) {
+                    outroOverlay.style.opacity = '0';
+                    outroOverlay.pause();
+                    outroPlaying = false;
+                    outroStartTime = 0;
+
+                    // Show logo again if it was hidden
+                    if (logoOverlay) {
+                        logoOverlay.style.opacity = '1';
+                    }
+                }
+                outroCompleted = false;
+            }
+
+            if (atEnd && !outroPlaying && !outroCompleted) {
+                // Start playing the outro
+                outroPlaying = true;
+                outroStartTime = now;
+
+                // Load outro if not loaded
+                if (!outroOverlay.src || !outroOverlay.src.includes(encodeURIComponent(outroVideo.path))) {
+                    outroOverlay.src = '/media/' + encodeURIComponent(outroVideo.path);
+                }
+
+                // Start outro from beginning
+                outroOverlay.currentTime = 0;
+                outroOverlay.style.opacity = '1';
+
+                // Play outro if main video is playing
+                if (!video.paused) {
+                    outroOverlay.play().catch(e => console.warn('Outro play failed:', e));
+                }
+
+                // Hide logo if option is enabled
+                if (hideLogo && logoOverlay) {
+                    logoOverlay.style.opacity = '0';
+                }
+                
+                // Keep checking since timeupdate might stop
+                requestAnimationFrame(checkOutroVideo);
+            } else if (outroPlaying) {
+                // If main video is paused AND not at the end, "freeze" the outro
+                // If at end, let it play even if main video is techincally paused/ended
+                const isAtEnd = video.currentTime >= mainVideoDuration - threshold;
+                if (video.paused && !isAtEnd) {
+                    outroStartTime += (delta * 1000);
+                }
+
+                // Outro is currently playing
+                const elapsed = (now - outroStartTime) / 1000;
+
+                // Sync logo visibility in case toggle changed during playback
+                if (logoOverlay) {
+                    logoOverlay.style.opacity = hideLogo ? '0' : '1';
+                }
+
+                if (elapsed >= outroDuration) {
+                    // Outro finished
+                    outroOverlay.pause();
+                    outroOverlay.style.opacity = '0';
+                    outroPlaying = false;
+                    outroStartTime = 0;
+                    outroCompleted = true;
+                    
+                    // Show logo again if it was hidden
+                    if (logoOverlay) {
+                        logoOverlay.style.opacity = '1';
+                    }
+                } else {
+                    // Sync play state
+                    // If main video is playing, outro should play
+                    // If main video is paused but at end, outro should still play
+                    if ((!video.paused || isAtEnd) && outroOverlay.paused) {
+                        outroOverlay.play().catch(e => console.warn('Outro play failed:', e));
+                    } else if (video.paused && !isAtEnd && !outroOverlay.paused) {
+                        outroOverlay.pause();
+                    }
+                    
+                    // Keep checking while playing
+                    requestAnimationFrame(checkOutroVideo);
                 }
             }
         }
@@ -5830,14 +6300,13 @@
             const settings = {
                 folder_number: folderNumber,
                 theme_number: themeNumber,
-                // NOTE: Don't save trim settings in presets - they contain absolute timestamps
-                // that become invalid when video is shortened in adjust. Let adjust.md control trim.
-                // trim: {
-                //     start: document.getElementById('startTime').value,
-                //     end: document.getElementById('endTime').value,
-                //     removeIntro: document.getElementById('trimIntro').checked,
-                //     removeOutro: document.getElementById('trimOutro').checked
-                // },
+                // Include trim settings for export
+                trim: {
+                    start: document.getElementById('startTime').value,
+                    end: document.getElementById('endTime').value,
+                    removeIntro: document.getElementById('trimIntro').checked,
+                    removeOutro: document.getElementById('trimOutro').checked
+                },
                 speed: document.getElementById('playbackSpeed').value,
                 reverse: document.getElementById('effectReverse').checked,
                 subtitles: {
@@ -5859,7 +6328,14 @@
                 outro: {
                     effect: document.getElementById('outroEffect').value,
                     duration: document.getElementById('outroDuration').value,
-                    easing: document.getElementById('outroEasing').value
+                    easing: document.getElementById('outroEasing').value,
+                    fadeAudio: document.getElementById('outroFadeAudio').checked,
+                    hideLogo: document.getElementById('outroHideLogo').checked,
+                    outroVideo: outroVideo.enabled ? {
+                        name: outroVideo.name,
+                        path: outroVideo.path,
+                        duration: outroVideo.duration
+                    } : null
                 },
                 effects: {
                     mirror: document.getElementById('effectMirror').checked,
@@ -6395,7 +6871,14 @@
                 outro: {
                     effect: document.getElementById('outroEffect').value,
                     duration: document.getElementById('outroDuration').value,
-                    easing: document.getElementById('outroEasing').value
+                    easing: document.getElementById('outroEasing').value,
+                    fadeAudio: document.getElementById('outroFadeAudio').checked,
+                    hideLogo: document.getElementById('outroHideLogo').checked,
+                    outroVideo: outroVideo.enabled ? {
+                        name: outroVideo.name,
+                        path: outroVideo.path,
+                        duration: outroVideo.duration
+                    } : null
                 },
                 effects: {
                     mirror: document.getElementById('effectMirror').checked,
@@ -6521,6 +7004,23 @@
                 document.getElementById('outroDuration').value = settings.outro.duration || 1;
                 document.getElementById('outroDurationValue').textContent = settings.outro.duration + 's';
                 document.getElementById('outroEasing').value = settings.outro.easing || 'ease-out';
+                document.getElementById('outroFadeAudio').checked = settings.outro.fadeAudio || false;
+                document.getElementById('outroHideLogo').checked = settings.outro.hideLogo !== undefined ? settings.outro.hideLogo : true;
+
+                // Restore outro video if present
+                if (settings.outro.outroVideo && settings.outro.outroVideo.name) {
+                    outroVideo.enabled = true;
+                    outroVideo.name = settings.outro.outroVideo.name;
+                    outroVideo.path = settings.outro.outroVideo.path;
+                    outroVideo.duration = settings.outro.outroVideo.duration;
+
+                    // Update UI
+                    document.getElementById('outroVideoText').textContent = settings.outro.outroVideo.name;
+                    document.getElementById('outroVideoInfo').style.display = 'block';
+                    document.getElementById('outroVideoName').textContent = `📁 ${settings.outro.outroVideo.name}`;
+                    document.getElementById('outroVideoDuration').textContent = `⏱️ ${formatTimeSeconds(settings.outro.outroVideo.duration)}`;
+                    document.getElementById('removeOutroVideo').style.display = 'block';
+                }
             }
 
             // Apply effects

@@ -634,7 +634,7 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
         '-t', str(end_time - start_time), # Limit audio input length
         '-map', '0:v:0', '-map', '1:a:0?', '-c:v', 'libx264', '-preset', preset, '-crf', crf,
         '-pix_fmt', 'yuv420p',
-        '-c:a', 'aac', '-b:a', '128k', 
+        '-c:a', 'aac', '-b:a', '128k', '-ar', '44100',
         '-t', str(end_time - start_time), # FINAL duration limit for output
         str(tmp_out)
     ]
