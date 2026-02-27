@@ -63,6 +63,10 @@ console_handler.setFormatter(log_formatter)
 app = Flask(__name__, static_folder='static')
 CORS(app)
 
+# Use a local .tmp directory instead of /tmp (tmpfs) to save RAM
+GLOBAL_TEMP_DIR = Path('videos/.tmp')
+GLOBAL_TEMP_DIR.mkdir(parents=True, exist_ok=True)
+
 @app.before_request
 def log_request_info():
     if "/status" not in request.path and "/progress" not in request.path:
@@ -771,6 +775,57 @@ def update_theme():
     # Write adjust file with all fields including position and styling
     write_theme_adjust_settings(adjust_file, theme_number, new_title, f"{new_start} - {new_end} ({duration_str})", folder.name, existing_settings)
 
+    # CRITICAL: Immediately refresh the theme-specific SRT and JSON files to match new boundaries
+    try:
+        # Find master SRT
+        srt_files = [f for f in folder.glob('*.srt') if 'theme_' not in f.name and 'adjust' not in f.name]
+        if not srt_files: srt_files = list(folder.glob('*.srt'))
+        main_srt = srt_files[0] if srt_files else None
+        
+        if main_srt:
+            theme_srt_path = shorts_dir / f"theme_{theme_number:03d}.srt"
+            theme_json_path = shorts_dir / f"theme_{theme_number:03d}.json"
+            
+            # Load edits to inject
+            edits = {}
+            edits_file = shorts_dir / f"theme_{theme_number:03d}_edits.json"
+            if edits_file.exists():
+                try:
+                    with open(edits_file, 'r', encoding='utf-8') as f:
+                        edits = json.load(f)
+                except: pass
+            
+            # Refresh SRT
+            creator.create_trimmed_srt(main_srt, start_secs, end_secs, theme_srt_path, edits=edits)
+            
+            # Refresh JSON (word timestamps)
+            word_timestamps_file = next(folder.glob('[!theme]*_word_timestamps.json'), None)
+            if word_timestamps_file:
+                with open(word_timestamps_file, 'r', encoding='utf-8') as f:
+                    all_words = json.load(f).get('words', [])
+                
+                theme_words = []
+                for w in all_words:
+                    # Precise overlap check with a tiny 100ms buffer
+                    if w['end'] > start_secs - 0.1 and w['start'] < end_secs + 0.1:
+                        rw = w.copy()
+                        # Timestamps are relative to the start of the theme clip
+                        rw['start'] = max(0, rw['start'] - start_secs)
+                        rw['end'] = max(0, rw['end'] - start_secs)
+                        theme_words.append(rw)
+                    
+                with open(theme_json_path, 'w', encoding='utf-8') as f:
+                    json.dump({
+                        'theme': str(theme_number),
+                        'start_time': start_secs,
+                        'end_time': end_secs,
+                        'words': theme_words
+                    }, f, indent=2)
+            
+            app_logger.info(f"Theme {theme_number} boundaries updated: Refreshed SRT and JSON.")
+    except Exception as e:
+        app_logger.warning(f"Failed to auto-refresh theme metadata in update_theme: {e}")
+
     return jsonify({'success': True, 'message': 'Theme updated successfully'})
 
 
@@ -870,7 +925,16 @@ def get_theme_subtitles(folder_number: str, theme_number: str):
         main_srt = srt_files[0] if srt_files else None
 
         if not theme_srt_path.exists() and main_srt:
-            creator.create_trimmed_srt(main_srt, theme_start_sec, theme_end_sec, theme_srt_path)
+            # Load edits to inject
+            edits = {}
+            edits_file = shorts_dir / f"theme_{int(theme_number):03d}_edits.json"
+            if edits_file.exists():
+                try:
+                    with open(edits_file, 'r', encoding='utf-8') as f:
+                        edits = json.load(f)
+                except: pass
+            
+            creator.create_trimmed_srt(main_srt, theme_start_sec, theme_end_sec, theme_srt_path, edits=edits)
             app_logger.info(f"Generated missing theme SRT: {theme_srt_name}")
         
         # Create theme JSON word timestamps (theme_XXX.json) ONLY if it doesn't exist
@@ -892,8 +956,10 @@ def get_theme_subtitles(folder_number: str, theme_number: str):
                 # Filter words for this theme and make timestamps relative
                 theme_words = []
                 for w in all_words:
-                    if w['start'] >= theme_start_sec - 1.0 and w['end'] <= theme_end_sec + 1.0:
+                    # Precise overlap check with a tiny 100ms buffer
+                    if w['end'] > theme_start_sec - 0.1 and w['start'] < theme_end_sec + 0.1:
                         rw = w.copy()
+                        # Timestamps are relative to the start of the theme clip
                         rw['start'] = max(0, w['start'] - theme_start_sec)
                         rw['end'] = max(0, w['end'] - theme_start_sec)
                         theme_words.append(rw)
@@ -911,15 +977,11 @@ def get_theme_subtitles(folder_number: str, theme_number: str):
 
     # 2. Select the SRT file to load from
     is_theme_srt = False
-    if theme_srt_path.exists():
-        srt_file = theme_srt_path
-        is_theme_srt = True
-    else:
-        # Fallback to main SRT
-        srt_files = [f for f in folder.glob('*.srt') if 'theme_' not in f.name and 'adjust' not in f.name]
-        if not srt_files: srt_files = list(folder.glob('*.srt'))
-        if not srt_files: return "SRT file not found", 404
-        srt_file = srt_files[0]
+    # ALWAYS read from the master SRT for the UI to ensure we have the full context buffer
+    srt_files = [f for f in folder.glob('*.srt') if 'theme_' not in f.name and 'adjust' not in f.name]
+    if not srt_files: srt_files = list(folder.glob('*.srt'))
+    if not srt_files: return "SRT file not found", 404
+    srt_file = srt_files[0]
 
     # Check if adjusted subtitles exist (for info only)
     shorts_dir = folder / 'shorts'
@@ -952,20 +1014,16 @@ def get_theme_subtitles(folder_number: str, theme_number: str):
             # Timestamp line
             if i < len(lines) and '-->' in lines[i]:
                 timestamp_line = lines[i].strip()
-                match = re.match(r'(\d{2}:\d{2}:\d{2})[.,](\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2})[.,](\d{3})', timestamp_line)
+                match = re.match(r'(-?\d{2}:\d{2}:\d{2})[.,](\d{3})\s*-->\s*(-?\d{2}:\d{2}:\d{2})[.,](\d{3})', timestamp_line)
                 if match:
-                    # Convert to seconds for filtering
-                    start_h, start_m, start_s = map(int, match.group(1).split(':'))
-                    start_millis = int(match.group(2))
-                    cue_start_sec = start_h * 3600 + start_m * 60 + start_s + start_millis / 1000
+                    # Use creator's parser to correctly handle potential negative timestamps
+                    cue_start_sec = creator.parse_timestamp_to_seconds(f"{match.group(1)}.{match.group(2)}")
+                    cue_end_sec = creator.parse_timestamp_to_seconds(f"{match.group(3)}.{match.group(4)}")
 
-                    end_h, end_m, end_s = map(int, match.group(3).split(':'))
-                    end_millis = int(match.group(4))
-                    cue_end_sec = end_h * 3600 + end_m * 60 + end_s + end_millis / 1000
-
-                    # Filter: if it's the main SRT, only include cues that overlap with theme time range.
-                    # If it's the theme SRT, it's already trimmed, so include everything.
-                    if is_theme_srt or (cue_end_sec > theme_start_sec and cue_start_sec < theme_end_sec):
+                    # Filter: if it's the main SRT, include theme range PLUS a 120s buffer for non-destructive editing
+                    # If it's the theme SRT, it's already trimmed (including its own buffer), so include everything.
+                    buffer_sec = 120.0
+                    if is_theme_srt or (cue_end_sec > (theme_start_sec - buffer_sec) and cue_start_sec < (theme_end_sec + buffer_sec)):
                         # Get subtitle text (may be multiple lines)
                         i += 1
                         text_lines = []
@@ -973,10 +1031,42 @@ def get_theme_subtitles(folder_number: str, theme_number: str):
                             text_lines.append(lines[i].strip())
                             i += 1
 
+                        # If this is a theme SRT, timestamps are 0-based.
+                        # We must convert them back to absolute for the UI to align with master video.
+                        if is_theme_srt:
+                            cue_start_sec += theme_start_sec
+                            cue_end_sec += theme_start_sec
+                            
+                            # Format back to HH:MM:SS.mmm (supports negative offsets)
+                            def format_offset_ts(s):
+                                is_neg = s < 0
+                                abs_s = abs(s)
+                                h = int(abs_s // 3600)
+                                m = int((abs_s % 3600) // 60)
+                                sec = int(abs_s % 60)
+                                ms = int(round((abs_s % 1) * 1000))
+                                if ms == 1000:
+                                    ms = 0
+                                    sec += 1
+                                if sec == 60:
+                                    sec = 0
+                                    m += 1
+                                if m == 60:
+                                    m = 0
+                                    h += 1
+                                res = f"{h:02d}:{m:02d}:{sec:02d}.{ms:03d}"
+                                return f"-{res}" if is_neg else res
+                            
+                            start_str = format_offset_ts(cue_start_sec)
+                            end_str = format_offset_ts(cue_end_sec)
+                        else:
+                            start_str = f"{match.group(1)}.{match.group(2)}"
+                            end_str = f"{match.group(3)}.{match.group(4)}"
+
                         filtered_cues.append({
                             'sequence': seq_num,
-                            'start': f"{match.group(1)}.{match.group(2)}",
-                            'end': f"{match.group(3)}.{match.group(4)}",
+                            'start': start_str,
+                            'end': end_str,
                             'text': '\n'.join(text_lines)
                         })
                         continue
@@ -991,32 +1081,128 @@ def get_theme_subtitles(folder_number: str, theme_number: str):
     if edits_file.exists():
         try:
             with open(edits_file, 'r', encoding='utf-8') as f:
-                edits = json.load(f)
-        except:
-            pass
+                raw_edits = json.load(f)
+            # Normalize keys to prevent comma/period duplicates
+            for k, v in raw_edits.items():
+                try:
+                    ks, ke = k.split('_')
+                    # Use a canonical period-based format for the internal 'edits' dict
+                    norm_key = f"{ks.replace(',', '.')}_{ke.replace(',', '.')}"
+                    edits[norm_key] = v
+                except: edits[k] = v
+        except: pass
 
     # ENFORCE MAX LINES: Split segments for the UI
     try:
         from subtitle_renderer import UniversalSubtitleRenderer
-        # Get word timestamps for splitting
-        theme_json_path = folder / 'shorts' / f"theme_{int(theme_number):03d}.json"
-        theme_words = []
-        if theme_json_path.exists():
-            with open(theme_json_path, 'r', encoding='utf-8') as f:
-                theme_words = json.load(f).get('words', [])
+        # Get master word timestamps for splitting absolute cues
+        master_wt_file = next(folder.glob('[!theme]*_word_timestamps.json'), None)
+        master_words = []
+        if master_wt_file:
+            with open(master_wt_file, 'r', encoding='utf-8') as f:
+                master_words = json.load(f).get('words', [])
         
         # Instantiate renderer just for splitting logic
-        renderer = UniversalSubtitleRenderer(str(folder), theme_words, settings)
+        # Convert ConfigParser sections to a flat dict for the renderer
+        render_settings = {}
+        for section in settings.sections():
+            for k, v in settings.items(section):
+                render_settings[k] = v
+                
+        try:
+            adjust_settings = creator.get_theme_adjust_settings(folder, int(theme_number))
+            render_settings.update(adjust_settings)
+        except: pass
         
-        # We need to handle persistent edits BEFORE splitting so they are included in the split
-        # but the edits are keyed by "start_end". We need to merge them into filtered_cues.
+        renderer = UniversalSubtitleRenderer(str(folder), master_words, render_settings)
+        
+        # Helper to format timestamps consistently for matching
+        def format_ts_key(s):
+            h = int(s // 3600)
+            m = int((s % 3600) // 60)
+            sec = int(s % 60)
+            ms = int(round((s % 1) * 1000))
+            if ms == 1000:
+                sec += 1
+                ms = 0
+                if sec == 60:
+                    m += 1
+                    sec = 0
+            return f"{h:02d}:{m:02d}:{sec:02d}.{ms:03d}"
+
+        def format_ts_key_alt(s):
+            return format_ts_key(s).replace('.', ',')
+
+        # Keep track of which edits we have used
+        used_edit_keys = set()
+
+        # Sort and split FIRST so edits can target the split fragments correctly
+        filtered_cues.sort(key=lambda x: creator.parse_timestamp_to_seconds(x['start']))
+        filtered_cues = renderer.split_segments_by_max_lines(filtered_cues, master_words)
+
+        # Step 1: Process existing (split) cues and apply edits using robust float matching
+        deduped_cues = []
         for cue in filtered_cues:
-            key = f"{cue['start']}_{cue['end']}"
-            if key in edits:
-                cue['text'] = edits[key]
+            cue_start_val = creator.parse_timestamp_to_seconds(cue['start'])
+            cue_end_val = creator.parse_timestamp_to_seconds(cue['end'])
+            
+            is_dup = False
+            for edit_key, edited_text in edits.items():
+                try:
+                    k_start_str, k_end_str = edit_key.split('_')
+                    k_start = creator.parse_timestamp_to_seconds(k_start_str)
+                    k_end = creator.parse_timestamp_to_seconds(k_end_str)
+                    
+                    # Robust float matching with 50ms tolerance
+                    is_match = abs(cue_start_val - k_start) < 0.05
+                    
+                    # SMART MATCH: If cue was clamped to theme start, it might match an edit starting earlier
+                    if not is_match and abs(cue_start_val - theme_start_sec) < 0.01:
+                        if k_start < theme_start_sec:
+                            is_match = True # Match found for clamped start
+                    
+                    if is_match:
+                        # Prevent duplicates if master has overlapping segments
+                        if edit_key in used_edit_keys:
+                            is_dup = True
+                            break
+                            
+                        # Match found: assume this edit REPLACES the existing cue text and timing
+                        cue['text'] = edited_text
+                        cue['start'] = k_start_str
+                        cue['end'] = k_end_str
+                        used_edit_keys.add(edit_key)
+                        break
+                except: continue
+            
+            if not is_dup:
+                deduped_cues.append(cue)
         
-        # Now split
-        filtered_cues = renderer.split_segments_by_max_lines(filtered_cues, theme_words)
+        filtered_cues = deduped_cues
+        
+        # Step 2: Inject "orphaned" edits (gaps filled by user) as new virtual cues
+        if edits:
+            for key, text in edits.items():
+                if key not in used_edit_keys:
+                    try:
+                        # Parse absolute timestamps from key
+                        start_str, end_str = key.split('_')
+                        k_start = creator.parse_timestamp_to_seconds(start_str)
+                        k_end = creator.parse_timestamp_to_seconds(end_str)
+                        
+                        # Only inject if it overlaps with the buffered theme range
+                        buffer_sec = 120.0
+                        if k_end > (theme_start_sec - buffer_sec) and k_start < (theme_end_sec + buffer_sec):
+                            filtered_cues.append({
+                                'sequence': len(filtered_cues) + 1,
+                                'start': start_str,
+                                'end': end_str,
+                                'text': text.strip(),
+                                'is_virtual': True
+                            })
+                            used_edit_keys.add(key)
+                    except: continue
+
     except Exception as e:
         app_logger.warning(f"Failed to split segments in get_theme_subtitles: {e}")
 
@@ -1085,30 +1271,59 @@ def get_all_subtitles(folder_number: str):
                 shorts_dir = folder / 'shorts'
                 shorts_dir.mkdir(exist_ok=True)
                 
-                # Create theme SRT only if it doesn't exist to preserve user splits/joins
+                # Create theme SRT only if it doesn't exist OR if boundaries changed
                 theme_srt_path = shorts_dir / f"theme_{int(theme_number):03d}.srt"
-                if not theme_srt_path.exists():
-                    creator.create_trimmed_srt(srt_file, theme_start_sec, theme_end_sec, theme_srt_path)
-                
-                # Create theme JSON
                 theme_json_path = shorts_dir / f"theme_{int(theme_number):03d}.json"
-                if not theme_json_path.exists():
+                
+                # Check if we need a refresh (e.g., boundary change)
+                needs_refresh = not theme_srt_path.exists() or not theme_json_path.exists()
+                if not needs_refresh and theme_json_path.exists():
+                    try:
+                        with open(theme_json_path, 'r') as f:
+                            old_data = json.load(f)
+                            # If boundaries differ by more than 0.1s, refresh
+                            if abs(old_data.get('start_time', 0) - theme_start_sec) > 0.1 or \
+                               abs(old_data.get('end_time', 0) - theme_end_sec) > 0.1:
+                                needs_refresh = True
+                                app_logger.info(f"Boundary shift detected for theme {theme_number}, refreshing metadata.")
+                    except: needs_refresh = True
+
+                if needs_refresh:
+                    # Load edits to inject during refresh
+                    edits = {}
+                    edits_file = shorts_dir / f"theme_{int(theme_number):03d}_edits.json"
+                    if edits_file.exists():
+                        try:
+                            with open(edits_file, 'r', encoding='utf-8') as f:
+                                edits = json.load(f)
+                        except: pass
+                        
+                    creator.create_trimmed_srt(srt_file, theme_start_sec, theme_end_sec, theme_srt_path, edits=edits)
+                    app_logger.info(f"Refreshed {theme_srt_path.name} with {len(edits)} injected edits")
+                
+                # Create/Refresh theme JSON
+                if needs_refresh:
                     # Find word timestamps
                     word_timestamps_file = None
                     for file in folder.glob('*_word_timestamps.json'):
-                        word_timestamps_file = file
-                        break
+                        if not file.name.startswith('theme_'): # Use master for source
+                            word_timestamps_file = file
+                            break
                         
                     if word_timestamps_file:
                         with open(word_timestamps_file, 'r', encoding='utf-8') as f:
                             wt_data = json.load(f)
                             all_words = wt_data.get('words', [])
                         
-                        theme_words = [w.copy() for w in all_words 
-                                       if w['start'] >= theme_start_sec - 1.0 and w['end'] <= theme_end_sec + 1.0]
-                        for w in theme_words:
-                            w['start'] = max(0, w['start'] - theme_start_sec)
-                            w['end'] = max(0, w['end'] - theme_start_sec)
+                        theme_words = []
+                        for w in all_words:
+                            # Precise overlap check with a tiny 100ms buffer
+                            if w['end'] > theme_start_sec - 0.1 and w['start'] < theme_end_sec + 0.1:
+                                rw = w.copy()
+                                # Timestamps are relative to the start of the theme clip
+                                rw['start'] = max(0, rw['start'] - theme_start_sec)
+                                rw['end'] = max(0, rw['end'] - theme_start_sec)
+                                theme_words.append(rw)
                             
                         with open(theme_json_path, 'w', encoding='utf-8') as f:
                             json.dump({
@@ -1146,12 +1361,20 @@ def get_all_subtitles(folder_number: str):
             # Timestamp line
             if i < len(lines) and '-->' in lines[i]:
                 timestamp_line = lines[i].strip()
-                # Parse timestamps: 00:00:00,000 --> 00:00:05,000
-                match = re.match(r'(\d{2}:\d{2}:\d{2})[.,](\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2})[.,](\d{3})', timestamp_line)
+                # Parse timestamps: supports optional negative sign
+                match = re.match(r'(-?\d{2}:\d{2}:\d{2})[.,](\d{3})\s*-->\s*(-?\d{2}:\d{2}:\d{2})[.,](\d{3})', timestamp_line)
                 if match:
-                    # Use period for fractional seconds (standard timestamp format)
-                    start_ts = f"{match.group(1)}.{match.group(2)}"
-                    end_ts = f"{match.group(3)}.{match.group(4)}"
+                    # Use creator's parser to correctly handle potential negative timestamps
+                    start_ts_sec = creator.parse_timestamp_to_seconds(f"{match.group(1)}.{match.group(2)}")
+                    end_ts_sec = creator.parse_timestamp_to_seconds(f"{match.group(3)}.{match.group(4)}")
+                    
+                    # Re-format consistently
+                    def fmt(s):
+                        h, m, sec = int(s//3600), int((s%3600)//60), s%60
+                        return f"{h:02d}:{m:02d}:{sec:06.3f}"
+                    
+                    start_ts = fmt(start_ts_sec)
+                    end_ts = fmt(end_ts_sec)
 
                     # Get subtitle text (may be multiple lines)
                     i += 1
@@ -1179,9 +1402,15 @@ def get_all_subtitles(folder_number: str):
         if edits_file.exists():
             try:
                 with open(edits_file, 'r', encoding='utf-8') as f:
-                    edits = json.load(f)
-            except:
-                pass
+                    raw_edits = json.load(f)
+                # Normalize keys to prevent comma/period duplicates
+                for k, v in raw_edits.items():
+                    try:
+                        ks, ke = k.split('_')
+                        norm_key = f"{ks.replace(',', '.')}_{ke.replace(',', '.')}"
+                        edits[norm_key] = v
+                    except: edits[k] = v
+            except: pass
 
     # ENFORCE MAX LINES: Split segments for the UI
     try:
@@ -1194,17 +1423,73 @@ def get_all_subtitles(folder_number: str):
                 all_words = json.load(f).get('words', [])
         
         # Instantiate renderer just for splitting logic
-        renderer = UniversalSubtitleRenderer(str(folder), all_words, settings)
+        # Convert ConfigParser sections to a flat dict for the renderer
+        render_settings = {}
+        for section in settings.sections():
+            for k, v in settings.items(section):
+                render_settings[k] = v
+                
+        try:
+            if theme_number:
+                adjust_settings = creator.get_theme_adjust_settings(folder, int(theme_number))
+                render_settings.update(adjust_settings)
+        except: pass
         
-        # Apply edits first
-        if edits:
-            for cue in all_cues:
-                key = f"{cue['start']}_{cue['end']}"
-                if key in edits:
-                    cue['text'] = edits[key]
+        renderer = UniversalSubtitleRenderer(str(folder), all_words, render_settings)
         
-        # Split
+        # Sort and split FIRST so edits can target the split fragments correctly
+        all_cues.sort(key=lambda x: creator.parse_timestamp_to_seconds(x['start']))
         all_cues = renderer.split_segments_by_max_lines(all_cues, all_words)
+
+        # Apply edits first and track used ones using robust float matching
+        used_edit_keys = set()
+        deduped_cues = []
+        for cue in all_cues:
+            cue_start_val = creator.parse_timestamp_to_seconds(cue['start'])
+            cue_end_val = creator.parse_timestamp_to_seconds(cue['end'])
+            
+            is_dup = False
+            for edit_key, edited_text in edits.items():
+                try:
+                    k_start_str, k_end_str = edit_key.split('_')
+                    k_start = creator.parse_timestamp_to_seconds(k_start_str)
+                    k_end = creator.parse_timestamp_to_seconds(k_end_str)
+                    
+                    # Robust matching by start time
+                    if abs(cue_start_val - k_start) < 0.05:
+                        if edit_key in used_edit_keys:
+                            is_dup = True
+                            break
+                            
+                        # Match found: use the edit's text and NEW timing
+                        cue['text'] = edited_text
+                        cue['start'] = k_start_str
+                        cue['end'] = k_end_str
+                        used_edit_keys.add(edit_key)
+                        break
+                except: continue
+            
+            if not is_dup:
+                deduped_cues.append(cue)
+        
+        all_cues = deduped_cues
+        
+        # Inject orphaned edits as virtual blocks
+        if edits:
+            for key, text in edits.items():
+                if key not in used_edit_keys:
+                    try:
+                        start_str, end_str = key.split('_')
+                        all_cues.append({
+                            'sequence': len(all_cues) + 1,
+                            'start': start_str,
+                            'end': end_str,
+                            'text': text.strip(),
+                            'is_virtual': True
+                        })
+                        used_edit_keys.add(key)
+                    except: continue
+
     except Exception as e:
         app_logger.warning(f"Failed to split segments in get_all_subtitles: {e}")
 
@@ -1315,133 +1600,69 @@ def save_cue_text():
         if not folder:
             return jsonify({'error': 'Folder not found'}), 404
 
-
-
+        # 1. ALWAYS save to persistent edits JSON FIRST using ABSOLUTE keys
+        # This is the single source of truth for all manual edits.
+        edits_data = {}
         try:
-            # Incoming timestamps from UI are ABSOLUTE HH:MM:SS.mmm
-            target_start_seconds = parse_srt_time(cue_start.replace(',', '.'))
-            target_end_seconds = parse_srt_time(cue_end.replace(',', '.'))
-        except (ValueError, TypeError) as e:
-            app_logger.error(f"[ERROR] Invalid cue times: {e}")
-            return jsonify({'error': f'Invalid time values: {str(e)}'}), 400
+            shorts_dir = folder / 'shorts'
+            shorts_dir.mkdir(exist_ok=True)
+            edits_file = shorts_dir / f'theme_{int(theme_number):03d}_edits.json'
+            if edits_file.exists():
+                with open(edits_file, 'r', encoding='utf-8') as f:
+                    edits_data = json.load(f)
+            
+            # Key MUST be absolute HH:MM:SS.mmm
+            edit_key = f"{cue_start.replace(',', '.')}_{cue_end.replace(',', '.')}"
+            
+            # Robust duplicate prevention: Remove any existing keys that match this time (float comparison)
+            target_start = creator.parse_timestamp_to_seconds(cue_start)
+            target_end = creator.parse_timestamp_to_seconds(cue_end)
+            keys_to_remove = [k for k in edits_data.keys() if k != edit_key] # Don't remove the one we're about to set
+            
+            for k in keys_to_remove:
+                try:
+                    ks, ke = k.split('_')
+                    if abs(creator.parse_timestamp_to_seconds(ks) - target_start) < 0.05 and \
+                       abs(creator.parse_timestamp_to_seconds(ke) - target_end) < 0.05:
+                        del edits_data[k]
+                        print(f"[DEBUG] Removed duplicate edit key: {k}")
+                except: pass
 
-        # Get theme start time for normalization
-        theme_start_sec = None
+            edits_data[edit_key] = text.strip()
+            with open(edits_file, 'w', encoding='utf-8') as f:
+                json.dump(edits_data, f, indent=2)
+            print(f"[DEBUG] Saved persistent UI edit to {edits_file} with key {edit_key}")
+        except Exception as ee:
+            print(f"[ERROR] JSON save failed: {ee}")
+
+        # 2. Get theme metadata for SRT matching
+        theme_start_sec = 0
         if theme_start is not None and str(theme_start).strip() != '':
             try: theme_start_sec = float(theme_start)
             except: pass
 
-        if theme_start_sec is None:
-            adjust_file = folder / 'shorts' / f'theme_{int(theme_number):03d}_adjust.md'
-            if adjust_file.exists():
-                with open(adjust_file, 'r', encoding='utf-8') as f:
-                    c = f.read()
-                    tm = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)\s*-\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)', c)
-                    if tm: theme_start_sec = creator.parse_timestamp_to_seconds(tm.group(1))
-            
-            if theme_start_sec is None:
-                themes_file = folder / 'themes.md'
-                if themes_file.exists():
-                    themes = creator.parse_themes_file(themes_file)
-                    for t in themes:
-                        if t['number'] == int(theme_number):
-                            theme_start_sec = creator.parse_timestamp_to_seconds(t['start'])
-                            break
+        adjust_file = folder / 'shorts' / f'theme_{int(theme_number):03d}_adjust.md'
+        theme_end_sec = theme_start_sec + 60
+        if adjust_file.exists():
+            with open(adjust_file, 'r', encoding='utf-8') as f:
+                c = f.read()
+                tm = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)\s*-\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)', c)
+                if tm:
+                    if theme_start_sec == 0:
+                        theme_start_sec = creator.parse_timestamp_to_seconds(tm.group(1))
+                    theme_end_sec = creator.parse_timestamp_to_seconds(tm.group(2))
 
-        # Paths
+        # 3. Update theme SRT (physically)
         theme_srt = folder / 'shorts' / f'theme_{int(theme_number):03d}.srt'
+        
+        # ALWAYS regenerate theme SRT for simplicity and robustness with "Virtual Blocks"
+        # This ensures the injection logic in shorts_creator.py is always used.
         srt_files = [f for f in folder.glob('*.srt') if 'theme_' not in f.name and 'adjust' not in f.name]
-        if not srt_files: srt_files = list(folder.glob('*.srt'))
         main_srt = srt_files[0] if srt_files else None
-
-        files_to_update = []
-        if main_srt: files_to_update.append(main_srt)
-        if theme_srt.exists(): files_to_update.append(theme_srt)
-
-        matched_absolute_start = None
-        matched_absolute_end = None
-
-        for target_file in files_to_update:
-            is_trimmed = 'theme_' in target_file.name
-            try:
-                with open(target_file, 'r', encoding='utf-8-sig') as f: content = f.read()
-            except:
-                try:
-                    with open(target_file, 'r', encoding='utf-8') as f: content = f.read()
-                except: continue
-
-            blocks = []
-            slines = content.split('\n')
-            si = 0
-            while si < len(slines):
-                line = slines[si].strip()
-                if not line: si += 1; continue
-                block = {'number': line, 'timestamp': None, 'text_lines': [], 'start': None, 'end': None}
-                si += 1
-                if si < len(slines):
-                    ts_line = slines[si].strip(); block['timestamp'] = ts_line
-                    ts_m = re.match(r'(\d+:\d+:[\d,]+)\s*-->\s*(\d+:\d+:[\d,]+)', ts_line)
-                    if ts_m:
-                        block['start'] = parse_srt_time(ts_m.group(1).replace(',', '.'))
-                        block['end'] = parse_srt_time(ts_m.group(2).replace(',', '.'))
-                    si += 1
-                    while si < len(slines):
-                        t_line = slines[si].strip()
-                        if not t_line or t_line.isdigit(): break
-                        block['text_lines'].append(t_line); si += 1
-                    blocks.append(block)
-
-            res_lines = []
-            match_found = False
-            for block in blocks:
-                res_lines.append(block['number'])
-                res_lines.append(block['timestamp'])
-                
-                # Match logic:
-                # If target_file is main_srt, we use target_start_seconds directly (ABSOLUTE)
-                # If target_file is theme_srt, it has RELATIVE times. We compare against (target_start_seconds - theme_start_sec)
-                compare_start = target_start_seconds
-                if is_trimmed and theme_start_sec is not None:
-                    compare_start = target_start_seconds - theme_start_sec
-                
-                is_match = False
-                if block['start'] is not None:
-                    # Tolerance for minor format differences
-                    if abs(block['start'] - compare_start) < 0.15: 
-                        is_match = True
-                    # Special case: clamped start at 0.0 in trimmed file
-                    elif is_trimmed and block['start'] == 0 and (target_start_seconds - (theme_start_sec or 0)) < 0.1:
-                        is_match = True
-
-                if is_match and not match_found:
-                    res_lines.append(text.strip()); match_found = True
-                    if not is_trimmed:
-                        matched_absolute_start = format_srt_time(block['start']).replace(',', '.')
-                        matched_absolute_end = format_srt_time(block['end']).replace(',', '.')
-                else: res_lines.append('\n'.join(block['text_lines']))
-                res_lines.append('')
-
-            if match_found:
-                with open(target_file, 'w', encoding='utf-8') as f: f.write('\n'.join(res_lines))
-
-        # Save to persistent edits JSON using ABSOLUTE keys
-        # This is what ensures edits persist across page reloads and theme boundary shifts
-        try:
-            edits_file = folder / 'shorts' / f'theme_{int(theme_number):03d}_edits.json'
-            edits_data = {}
-            if edits_file.exists():
-                with open(edits_file, 'r', encoding='utf-8') as f: edits_data = json.load(f)
-            
-            # Key MUST be absolute to match all-subtitles
-            # Use matched_absolute_* if available, otherwise use incoming cue_start/end
-            final_start = matched_absolute_start or cue_start
-            final_end = matched_absolute_end or cue_end
-            
-            edit_key = f"{final_start}_{final_end}"
-            edits_data[edit_key] = text.strip()
-            with open(edits_file, 'w', encoding='utf-8') as f: json.dump(edits_data, f, indent=2)
-            print(f"[DEBUG] Saved persistent UI edit to {edits_file} with key {edit_key}")
-        except Exception as ee: print(f"[ERROR] JSON save failed: {ee}")
+        
+        if main_srt:
+            creator.create_trimmed_srt(main_srt, theme_start_sec, theme_end_sec, theme_srt, edits=edits_data)
+            print(f"[DEBUG] Theme SRT {theme_srt.name} regenerated with latest edits.")
 
         return jsonify({'success': True, 'message': 'Saved successfully'})
     except Exception as e:
@@ -1471,19 +1692,16 @@ def save_cue_timing():
         folder = next((f for f in base_dir.iterdir() if f.is_dir() and f.name.startswith(f"{folder_number}_")), None)
         if not folder: return jsonify({'error': 'Folder not found'}), 404
 
-        # 1. Update SRT files
+        # 1. Update ONLY the theme SRT file (Master is read-only)
         theme_srt = folder / 'shorts' / f'theme_{int(theme_number):03d}.srt'
-        srt_files = [f for f in folder.glob('*.srt') if 'theme_' not in f.name and 'adjust' not in f.name]
-        if not srt_files: srt_files = list(folder.glob('*.srt'))
-        main_srt = srt_files[0] if srt_files else None
-
+        
         theme_start_sec = 0
         try: theme_start_sec = float(theme_start or 0)
         except: pass
 
-        for target_file in [main_srt, theme_srt]:
-            if not target_file or not target_file.exists(): continue
-            is_trimmed = 'theme_' in target_file.name
+        if theme_srt.exists():
+            target_file = theme_srt
+            is_trimmed = True
             
             with open(target_file, 'r', encoding='utf-8') as f: content = f.read()
             blocks = content.split('\n\n')
@@ -1572,60 +1790,8 @@ def save_subtitle_restructure():
                     f.write(f"{cue['text']}\n\n")
                 except: continue
 
-        # Also update the Main SRT to make splits/joins permanent and global
-        srt_files = [f for f in folder.glob('*.srt') if 'theme_' not in f.name and 'adjust' not in f.name]
-        if not srt_files: srt_files = list(folder.glob('*.srt'))
-        main_srt = srt_files[0] if srt_files else None
-
-        if main_srt:
-            # Merge logic for main SRT: 
-            # 1. Load all existing cues
-            # 2. Remove those that overlap with theme time range
-            # 3. Add new ones
-            # 4. Save
-            try:
-                existing_cues = []
-                with open(main_srt, 'r', encoding='utf-8', errors='ignore') as f:
-                    content = f.read()
-                
-                # Parse existing
-                pattern = r'(\d+)\s*\n(\d{2}:\d{2}:\d{2}[.,]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[.,]\d{3})\s*\n(.*?)(?=\n\s*\n|\n\s*\d+\s*\n|\Z)'
-                for match in re.finditer(pattern, content, re.DOTALL):
-                    s = parse_srt_time(match.group(2).replace(',', '.'))
-                    e = parse_srt_time(match.group(3).replace(',', '.'))
-                    # Keep if NOT overlapping with theme range
-                    if e <= theme_start or (theme_end > 0 and s >= theme_end):
-                        existing_cues.append({'start': s, 'end': e, 'text': match.group(4).strip()})
-                
-                # Add new restructured cues
-                for cue in cues:
-                    s = parse_srt_time(cue['start'].replace(',', '.'))
-                    e = parse_srt_time(cue['end'].replace(',', '.'))
-                    existing_cues.append({'start': s, 'end': e, 'text': cue['text'].strip()})
-                
-                # Sort by start time
-                existing_cues.sort(key=lambda x: x['start'])
-                
-                # Write back to main SRT
-                with open(main_srt, 'w', encoding='utf-8') as f:
-                    for i, cue in enumerate(existing_cues, 1):
-                        f.write(f"{i}\n")
-                        f.write(f"{format_srt_time(cue['start'])} --> {format_srt_time(cue['end'])}\n")
-                        f.write(f"{cue['text']}\n\n")
-                
-                app_logger.info(f"Merged restructured cues into {main_srt.name}")
-            except Exception as merge_err:
-                app_logger.error(f"Merge error in save_subtitle_restructure: {merge_err}")
-
-        # Clear persistent edits JSON for this theme since the SRT now contains the source of truth
-        # and old keys will be invalid/stale
-        edits_file = folder / 'shorts' / f'theme_{int(theme_number):03d}_edits.json'
-        if edits_file.exists():
-            try:
-                edits_file.unlink()
-                app_logger.info(f"Cleared stale edits file: {edits_file.name}")
-            except Exception as e:
-                app_logger.warning(f"Failed to clear edits file: {e}")
+        # Preserve edits JSON but mark the SRT update
+        app_logger.info(f"Theme SRT restructured for theme {theme_number}, preserving edits JSON.")
 
         return jsonify({'success': True})
     except Exception as e:
@@ -3063,8 +3229,8 @@ def process_video_edit():
                 if theme_title:
                     edit_settings['title'] = theme_title
                     edit_settings['subtitles']['title'] = theme_title
-                    # Respect the show_title setting from adjust.md (default to True only if not set)
-                    show_title_from_adjust = adjust_settings.get('show_title', True)
+                    # Respect the show_title setting from adjust.md (default to False if not set)
+                    show_title_from_adjust = adjust_settings.get('show_title', False)
                     edit_settings['subtitles']['show_title'] = show_title_from_adjust
                 
                 # IMPORTANT: Find the correct SRT file for this specific theme
@@ -3182,7 +3348,7 @@ def run_edit_task(edit_id: str, input_video: str, output_video: str, edit_settin
         # --- STEP 1: SYNCED SEGMENT EXTRACTION ---
         if reburn_enabled:
             log_message("STEP 1: Extracting clean segment from master for sync...")
-            temp_clean = os.path.join(tempfile.gettempdir(), f"clean_{edit_id}.mp4")
+            temp_clean = os.path.join(str(GLOBAL_TEMP_DIR), f"clean_{edit_id}.mp4")
             
             # Find the clean master
             master_video = None
@@ -3328,7 +3494,7 @@ def run_edit_task(edit_id: str, input_video: str, output_video: str, edit_settin
                 try:
                     # 1. Transcode outro to match the main video format (1080x1920, libx264, aac)
                     # This ensures the concat demuxer works reliably.
-                    temp_outro = os.path.join(tempfile.gettempdir(), f"outro_ready_{edit_id}.mp4")
+                    temp_outro = os.path.join(str(GLOBAL_TEMP_DIR), f"outro_ready_{edit_id}.mp4")
                     
                     # Robust check for audio in the outro clip
                     check_outro_audio_cmd = ['ffprobe', '-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index', '-of', 'csv=p=0', str(outro_path)]
@@ -3372,7 +3538,7 @@ def run_edit_task(edit_id: str, input_video: str, output_video: str, edit_settin
                     subprocess.run(trans_cmd, capture_output=True, check=True)
                     
                     # 2. Concatenate the main video and the prepared outro
-                    final_combined = os.path.join(tempfile.gettempdir(), f"final_combined_{edit_id}.mp4")
+                    final_combined = os.path.join(str(GLOBAL_TEMP_DIR), f"final_combined_{edit_id}.mp4")
                     
                     # We use a robust re-encoding join.
                     # First, we check if the main video has audio.
@@ -3794,7 +3960,7 @@ def get_theme_adjust_settings(folder_path, theme_number):
         'title_outline_width': 0,
         'title_outline_color': '#000000',
         'title_all_caps': True,
-        'show_title': True
+        'show_title': False
     }
     
     if adjust_file.exists():
@@ -4205,9 +4371,19 @@ def encode_canvas_karaoke():
                         # Save trimmed SRT
                         dest_srt = Path(output_path).parent / f"{video_name}.srt"
                         
+                        # Load edits for this theme if it's a theme export
+                        edits = {}
+                        if theme_number:
+                            edits_file = folder / 'shorts' / f"theme_{int(theme_number):03d}_edits.json"
+                            if edits_file.exists():
+                                try:
+                                    with open(edits_file, 'r', encoding='utf-8') as f:
+                                        edits = json.load(f)
+                                except: pass
+                        
                         # Generate a fresh trimmed SRT from the updated main SRT source
                         # This ensures edits are included and the timing is relative to the clip
-                        creator.create_trimmed_srt(srt_file, start_time, end_time, dest_srt)
+                        creator.create_trimmed_srt(srt_file, start_time, end_time, dest_srt, edits=edits)
                         
                         # Save a JSON with theme-specific word timestamps
                         dest_json = Path(output_path).parent / f"{video_name}.json"
@@ -4387,12 +4563,19 @@ def export_canvas_karaoke():
                     return
                 video_file = video_files[0]
 
-                # Get word timestamps
+                # Get word timestamps (Always use the master absolute one for Pass 2 lookups)
                 word_timestamps_file = next(folder.glob('*_word_timestamps.json'), None)
                 if not word_timestamps_file:
                     with canvas_karaoke_lock:
                         canvas_karaoke_progress[jid] = {'status': 'error', 'error': 'Word timestamps not found', 'complete': False}
                     return
+
+                # CRITICAL: If we found a theme-specific JSON (starts with 'theme_'), try to find the master one
+                if word_timestamps_file.name.startswith('theme_'):
+                    master_json = next(folder.glob('[!theme]*_word_timestamps.json'), None)
+                    if master_json:
+                        word_timestamps_file = master_json
+                        app_logger.info(f"Using master word timestamps for export: {word_timestamps_file.name}")
 
                 # Prefer the theme-specific SRT file if it exists, as it contains user edits and restructuring.
                 # Fall back to the main (absolute) SRT only if theme-specific is missing.
@@ -4478,6 +4661,21 @@ def export_canvas_karaoke():
                 # Direct log for debugging
                 with open('server.log', 'a') as f_log:
                     f_log.write(f"{datetime.now()} - [DEBUG_EXPORT] Theme {t_num}: title='{theme_title}', start={start_time}, end={end_time}\n")
+
+                # EXTRA: Also find the ORIGINAL theme start time from themes.md to help with SRT sync
+                theme_meta_start = 0
+                themes_file = folder / 'themes.md'
+                if themes_file.exists():
+                    try:
+                        with open(themes_file, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                        theme_section_pattern = rf'### Theme {t_num}:(.*?)(?=### Theme|\Z)'
+                        section_match = re.search(theme_section_pattern, content, re.DOTALL)
+                        if section_match:
+                            time_match = re.search(r'\*\*Time Range:\*\*\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)\s*-\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)', section_match.group(0))
+                            if time_match:
+                                theme_meta_start = creator.parse_timestamp_to_seconds(time_match.group(1))
+                    except: pass
 
                 # Output path
                 sanitized_title = creator.sanitize_title(theme_title) if theme_title else "untitled"
@@ -4615,6 +4813,9 @@ def export_canvas_karaoke():
                     for snake, camel in mapping.items():
                         if snake not in final_render_settings and camel in settings_dict:
                             final_render_settings[snake] = settings_dict[camel]
+                    
+                    # Store original theme start for SRT sync
+                    final_render_settings['theme_meta_start'] = theme_meta_start
                     
                     # Extract audio levels for reactive effects if needed
                     if final_render_settings.get('effect_type') == 'volume_shake':

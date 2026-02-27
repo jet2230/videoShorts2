@@ -2879,7 +2879,7 @@
         let horizontalAlign = 'center'; // 'left', 'center', 'right'
         let verticalAlign = 'middle'; // 'top', 'middle', 'bottom'
 
-        function autoSaveTheme() {
+        async function autoSaveTheme() {
             // Clear existing timeout
             if (autoSaveTimeout) {
                 clearTimeout(autoSaveTimeout);
@@ -2890,39 +2890,40 @@
             indicator.textContent = '⏳ Saving...';
             indicator.classList.add('show', 'saving');
 
-            // Debounce save to avoid too many requests
-            autoSaveTimeout = setTimeout(async () => {
-                try {
-                                          const updates = {
-                                              folder: folderNumber,
-                                              theme: themeNumber,
-                                              title: document.getElementById('theme-name').innerText,
-                                              start: formatTime(startSeconds),
-                                              end: formatTime(endSeconds)
-                                          };
-                    const response = await fetch('/api/update-theme', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(updates)
-                    });
+            return new Promise((resolve) => {
+                // Debounce save to avoid too many requests
+                autoSaveTimeout = setTimeout(async () => {
+                    try {
+                        const updates = {
+                            folder: folderNumber,
+                            theme: themeNumber,
+                            title: document.getElementById('theme-name').innerText,
+                            start: formatTime(startSeconds),
+                            end: formatTime(endSeconds)
+                        };
+                        const response = await fetch('/api/update-theme', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(updates)
+                        });
 
-                    if (!response.ok) throw new Error('Failed to auto-save');
+                        if (!response.ok) throw new Error('Failed to auto-save');
 
-                    indicator.textContent = '✓ Saved';
-                    indicator.classList.remove('saving');
+                        indicator.textContent = '✓ Saved';
+                        indicator.classList.remove('saving');
 
-                    // Hide after 2 seconds
-                    setTimeout(() => {
-                        indicator.classList.remove('show');
-                    }, 2000);
-                } catch (error) {
-                    indicator.textContent = '✗ Save failed';
-                    indicator.classList.remove('saving');
-                    setTimeout(() => {
-                        indicator.classList.remove('show');
-                    }, 2000);
-                }
-            }, 500); // Wait 500ms after drag ends before saving
+                        // Hide after 2 seconds
+                        setTimeout(() => {
+                            indicator.classList.remove('show');
+                        }, 2000);
+                        resolve();
+                    } catch (error) {
+                        indicator.textContent = '✗ Error';
+                        indicator.classList.remove('saving');
+                        resolve(); // Resolve anyway to allow chain to continue
+                    }
+                }, 800);
+            });
         }
 
         // Fine control nudge function
@@ -3980,14 +3981,15 @@
                         const originalHtml = cueData.html;
                         cueData.html = convertFontTags(cueData.html);
                         if (originalHtml !== cueData.html) {
+                            // Formatting updated from old <font> to new <span>
                         }
                     }
                 }
 
-
                 // Don't apply formatting here - let the cuechange handler apply it
                 // when each cue becomes active (avoids applying wrong cue's formatting)
             } catch (error) {
+                console.error('Error loading subtitle formatting:', error);
             }
         }
 
@@ -4023,6 +4025,21 @@
                     );
                     if (cueIndex !== -1) {
                         allThemeCues[cueIndex].text = newText;
+                    } else if (cueToSave.is_virtual_gap) {
+                        // Inject new virtual cue into local list so it shows in preview
+                        const newCue = {
+                            sequence: allThemeCues.length + 1,
+                            start: cueToSave.start,
+                            end: cueToSave.end,
+                            text: newText,
+                            is_virtual: true
+                        };
+                        allThemeCues.push(newCue);
+                        allThemeCues.sort((a, b) => parseTime(a.start) - parseTime(b.start));
+                        
+                        // Update currentCueInfo to reference this new "real" virtual cue
+                        currentCueInfo.sequence = newCue.sequence;
+                        delete currentCueInfo.is_virtual_gap;
                     }
 
                     // 2. Update formatting cache with current HTML
@@ -4260,7 +4277,7 @@
         }
 
         // Update preview video with clipped range
-        function reloadSubtitleTrack() {
+        async function reloadSubtitleTrack() {
             // VTT track is no longer used, we now render everything on Canvas
             if (!previewVideo || !folderNumber || !themeNumber) return;
 
@@ -4268,6 +4285,9 @@
             currentCueInfo = null;
             const subtitleText = document.getElementById('subtitle-text');
             if (subtitleText) subtitleText.innerHTML = '';
+
+            // Force reload cues from server to ensure boundaries/edits are fresh
+            await loadThemeCues();
 
             // Renderer will automatically pick up changes on next frame update
             if (previewVideo.paused) {
@@ -4414,14 +4434,27 @@
                                                   updateSubtitlePreview();
                                               }
                                           } else {
-                                              // No active cue
-                                              if (currentCueInfo !== null) {
+                                              // No active cue - ALLOW typing in gaps by creating a virtual cue info
+                                              const gapStart = formatVttTime(currentTime);
+                                              const gapEnd = formatVttTime(currentTime + 2.0); // Default 2s gap cue
+                                              
+                                              const virtualCueInfo = {
+                                                  sequence: null,
+                                                  timestamp: gapStart,
+                                                  start: gapStart,
+                                                  end: gapEnd,
+                                                  text: '',
+                                                  is_virtual_gap: true
+                                              };
+
+                                              // Only update if we've moved to a different gap (or from a cue to a gap)
+                                              if (!currentCueInfo || !currentCueInfo.is_virtual_gap || Math.abs(parseTime(currentCueInfo.start) - currentTime) > 0.5) {
                                                   isProgrammaticUpdate = true;
-                                                  currentCueInfo = null;
+                                                  currentCueInfo = virtualCueInfo;
                                                   subtitleText.innerHTML = '';
                                                   if (durationValueEl) {
-                                                      durationValueEl.textContent = '0.00s';
-                                                      durationValueEl.style.color = '#00ff9d';
+                                                      durationValueEl.textContent = '2.00s (New)';
+                                                      durationValueEl.style.color = '#ffeb3b';
                                                   }
                                                   if (prevCueEl) prevCueEl.textContent = '';
                                                   if (nextCueEl) nextCueEl.textContent = '';
@@ -4848,7 +4881,7 @@
                 updateUI();
             });
 
-            document.addEventListener('mouseup', () => {
+            document.addEventListener('mouseup', async () => {
                 if (isDragging) {
 
                     // Calculate theme start offset when dragging left handle
@@ -4867,7 +4900,7 @@
 
 
                         // Save formatting to server with updated timestamps
-                        fetch('/api/save-subtitle-formatting', {
+                        await fetch('/api/save-subtitle-formatting', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -4875,7 +4908,7 @@
                                 theme: themeNumber,
                                 formatting: allCueFormatting
                             })
-                        }).then(res => res.json())
+                        });
                     }
 
                     // Handle right-side drag (theme end changes)
@@ -4888,7 +4921,7 @@
 
                             // For right-side drag, we don't shift keys (they're relative to themeStart)
                             // But we save to ensure styles are preserved even if subtitles are now out of bounds
-                            fetch('/api/save-subtitle-formatting', {
+                            await fetch('/api/save-subtitle-formatting', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
@@ -4896,7 +4929,7 @@
                                     theme: themeNumber,
                                     formatting: allCueFormatting
                                 })
-                            }).then(res => res.json())
+                            });
                         }
                     }
 
@@ -4915,13 +4948,11 @@
                     // Now that drag is complete, do full preview video update with new time range
                     updatePreviewVideo();
 
-                    // Reload subtitle track with new time range
-                    reloadSubtitleTrack();
+                    // Now that boundaries are complete, do full update on server first
+                    await autoSaveTheme();
 
-                    // Note: adjustedCues logic removed, shorts_creator handles trimming
-
-                    // Auto-save theme adjustment
-                    autoSaveTheme();
+                    // Reload subtitle track with new time range (now refreshed on server)
+                    await reloadSubtitleTrack();
 
                     // Update time extension inputs to reflect new theme boundaries
                     updateTimeExtensionInputs();
@@ -5258,20 +5289,16 @@
                         document.getElementById('jump-prev-cue-btn').addEventListener('click', () => {
                             if (!allThemeCues || allThemeCues.length === 0) return;
                             const currentTime = originalVideo.currentTime;
-                            // Find current cue index
-                            const currentIndex = allThemeCues.findIndex(c => {
-                                const s = parseTime(c.start);
-                                const e = parseTime(c.end);
-                                return currentTime >= s - 0.05 && currentTime <= e + 0.05;
-                            });
                             
-                            if (currentIndex > 0) {
-                                const prevCue = allThemeCues[currentIndex - 1];
+                            // Find the last cue that starts at least 0.1s before current time
+                            // We reverse search to find the closest one
+                            const prevCue = [...allThemeCues].reverse().find(c => parseTime(c.start) < currentTime - 0.1);
+                            
+                            if (prevCue) {
                                 originalVideo.currentTime = parseTime(prevCue.start);
-                            } else if (currentIndex === -1) {
-                                // If not in a cue, find the one that just finished
-                                const prevCue = [...allThemeCues].reverse().find(c => parseTime(c.end) < currentTime);
-                                if (prevCue) originalVideo.currentTime = parseTime(prevCue.start);
+                            } else {
+                                // If no earlier cue, jump to beginning
+                                originalVideo.currentTime = 0;
                             }
                         });
             
@@ -5279,20 +5306,12 @@
                         document.getElementById('jump-next-cue-btn').addEventListener('click', () => {
                             if (!allThemeCues || allThemeCues.length === 0) return;
                             const currentTime = originalVideo.currentTime;
-                            // Find current cue index
-                            const currentIndex = allThemeCues.findIndex(c => {
-                                const s = parseTime(c.start);
-                                const e = parseTime(c.end);
-                                return currentTime >= s - 0.05 && currentTime <= e + 0.05;
-                            });
                             
-                            if (currentIndex !== -1 && currentIndex < allThemeCues.length - 1) {
-                                const nextCue = allThemeCues[currentIndex + 1];
+                            // Find the first cue that starts at least 0.1s after current time
+                            const nextCue = allThemeCues.find(c => parseTime(c.start) > currentTime + 0.1);
+                            
+                            if (nextCue) {
                                 originalVideo.currentTime = parseTime(nextCue.start);
-                            } else if (currentIndex === -1) {
-                                // If not in a cue, find the next one starting
-                                const nextCue = allThemeCues.find(c => parseTime(c.start) > currentTime);
-                                if (nextCue) originalVideo.currentTime = parseTime(nextCue.start);
                             }
                         });
             // Set current time as theme start

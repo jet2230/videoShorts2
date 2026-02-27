@@ -509,6 +509,9 @@ def generate_dynamic_subtitles(word_timestamps: List[Dict], max_words=8, max_pau
     return segments
 
 def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_path, output_path, start_time, end_time, settings, progress_callback=None, is_already_trimmed=False, srt_mode='auto'):
+    # Initialize timing mode
+    is_rel = (srt_mode == 'relative')
+    
     # 1. Load high-accuracy word data first
     with open(word_timestamps_path, 'r') as f: all_words = json.load(f).get('words', [])
     
@@ -525,8 +528,17 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
         logger.info("SRT file missing or empty. Falling back to dynamic word grouping.")
         subtitles = generate_dynamic_subtitles(words)
         srt_mode = 'absolute'
+        is_rel = False
     else:
         logger.info(f"Using {len(subtitles)} segments from SRT file.")
+        
+        # --- ROBUST TIMING DETECTION ---
+        if srt_mode == 'auto' and subtitles:
+            # Check if subtitles match absolute video timestamps
+            has_subs_at_theme_time = any(abs(s['start'] - start_time) < 10.0 for s in subtitles)
+            if has_subs_at_theme_time: is_rel = False
+            else: is_rel = True
+            logger.info(f"Auto-detected SRT Mode: {'Relative' if is_rel else 'Absolute'}")
 
     # 3. Load manual edits
     edits = {}
@@ -537,7 +549,13 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
     if edit_file.exists():
         with open(edit_file, 'r', encoding='utf-8') as f: edits = json.load(f)
 
-    # Apply manual edits to the segments
+    # Initialize renderer and split segments FIRST, before applying edits
+    renderer = UniversalSubtitleRenderer(video_path, words, settings)
+    
+    # ENFORCE MAX LINES: Split segments if they result in too many lines
+    subtitles = renderer.split_segments_by_max_lines(subtitles, words)
+
+    # Apply manual edits to the (now split) segments
     if edits:
         logger.info(f"Applying {len(edits)} manual edits to SRT segments...")
         
@@ -556,19 +574,22 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
             for edit_key, edited_text in edits.items():
                 e_start, e_end = map(parse_srt_time, edit_key.split('_'))
                 
-                # Align edit times with SRT times if needed (relative vs absolute)
-                sync_base = theme_meta_start if theme_meta_start > 0 else start_time
-                if e_start < sync_base - 1.0:
-                    e_start_abs = e_start + sync_base
-                    e_end_abs = e_end + sync_base
+                # IMPORTANT: Edits are ALWAYS stored with absolute timestamps in theme_XXX_edits.json.
+                # If we are matching against a relative SRT (starting at 0), we need to compare
+                # the SRT time (sub['start']) with the relative version of the edit time.
+                if is_rel:
+                    # sync_base is where the theme starts in the master video
+                    sync_base = theme_meta_start if theme_meta_start > 0 else start_time
+                    e_start_rel = e_start - sync_base
+                    e_end_rel = e_end - sync_base
+                    
+                    # Match using relative times with robust tolerance
+                    is_match = abs(sub['start'] - e_start_rel) < 0.05
                 else:
-                    e_start_abs = e_start
-                    e_end_abs = e_end
-                
-                # If SRT segment overlaps significantly with this edit, use the edit
-                overlap_start = max(sub['start'], e_start_abs)
-                overlap_end = min(sub['end'], e_end_abs)
-                if overlap_end > overlap_start + 0.1: # At least 100ms overlap
+                    # Match using absolute times with robust tolerance
+                    is_match = abs(sub['start'] - e_start) < 0.05
+
+                if is_match:
                     final_segments.append({
                         'start': sub['start'],
                         'end': sub['end'],
@@ -586,10 +607,12 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
         for edit_key, edited_text in edits.items():
             if edit_key not in applied_edit_keys:
                 e_start, e_end = map(parse_srt_time, edit_key.split('_'))
-                sync_base = theme_meta_start if theme_meta_start > 0 else start_time
-                if e_start < sync_base - 1.0:
-                    e_start += sync_base
-                    e_end += sync_base
+                
+                # If SRT is relative, we must store relative times for the new segment
+                if is_rel:
+                    sync_base = theme_meta_start if theme_meta_start > 0 else start_time
+                    e_start = e_start - sync_base
+                    e_end = e_end - sync_base
                 
                 final_segments.append({
                     'start': e_start,
@@ -601,26 +624,17 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
         # Re-sort everything by start time
         subtitles = sorted(final_segments, key=lambda s: s['start'])
     
-    renderer = UniversalSubtitleRenderer(video_path, words, settings)
-    
-    # ENFORCE MAX LINES: Split segments if they result in too many lines
-    subtitles = renderer.split_segments_by_max_lines(subtitles, words)
-    
     # CRITICAL: If we are using the master (untrimmed) video, we MUST seek to start_time
     if not is_already_trimmed and start_time > 0:
         logger.info(f"Seeking master video to start_time: {start_time}s")
         renderer.cap.set(cv2.CAP_PROP_POS_MSEC, start_time * 1000.0)
-    
-    # --- ROBUST TIMING DETECTION ---
-    is_rel = (srt_mode == 'relative')
-    if srt_mode == 'auto' and subtitles:
-        has_subs_at_theme_time = any(abs(s['start'] - start_time) < 10.0 for s in subtitles)
-        if has_subs_at_theme_time: is_rel = False
-        else: is_rel = True
-        logger.info(f"Auto-detected SRT Mode: {'Relative' if is_rel else 'Absolute'}")
 
     subtitles_by_start = sorted(subtitles, key=lambda s: s['start'])
-    temp_dir = Path("/tmp/render_" + str(os.getpid()))
+    
+    # Use a local .tmp directory instead of /tmp (tmpfs) to save RAM
+    temp_root = Path(video_path).parent / '.tmp'
+    temp_root.mkdir(exist_ok=True)
+    temp_dir = temp_root / ("render_" + str(os.getpid()))
     temp_dir.mkdir(exist_ok=True)
     tmp_out = temp_dir / "out.mp4"
     
@@ -651,8 +665,26 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
         if not ret: break
         
         rel_t = f_idx / 30.0
+        # If we are using a trimmed clip, the video starts at 0, 
+        # but the subtitles/words are still absolute.
         abs_t = start_time + rel_t
-        lookup_t = abs_t - srt_ref_start if is_rel else abs_t
+        
+        # Determine lookup time for finding the CORRECT subtitle segment.
+        if is_rel:
+            # If the video is already trimmed (Pass 2), the current video frame rel_t
+            # corresponds directly to the timestamps in the relative SRT.
+            if is_already_trimmed:
+                lookup_t = rel_t
+            else:
+                # If we are rendering against the full video (Pass 1 or absolute mode),
+                # we anchor the relative SRT to srt_ref_start.
+                lookup_t = abs_t - srt_ref_start
+        else:
+            # Absolute SRTs match the original video timestamps.
+            lookup_t = abs_t
+        
+        # Ensure we don't look for negative times
+        lookup_t = max(-100.0, lookup_t) # Allow some look-back for buffer but mostly positive
         
         # Best Match Search with a small look-back buffer (0.5s)
         matched = None
@@ -664,9 +696,19 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
         txt, s_s, s_e = "", 0, 0
         if matched:
             txt = matched['text']
-            s_s = matched['start'] + (srt_ref_start if is_rel else 0)
-            s_e = matched['end'] + (srt_ref_start if is_rel else 0)
+            # Map segment times back to absolute for the renderer to match absolute word JSON
+            if is_rel:
+                # If segment is 0.0 to 5.0 and start_time is 600.0, 
+                # absolute range is 600.0 to 605.0.
+                s_s = matched['start'] + (srt_ref_start if not is_already_trimmed else start_time)
+                s_e = matched['end'] + (srt_ref_start if not is_already_trimmed else start_time)
+            else:
+                s_s = matched['start']
+                s_e = matched['end']
 
+        # CRITICAL: render_frame and get_words_at_time_for_subtitle use current_time 
+        # to find the highlight word. Since words_by_time is ALWAYS absolute,
+        # we MUST pass abs_t.
         raw = renderer.render_frame(frame, abs_t, txt, s_s, s_e)
         try: proc.stdin.write(raw)
         except: break

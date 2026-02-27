@@ -91,7 +91,10 @@ class VideoProcessor:
         
         # ALWAYS use a temporary file for the first pass result to ensure Step 3 
         # (SubtitleRenderer) reads the frames with effects/B-roll already applied.
-        temp_dir_for_cleanup = tempfile.mkdtemp()
+        # Use a local .tmp directory instead of /tmp (tmpfs) to save RAM
+        temp_root = self.video_path.parent / '.tmp'
+        temp_root.mkdir(exist_ok=True)
+        temp_dir_for_cleanup = tempfile.mkdtemp(dir=str(temp_root))
         
         # --- NEW TWO-PASS STRATEGY TO PREVENT OOM ---
         # If we are seeking deep into a large file, FFmpeg often hits OOM if complex filters are attached.
@@ -247,10 +250,20 @@ class VideoProcessor:
         
         # Formula to simulate multiplicative brightness M followed by centered contrast C using FFmpeg's eq filter:
         # contrast = M * C
-        # brightness = 0.5 * C * (M - 1)
+        # brightness = 0.5 * (M - 1)
         # Apply global lighting + global flash
-        c_expr_global = f"({safe_M}*({global_flash_expr})*{c_ui})"
-        b_expr_global = f"(0.5*{c_ui}*({safe_M}*({global_flash_expr})-1))"
+        
+        # We simplify the expression for FFmpeg parser safety
+        # M_base is the base multiplier (brightness * exposure)
+        M_base = safe_M * c_ui
+        B_base = 0.5 * c_ui * (safe_M - 1)
+        
+        if global_flash_expr != "1.0":
+            c_expr_global = f"({M_base}*({global_flash_expr}))"
+            b_expr_global = f"({B_base}*({global_flash_expr}))"
+        else:
+            c_expr_global = f"{M_base}"
+            b_expr_global = f"{B_base}"
         
         # Force vertical 1080x1920 output as the base for all effects
         vf_filters.append(f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(iw-ow)/2:(ih-oh)/2")

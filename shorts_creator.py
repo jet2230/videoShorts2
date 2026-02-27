@@ -690,14 +690,14 @@ Video Path: {video_info['video_path']}
         blocks = re.split(r'\n\s*\n', content.strip())
         for block in blocks:
             lines = [l.strip() for l in block.split('\n') if l.strip()]
-            if len(lines) >= 3:
+            if len(lines) >= 2:
                 # Line 0: index, Line 1: timestamp, Line 2+: text
                 ts_line = lines[1]
                 if '-->' in ts_line:
                     times = ts_line.split('-->')
                     start_time = self._parse_timestamp(times[0].strip())
                     end_time = self._parse_timestamp(times[1].strip().split()[0])
-                    text = ' '.join(lines[2:])
+                    text = ' '.join(lines[2:]) if len(lines) > 2 else ""
                     segments.append({
                         'start': start_time,
                         'end': end_time,
@@ -1136,85 +1136,180 @@ Video Path: {video_info['video_path']}
         return themes
 
     def parse_timestamp_to_seconds(self, timestamp: str) -> float:
-        """Convert timestamp (HH:MM:SS, MM:SS, or seconds) to seconds."""
+        """Convert timestamp (HH:MM:SS, MM:SS, or seconds) to seconds, supporting negative values."""
         if not timestamp: return 0.0
         try:
-            parts = str(timestamp).replace(',', '.').split(':')
+            ts_str = str(timestamp).replace(',', '.')
+            is_neg = ts_str.startswith('-')
+            if is_neg: ts_str = ts_str[1:]
+            
+            parts = ts_str.split(':')
             if len(parts) == 3:
-                return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+                res = int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
             elif len(parts) == 2:
-                return int(parts[0]) * 60 + float(parts[1])
+                res = int(parts[0]) * 60 + float(parts[1])
             else:
-                return float(parts[0])
+                res = float(parts[0])
+                
+            return -res if is_neg else res
         except (ValueError, IndexError):
             return 0.0
 
     def seconds_to_timestamp(self, seconds: float) -> str:
-        """Convert seconds to SRT timestamp format (HH:MM:SS,mmm)."""
-        hours = int(seconds // 3600)
-        minutes = int((seconds % 3600) // 60)
-        secs = int(seconds % 60)
-        millis = int((seconds % 1) * 1000)
-        return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
+        """Convert seconds to SRT timestamp format (HH:MM:SS,mmm), supporting negative values."""
+        is_negative = seconds < 0
+        abs_seconds = abs(seconds)
+        
+        h = int(abs_seconds // 3600)
+        m = int((abs_seconds % 3600) // 60)
+        s = abs_seconds % 60
+        
+        ts = f"{h:02d}:{m:02d}:{s:06.3f}".replace('.', ',')
+        return f"-{ts}" if is_negative else ts
 
-    def find_natural_end_point(self, segments: List[Dict], end_idx: int, max_lookahead: int = 30) -> int:
-        """Find a natural stopping point (sentence ending) near the end index.
-
-        Looks for segments ending with periods, complete sentences, or natural pauses.
-        """
-        # Look ahead from end_idx for a natural stopping point
-        for i in range(end_idx, min(end_idx + max_lookahead, len(segments))):
-            text = segments[i]['text'].strip()
-
-            # Check for sentence ending patterns
-            if text.endswith('.') or text.endswith('!') or text.endswith('?'):
-                return i
-
-            # Check for Arabic period (U+06D4)
-            if text.endswith('۔') or text.endswith('।'):
-                return i
-
-            # Check for common ending phrases in Islamic content
-            lower_text = text.lower()
-            ending_phrases = [
-                'na\'udhu billah',
-                'subhanallah',
-                'alhamdulillah',
-                'wallahu \'alam',
-                'wasallam',
-                'rahimullah',
-                'this is with regards to',
-                'so again',
-                'and then',
-                'allah subhanahu',
-                'sallallahu alayhi'
-            ]
-            for phrase in ending_phrases:
-                if phrase in lower_text:
-                    return i
-
-        # If no natural ending found, return original end_idx
-        return end_idx
-
-    def create_trimmed_srt(self, original_srt: Path, start_seconds: float, end_seconds: float, output_path: Path) -> Path:
-        """Create a trimmed SRT file with timestamps offset to start from 0."""
+    def create_trimmed_srt(self, original_srt: Path, start_seconds: float, end_seconds: float, output_path: Path, edits: Dict = None) -> Path:
+        """Create a trimmed SRT file with timestamps offset to start from 0.
+        Dynamically splits segments and applies edits to perfectly match the UI."""
         segments = self._parse_srt_segments(original_srt)
+        folder_path = original_srt.parent
+        
+        # Load and normalize edits
+        if edits is None:
+            edits_file = output_path.parent / output_path.name.replace('.srt', '_edits.json')
+            if edits_file.exists():
+                import json
+                try:
+                    with open(edits_file, 'r', encoding='utf-8') as f:
+                        raw_edits = json.load(f)
+                    edits = {}
+                    for k, v in raw_edits.items():
+                        try:
+                            ks, ke = k.split('_')
+                            norm_key = f"{ks.replace(',', '.')}_{ke.replace(',', '.')}"
+                            edits[norm_key] = v
+                        except: edits[k] = v
+                except:
+                    edits = {}
+        else:
+            raw_edits = edits
+            edits = {}
+            for k, v in raw_edits.items():
+                try:
+                    ks, ke = k.split('_')
+                    norm_key = f"{ks.replace(',', '.')}_{ke.replace(',', '.')}"
+                    edits[norm_key] = v
+                except: edits[k] = v
+
+        # Split segments to match UI BEFORE applying edits
+        try:
+            wt_file = next(folder_path.glob('*_word_timestamps.json'), None)
+            words = []
+            if wt_file:
+                import json
+                with open(wt_file, 'r', encoding='utf-8') as f:
+                    words = json.load(f).get('words', [])
+            
+            from subtitle_renderer import UniversalSubtitleRenderer
+            # Get flat settings
+            flat_settings = {}
+            for section in settings.sections():
+                for k, v in settings.items(section):
+                    flat_settings[k] = v
+            try:
+                theme_num = int(output_path.stem.split('_')[1])
+                adjust_settings = self.get_theme_adjust_settings(folder_path, theme_num)
+                flat_settings.update(adjust_settings)
+            except: pass
+
+            renderer = UniversalSubtitleRenderer(str(folder_path), words, flat_settings)
+            # renderer splits segments, returning string timestamps with commas
+            split_cues = renderer.split_segments_by_max_lines(segments, words)
+            
+            # Convert back to float dicts
+            segments = []
+            for cue in split_cues:
+                s_val = self._parse_timestamp(cue['start']) if isinstance(cue['start'], str) else cue['start']
+                e_val = self._parse_timestamp(cue['end']) if isinstance(cue['end'], str) else cue['end']
+                segments.append({'start': s_val, 'end': e_val, 'text': cue['text']})
+        except Exception as e:
+            print(f"Failed to split segments in create_trimmed_srt: {e}")
+
+        final_segments = []
+        used_edit_keys = set()
+        
+        # 1. Process split segments and apply edits
+        for segment in segments:
+            orig_start = segment['start']
+            orig_end = segment['end']
+            text = segment['text'].strip()
+            
+            is_dup = False
+            
+            if edits:
+                for edit_key, edited_text in edits.items():
+                    try:
+                        k_start_str, k_end_str = edit_key.split('_')
+                        k_start = self._parse_timestamp(k_start_str)
+                        k_end = self._parse_timestamp(k_end_str)
+                        
+                        # Strict float matching (since segments are already split like UI)
+                        if abs(orig_start - k_start) < 0.05:
+                            if edit_key in used_edit_keys:
+                                is_dup = True
+                                break
+                            
+                            text = edited_text
+                            orig_start = k_start
+                            orig_end = k_end
+                            used_edit_keys.add(edit_key)
+                            break
+                    except: continue
+            
+            if is_dup: continue
+            
+            # Strict logic: Only include segments that overlap with the active theme range (NO BUFFER)
+            is_in_range = orig_end > start_seconds and orig_start < end_seconds
+            if is_in_range:
+                final_segments.append({
+                    'start': orig_start,
+                    'end': orig_end,
+                    'text': text
+                })
+
+        # 2. Inject orphaned edits as new segments
+        if edits:
+            for key, text in edits.items():
+                if key not in used_edit_keys:
+                    try:
+                        start_str, end_str = key.split('_')
+                        e_start = self._parse_timestamp(start_str)
+                        e_end = self._parse_timestamp(end_str)
+                        
+                        # Only inject if it overlaps with the active theme range
+                        if e_end > start_seconds and e_start < end_seconds:
+                            final_segments.append({
+                                'start': e_start,
+                                'end': e_end,
+                                'text': text.strip()
+                            })
+                            used_edit_keys.add(key)
+                    except: continue
+
+        final_segments.sort(key=lambda x: x['start'])
 
         with open(output_path, 'w', encoding='utf-8') as f:
-            for i, segment in enumerate(segments, start=1):
-                # Adjust timestamps by subtracting start time
-                seg_start = max(0, segment['start'] - start_seconds)
-                seg_end = max(0, segment['end'] - start_seconds)
+            for i, segment in enumerate(final_segments, start=1):
+                # Adjust timestamps relative to theme start
+                # CLAMP TO ZERO for pretty output
+                seg_start = max(0.0, segment['start'] - start_seconds)
+                seg_end = segment['end'] - start_seconds
 
-                # Only include subtitles that appear within our clip range
-                if seg_end > 0 and seg_start < (end_seconds - start_seconds):
-                    start_ts = self.seconds_to_timestamp(seg_start)
-                    end_ts = self.seconds_to_timestamp(seg_end)
-                    text = segment['text'].strip()
+                if seg_end <= 0:
+                    continue
 
-                    f.write(f"{i}\n")
-                    f.write(f"{start_ts} --> {end_ts}\n")
-                    f.write(f"{text}\n\n")
+                start_ts = self.seconds_to_timestamp(seg_start)
+                end_ts = self.seconds_to_timestamp(seg_end)
+                f.write(f"{i}\n{start_ts} --> {end_ts}\n{segment['text']}\n\n")
 
         return output_path
 
