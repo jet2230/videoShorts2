@@ -1556,6 +1556,81 @@ def save_subtitle_formatting():
     })
 
 
+@app.route('/api/ensure-adjust-file/<folder_number>/<theme_number>', methods=['POST'])
+def ensure_adjust_file(folder_number: str, theme_number: str):
+    """Ensure the theme adjust.md file exists, creating it if necessary."""
+
+    base_dir = Path(settings.get('video', 'output_dir'))
+    folder = None
+    for f in base_dir.iterdir():
+        if f.is_dir() and f.name.startswith(f"{folder_number}_"):
+            folder = f
+            break
+
+    if not folder:
+        return jsonify({'error': 'Folder not found'}), 404
+
+    shorts_dir = folder / 'shorts'
+    shorts_dir.mkdir(exist_ok=True)
+
+    adjust_file = shorts_dir / f'theme_{int(theme_number):03d}_adjust.md'
+
+    # If adjust file doesn't exist, create it with default values
+    if not adjust_file.exists():
+        # Get theme info from themes.md
+        themes_file = folder / 'themes.md'
+        title = f"Theme {theme_number}"
+        time_range = ""
+
+        if themes_file.exists():
+            with open(themes_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+                # Find the theme in the file (format: ### Theme 1: Title Name)
+                theme_pattern = rf'###\s*Theme\s+{re.escape(theme_number)}:\s*(.+?)(?:\n|$)'
+                match = re.search(theme_pattern, content)
+                if match:
+                    title = match.group(1).strip()
+
+                # Try to find time range in the theme content
+                time_pattern = rf'###\s*Theme\s+{re.escape(theme_number)}:.*?\n+.*?\n\*\*Time Range:\*\*\s*(.+?)(?:\n|$)'
+                time_match = re.search(time_pattern, content)
+                if time_match:
+                    time_range = time_match.group(1).strip()
+
+        # Write default adjust file with all default styling values
+        default_settings = {
+            'subtitle_position': 'bottom',
+            'subtitle_h_align': 'center',
+            'subtitle_v_align': 'bottom',
+            'subtitle_bold': False,
+            'fontSize': 80,
+            'primaryColor': '#ffffff',
+            'bgColor': '#000000',
+            'bgOpacity': 0.5,
+            'fontName': 'Arial',
+            'title_font_size': 67,
+            'title_bg_type': 'gradient',
+            'title_text_color': '#00ff9d',
+            'title_font_weight': 800,
+            'title_outline_width': 0,
+            'title_outline_color': '#000000',
+            'title_all_caps': True,
+            'show_title': False,
+            'title_top': 150
+        }
+
+        write_theme_adjust_settings(
+            adjust_file,
+            theme_number,
+            title,
+            time_range,
+            folder.name,
+            default_settings
+        )
+
+    return jsonify({'success': True, 'adjust_file': str(adjust_file)})
+
+
 @app.route('/api/subtitle-formatting/<folder_number>/<theme_number>', methods=['GET'])
 def get_subtitle_formatting(folder_number: str, theme_number: str):
     """Get subtitle formatting metadata for a theme."""

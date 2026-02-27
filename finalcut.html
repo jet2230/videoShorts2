@@ -2905,6 +2905,13 @@
                 if (currentTheme.adjusted_start) themeStart = currentTheme.adjusted_start;
                 if (currentTheme.adjusted_end) themeEnd = currentTheme.adjusted_end;
 
+                // Ensure adjust file exists for this theme
+                try {
+                    await fetch(`/api/ensure-adjust-file/${folderNumber}/${themeNumber}`, { method: 'POST' });
+                } catch (err) {
+                    console.warn('Failed to ensure adjust file exists:', err);
+                }
+
                 // Construct video path from folder and video filename
                 if (data.video_filename) {
                     actualVideoPath = `videos/${data.folder}/${data.video_filename}`;
