@@ -2484,6 +2484,20 @@
                 <button class="action-btn secondary" style="padding: 6px; font-size: 10px; grid-column: span 2;" onclick="setLogoAlignment('custom')">Custom (Drag to move)</button>
             </div>
         </div>
+
+        <div class="control-group" style="margin-top: 15px;">
+            <label style="display: block; font-size: 11px; color: #aaa; margin-bottom: 8px; text-transform: uppercase;">Logo Coordinates (%)</label>
+            <div style="display: flex; gap: 10px;">
+                <div style="flex: 1;">
+                    <label style="font-size: 10px; color: #888;">X Position</label>
+                    <input type="number" id="logoPosX" min="0" max="100" step="0.1" value="50" style="width: 100%; padding: 6px; background: rgba(0,0,0,0.3); border: 1px solid #444; color: #fff; border-radius: 4px;" onchange="updateLogoFromInputs()">
+                </div>
+                <div style="flex: 1;">
+                    <label style="font-size: 10px; color: #888;">Y Position</label>
+                    <input type="number" id="logoPosY" min="0" max="100" step="0.1" value="90" style="width: 100%; padding: 6px; background: rgba(0,0,0,0.3); border: 1px solid #444; color: #fff; border-radius: 4px;" onchange="updateLogoFromInputs()">
+                </div>
+            </div>
+        </div>
         <p style="font-size: 11px; color: #888; margin-top: 10px;">
             * The logo remains visible throughout the entire video. Toggle it on/off using the checkbox next to the timeline zoom.
         </p>
@@ -4138,6 +4152,13 @@
             activeLogo.name = logo.name;
             activeLogo.enabled = true;
             document.getElementById('logoEnabled').checked = true;
+            
+            // Sync coordinate inputs
+            const posXInput = document.getElementById('logoPosX');
+            const posYInput = document.getElementById('logoPosY');
+            if (posXInput) posXInput.value = activeLogo.posX.toFixed(1);
+            if (posYInput) posYInput.value = activeLogo.posY.toFixed(1);
+
             updateLogoList();
             updateLogoMasterVisibility();
             renderLogo();
@@ -4193,7 +4214,27 @@
                 activeLogo.posX = 78;
                 activeLogo.posY = 92;
             }
+            
+            // Sync coordinate inputs
+            const posXInput = document.getElementById('logoPosX');
+            const posYInput = document.getElementById('logoPosY');
+            if (posXInput) posXInput.value = activeLogo.posX.toFixed(1);
+            if (posYInput) posYInput.value = activeLogo.posY.toFixed(1);
+
             renderLogo();
+        }
+
+        // Update logo from manual coordinate inputs
+        function updateLogoFromInputs() {
+            const posXInput = document.getElementById('logoPosX');
+            const posYInput = document.getElementById('logoPosY');
+            
+            if (posXInput && posYInput) {
+                activeLogo.posX = parseFloat(posXInput.value) || 0;
+                activeLogo.posY = parseFloat(posYInput.value) || 0;
+                activeLogo.alignment = 'custom';
+                renderLogo();
+            }
         }
 
         // Remove logo
@@ -4433,6 +4474,13 @@
                         activeLogo.posX = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
                         activeLogo.posY = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
                         activeLogo.alignment = 'custom'; // Reset alignment to custom when dragged
+                        
+                        // Sync coordinate inputs during dragging
+                        const posXInput = document.getElementById('logoPosX');
+                        const posYInput = document.getElementById('logoPosY');
+                        if (posXInput) posXInput.value = activeLogo.posX.toFixed(1);
+                        if (posYInput) posYInput.value = activeLogo.posY.toFixed(1);
+                        
                         container.style.left = `${activeLogo.posX}%`;
                         container.style.top = `${activeLogo.posY}%`;
                     }
