@@ -2498,6 +2498,14 @@
                 </div>
             </div>
         </div>
+
+        <div class="control-group" style="margin-top: 15px;">
+            <label style="display: block; font-size: 11px; color: #aaa; margin-bottom: 8px; text-transform: uppercase;">Logo Size</label>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <input type="range" id="logoScaleRange" min="0.1" max="3.0" step="0.05" value="0.5" style="flex: 1;" oninput="activeLogo.scale = parseFloat(this.value); document.getElementById('logoScale').value = this.value; renderLogo();">
+                <input type="number" id="logoScale" min="0.1" max="5.0" step="0.1" value="0.5" style="width: 60px; padding: 6px; background: rgba(0,0,0,0.3); border: 1px solid #444; color: #fff; border-radius: 4px;" onchange="updateLogoFromInputs()">
+            </div>
+        </div>
         <p style="font-size: 11px; color: #888; margin-top: 10px;">
             * The logo remains visible throughout the entire video. Toggle it on/off using the checkbox next to the timeline zoom.
         </p>
@@ -4153,11 +4161,16 @@
             activeLogo.enabled = true;
             document.getElementById('logoEnabled').checked = true;
             
-            // Sync coordinate inputs
+            // Sync UI inputs
             const posXInput = document.getElementById('logoPosX');
             const posYInput = document.getElementById('logoPosY');
+            const scaleInput = document.getElementById('logoScale');
+            const scaleRange = document.getElementById('logoScaleRange');
+            
             if (posXInput) posXInput.value = activeLogo.posX.toFixed(1);
             if (posYInput) posYInput.value = activeLogo.posY.toFixed(1);
+            if (scaleInput) scaleInput.value = activeLogo.scale.toFixed(2);
+            if (scaleRange) scaleRange.value = activeLogo.scale;
 
             updateLogoList();
             updateLogoMasterVisibility();
@@ -4215,11 +4228,16 @@
                 activeLogo.posY = 92;
             }
             
-            // Sync coordinate inputs
+            // Sync UI inputs
             const posXInput = document.getElementById('logoPosX');
             const posYInput = document.getElementById('logoPosY');
+            const scaleInput = document.getElementById('logoScale');
+            const scaleRange = document.getElementById('logoScaleRange');
+            
             if (posXInput) posXInput.value = activeLogo.posX.toFixed(1);
             if (posYInput) posYInput.value = activeLogo.posY.toFixed(1);
+            if (scaleInput) scaleInput.value = activeLogo.scale.toFixed(2);
+            if (scaleRange) scaleRange.value = activeLogo.scale;
 
             renderLogo();
         }
@@ -4228,10 +4246,16 @@
         function updateLogoFromInputs() {
             const posXInput = document.getElementById('logoPosX');
             const posYInput = document.getElementById('logoPosY');
+            const scaleInput = document.getElementById('logoScale');
+            const scaleRange = document.getElementById('logoScaleRange');
             
             if (posXInput && posYInput) {
                 activeLogo.posX = parseFloat(posXInput.value) || 0;
                 activeLogo.posY = parseFloat(posYInput.value) || 0;
+                if (scaleInput) {
+                    activeLogo.scale = parseFloat(scaleInput.value) || 0.5;
+                    if (scaleRange) scaleRange.value = activeLogo.scale;
+                }
                 activeLogo.alignment = 'custom';
                 renderLogo();
             }
@@ -4466,6 +4490,13 @@
                     if (isResizing) {
                         const deltaX = e.clientX - startX;
                         activeLogo.scale = Math.max(0.1, Math.min(5.0, startScale + (deltaX / 200)));
+                        
+                        // Sync scale UI
+                        const scaleInput = document.getElementById('logoScale');
+                        const scaleRange = document.getElementById('logoScaleRange');
+                        if (scaleInput) scaleInput.value = activeLogo.scale.toFixed(2);
+                        if (scaleRange) scaleRange.value = activeLogo.scale;
+
                         if (!activeLogo.stretchWidth) {
                             container.style.width = `${activeLogo.scale * 40}%`;
                         }
