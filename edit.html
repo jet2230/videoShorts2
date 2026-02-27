@@ -7477,7 +7477,14 @@
             // Unlock audio on first user interaction
             const videoWrapper = document.querySelector('.video-wrapper');
             if (videoWrapper) {
-                videoWrapper.addEventListener('click', () => {
+                videoWrapper.addEventListener('click', (e) => {
+                    // Ignore clicks on logo or image containers to prevent starting audio during drag
+                    if (e.target.closest('#logoOverlayContainer') || 
+                        e.target.closest('#overlayContainer') || 
+                        e.target.closest('.image-resize-handle')) {
+                        return;
+                    }
+
                     if (previewAudio && previewAudio.paused) {
                         // Play and immediately pause to "unlock" the audio element
                         previewAudio.play().then(() => {
