@@ -3270,10 +3270,17 @@ def run_edit_task(edit_id: str, input_video: str, output_video: str, edit_settin
                                       'subtitle_h_align', 'subtitle_v_align',
                                       'title_font_size', 'title_bg_type', 'title_text_color', 'title_font_weight',
                                       'title_outline_width', 'title_outline_color', 'title_all_caps', 'title_top',
-                                      'show_title', 'title']
+                                      'title']
                 for key in always_from_adjust:
                     if key in adjust_settings and adjust_settings[key] is not None:
                         edit_render_settings[key] = adjust_settings[key]
+
+                # Explicitly apply show_title from edit UI (priority)
+                # If NOT in UI settings, fall back to adjust.md
+                if 'show_title' in edit_settings.get('subtitles', {}):
+                    edit_render_settings['show_title'] = edit_settings['subtitles']['show_title']
+                elif 'show_title' in adjust_settings:
+                    edit_render_settings['show_title'] = adjust_settings['show_title']
 
                 if 'h_align' in edit_render_settings: edit_render_settings['subtitle_h_align'] = edit_render_settings['h_align']
                 if 'v_align' in edit_render_settings: edit_render_settings['subtitle_v_align'] = edit_render_settings['v_align']

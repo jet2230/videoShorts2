@@ -2396,6 +2396,10 @@
                 <input type="checkbox" id="reburnSubtitles" checked>
                 <span>🔥 Re-burn Subtitles (Top Layer)</span>
             </label>
+            <label class="checkbox-item" style="margin-top: 8px;">
+                <input type="checkbox" id="showTitle" checked>
+                <span>📝 Show Title</span>
+            </label>
             <p style="font-size: 10px; color: #888; margin-top: 5px; padding-left: 28px;">
                 * If enabled, subtitles and titles are rendered on top of B-roll and images in the final export.
             </p>
@@ -6391,7 +6395,8 @@
                 subtitles: {
                     offset: document.getElementById('subtitleOffset').value,
                     style: document.getElementById('subtitleStyle').value,
-                    reburn: document.getElementById('reburnSubtitles').checked
+                    reburn: document.getElementById('reburnSubtitles').checked,
+                    show_title: document.getElementById('showTitle').checked
                 },
                 audio: {
                     file: (audioFile && document.getElementById('audioEnabled').checked) ? audioFile.name : null,
@@ -6935,7 +6940,8 @@
                 subtitles: {
                     offset: document.getElementById('subtitleOffset').value,
                     style: document.getElementById('subtitleStyle').value,
-                    reburn: document.getElementById('reburnSubtitles').checked
+                    reburn: document.getElementById('reburnSubtitles').checked,
+                    show_title: document.getElementById('showTitle').checked
                 },
                 audio: {
                     file: (audioFile && document.getElementById('audioEnabled').checked) ? audioFile.name : null,
@@ -7044,6 +7050,8 @@
                 document.getElementById('subtitleOffset').value = settings.subtitles.offset || 0;
                 document.getElementById('subtitleOffsetValue').textContent = (settings.subtitles.offset || 0) + 's';
                 document.getElementById('subtitleStyle').value = settings.subtitles.style || 'default';
+                document.getElementById('reburnSubtitles').checked = settings.subtitles.reburn !== undefined ? settings.subtitles.reburn : true;
+                document.getElementById('showTitle').checked = settings.subtitles.show_title !== undefined ? settings.subtitles.show_title : true;
             }
 
             // Apply audio
