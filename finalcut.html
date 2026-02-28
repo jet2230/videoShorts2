@@ -1901,6 +1901,7 @@
             <div class="logo-text">Final Cut</div>
         </h1>
         <div class="action-bar">
+            <button class="action-btn secondary" onclick="goToAdjust()">⬅️ Go Adjust</button>
             <button class="action-btn secondary" id="loadBtn" onclick="toggleLoadPresets()">📂 Load</button>
             <button class="action-btn secondary" id="saveBtn" onclick="toggleSaveInput()">💾 Save</button>
             <button class="action-btn secondary" onclick="resetAll()">↺ Reset</button>
@@ -4239,6 +4240,15 @@
             }
         }
 
+        // Redirect to Adjust editor
+        function goToAdjust() {
+            if (folderNumber && themeNumber) {
+                window.location.href = `adjust.html?folder=${folderNumber}&theme=${themeNumber}`;
+            } else {
+                showNotification('Missing folder or theme parameters', 'error');
+            }
+        }
+
         // Initialize canvas subtitle renderer
         async function initializeSubtitleRenderer() {
             subtitleCanvas = document.getElementById('subtitleCanvas');
@@ -5304,6 +5314,7 @@
             try {
                 const response = await fetch('/api/image-library');
                 imageLibraryFiles = await response.json();
+                console.log('🖼️ Loaded image library:', imageLibraryFiles);
                 renderImageLibrary(imageLibraryFiles);
             } catch (error) {
                 console.error('Failed to load image library:', error);
@@ -5964,6 +5975,7 @@
             if (index > -1) {
                 const marker = brollMarkers[index];
                 if (marker.element) marker.element.remove();
+                if (marker.tooltip) marker.tooltip.remove();
                 
                 // Also remove any open delete popups
                 const existing = document.querySelector('.broll-confirm-popup');
@@ -5972,6 +5984,7 @@
                 brollMarkers.splice(index, 1);
                 recalculateLanes('broll');
                 updateBrollList();
+                checkBrollMarkers(); // Refresh canvas immediately
             }
         };
 
@@ -6176,10 +6189,11 @@
                 }
             });
         }
-
-        // Create image marker on timeline
-        function createImageMarker(markerData) {
-            const track = document.getElementById('timelineTrack');
+// Create image marker on timeline
+function createImageMarker(markerData) {
+    console.log('🎞️ Creating image marker on timeline:', markerData);
+    const track = document.getElementById('timelineTrack');
+    if (!track) return;
             const marker = document.createElement('div');
             marker.className = `effect-marker image`;
             marker.id = markerData.id;
@@ -6431,6 +6445,8 @@
 
             markerData.element = marker;
             track.appendChild(marker);
+            
+            recalculateLanes('image');
         }
 
         // Remove image marker
@@ -6751,8 +6767,18 @@
             if (index !== -1) {
                 const markerData = imageMarkers[index];
                 if (markerData.element) markerData.element.remove();
+                if (markerData.tooltip) markerData.tooltip.remove();
                 imageMarkers.splice(index, 1);
+                
+                // Clear from canvas if it was active
+                const container = currentlyActiveImages.get(markerId);
+                if (container) {
+                    container.remove();
+                    currentlyActiveImages.delete(markerId);
+                }
+
                 recalculateLanes('image');
+                checkImageMarkers(); // Refresh canvas
             }
         }
 
@@ -9269,6 +9295,10 @@
         // Get current settings
         function getCurrentSettings() {
             console.log('Gathering current settings...');
+            const mainDuration = getEffectiveDuration();
+            const outroDuration = (outroVideo && outroVideo.enabled) ? outroVideo.duration : 0;
+            const displayDuration = mainDuration + outroDuration;
+
             // Build effect markers data with time ranges
             effectMarkersData = [];
             for (const [effectType, positionData] of Object.entries(effectPositions)) {
@@ -9350,6 +9380,7 @@
                 images: imageFiles.map(img => ({
                     id: img.id,
                     name: img.name,
+                    serverPath: img.serverPath,
                     markers: imageMarkers.filter(m => m.imageId === img.id).map(m => ({
                         start: m.start,
                         end: m.end,
@@ -9362,7 +9393,13 @@
                 })),
                 logoFiles: logoFiles.map(l => ({ id: l.id, name: l.name })),
                 activeLogo: activeLogo,
-                brollFiles: brollFiles.map(f => ({ name: f.name })),
+                broll_markers: brollMarkers.map(m => ({
+                    name: m.brollName,
+                    start_time: m.start * displayDuration,
+                    end_time: m.end * displayDuration,
+                    transition: m.transition || 'fade'
+                })),
+                // Keep camelCase for UI restoration compatibility
                 brollMarkers: brollMarkers.map(m => ({
                     brollIndex: m.brollIndex,
                     brollName: m.brollName,
@@ -9371,6 +9408,11 @@
                     duration: m.duration,
                     layer: m.layer || 0
                 })),
+                audio: {
+                    file: audioFile ? audioFile.path : null,
+                    volume: document.getElementById('audioVolume').value,
+                    originalVolume: document.getElementById('originalAudioVolume').value
+                },
                 animations: activeAnimations,
                 animationToggles: animationToggles
             };
@@ -9380,7 +9422,13 @@
 
         // Apply settings
         function applySettings(settings) {
+            console.log('🔍 APPLYING PRESET SETTINGS:', JSON.stringify(settings, null, 2));
             console.log('Applying settings:', settings);
+            
+            const mainDuration = getEffectiveDuration();
+            const outroDuration = (outroVideo && outroVideo.enabled) ? outroVideo.duration : 0;
+            const displayDuration = mainDuration + outroDuration;
+
             // NOTE: Don't restore trim settings from presets - they contain absolute timestamps
             // that become invalid when video is shortened in adjust. The adjust.md file controls trim.
             // Trim settings are intentionally NOT saved in presets (see getCurrentSettings).
@@ -9559,6 +9607,7 @@
 
             // Apply images
             if (settings.images && Array.isArray(settings.images)) {
+                console.log('🖼️ Restoring images:', settings.images.length);
                 // Clear existing images and markers
                 imageMarkers.forEach(m => {
                     if (m.element) m.element.remove();
@@ -9568,14 +9617,22 @@
                 imageMarkers = [];
 
                 settings.images.forEach(imgData => {
+                    console.log('🖼️ Restoring image file:', imgData.name);
+                    let restoredPath = imgData.serverPath || imgData.name;
+                    // If path doesn't contain a folder prefix, assume it's in images/
+                    if (restoredPath && !restoredPath.includes('/')) {
+                        restoredPath = 'images/' + restoredPath;
+                    }
+                    
                     const img = {
                         id: imgData.id,
                         name: imgData.name,
-                        serverPath: imgData.name // Restore serverPath for preview
+                        serverPath: restoredPath
                     };
                     imageFiles.push(img);
 
                     if (imgData.markers) {
+                        console.log(`  - Restoring ${imgData.markers.length} markers for ${imgData.name}`);
                         imgData.markers.forEach(markerData => {
                             const marker = {
                                 id: 'imgmarker_' + Math.random().toString(36).substr(2, 9),
@@ -9584,9 +9641,9 @@
                                 start: markerData.start,
                                 end: markerData.end,
                                 duration: markerData.duration,
-                                posX: markerData.posX || 50,
-                                posY: markerData.posY || 50,
-                                scale: markerData.scale || 1.0,
+                                posX: markerData.posX !== undefined ? markerData.posX : 50,
+                                posY: markerData.posY !== undefined ? markerData.posY : 50,
+                                scale: markerData.scale !== undefined ? markerData.scale : 1.0,
                                 layer: markerData.layer || 0
                             };
                             imageMarkers.push(marker);
@@ -9595,11 +9652,18 @@
                     }
                 });
                 updateImageList();
+                console.log('🖼️ Image restoration complete. Total markers:', imageMarkers.length);
             }
 
             // Apply B-roll
-            if (settings.brollFiles && Array.isArray(settings.brollFiles)) {
-                brollFiles = settings.brollFiles.map(f => ({ name: f.name }));
+            if ((settings.brollFiles || settings.broll_markers) && Array.isArray(settings.brollFiles || [])) {
+                console.log('🎬 Restoring B-roll data...');
+                brollFiles = (settings.brollFiles || []).map(f => ({ 
+                    name: f.name, 
+                    path: f.path || ('video/' + f.name),
+                    duration: f.duration || 5
+                }));
+                console.log('🎬 Restored brollFiles:', brollFiles);
                 
                 brollMarkers.forEach(m => {
                     if (m.element) m.element.remove();
@@ -9607,22 +9671,41 @@
                 });
                 brollMarkers = [];
 
-                if (settings.brollMarkers && Array.isArray(settings.brollMarkers)) {
-                    settings.brollMarkers.forEach(m => {
-                        const marker = {
-                            id: 'brollmarker_' + Math.random().toString(36).substr(2, 9),
-                            brollIndex: m.brollIndex,
-                            brollName: m.brollName,
-                            start: m.start,
-                            end: m.end,
-                            duration: m.duration,
-                            layer: m.layer || 0
-                        };
-                        brollMarkers.push(marker);
-                        createBrollMarker(marker);
-                    });
-                }
+                const markersToRestore = settings.brollMarkers || settings.broll_markers || [];
+                console.log('🎬 Found markers to restore:', markersToRestore.length);
+                
+                markersToRestore.forEach((m, idx) => {
+                    console.log(`🎬 Processing marker ${idx}:`, m);
+                    // Handle both old format (start/end percentages) and new format (start_time/end_time seconds)
+                    let startPos = m.start;
+                    let endPos = m.end;
+                    
+                    if (startPos === undefined && m.start_time !== undefined) {
+                        startPos = m.start_time / (displayDuration || 1);
+                        console.log(`   - Calculated startPos from start_time: ${startPos}`);
+                    }
+                    if (endPos === undefined && m.end_time !== undefined) {
+                        endPos = m.end_time / (displayDuration || 1);
+                        console.log(`   - Calculated endPos from end_time: ${endPos}`);
+                    }
+
+                    const marker = {
+                        id: 'brollmarker_' + Math.random().toString(36).substr(2, 9),
+                        brollIndex: m.brollIndex !== undefined ? m.brollIndex : 0,
+                        brollName: m.brollName || m.name,
+                        start: startPos !== undefined ? startPos : 0,
+                        end: endPos !== undefined ? endPos : 0.1,
+                        duration: m.duration || (m.end_time - m.start_time) || 5,
+                        layer: m.layer || 0,
+                        transition: m.transition || 'fade'
+                    };
+                    
+                    console.log('  - Final created marker object:', marker);
+                    brollMarkers.push(marker);
+                    createBrollMarker(marker);
+                });
                 updateBrollList();
+                console.log('🎬 B-roll restoration complete. Total markers:', brollMarkers.length);
             }
 
             // Apply logos
@@ -9667,6 +9750,14 @@
             recalculateLanes('broll');
             applyVideoEffects();
             updateTimeline();
+            
+            // Add a small delay to ensure elements are in DOM before syncing canvas
+            setTimeout(() => {
+                console.log('🔄 Final canvas sync after settings applied');
+                checkImageMarkers();
+                checkBrollMarkers();
+                renderSubtitlesAtCurrentTime();
+            }, 500);
         }
 
         // Toggle save input box
