@@ -7,9 +7,23 @@
     <style>
         @font-face {
             font-family: 'Avenir Black';
-            src: url('/media/fonts/Avenir Black.ttf') format('truetype');
-            font-weight: 900;
+            src: url('/media/fonts/Avenir%20Black.ttf') format('truetype');
+            font-weight: normal;
             font-style: normal;
+        }
+        @font-face {
+            font-family: 'Avenir Black';
+            src: url('/media/fonts/Avenir%20Black.ttf') format('truetype');
+            font-weight: bold;
+            font-style: normal;
+        }
+
+        /* Force font load */
+        .font-loader {
+            font-family: 'Avenir Black';
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
         }
 
         * {
@@ -1891,6 +1905,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3/drawing_utils.js" crossorigin="anonymous"></script>
 </head>
 <body>
+    <div class="font-loader" style="font-family: 'Avenir Black'; position: absolute; left: -9999px;">Avenir Black Loader</div>
     <!-- Floating time tooltip -->
     <div id="timelineTimeTooltip" style="position: fixed; background: rgba(0, 0, 0, 0.95); color: #fff; padding: 8px 14px; border-radius: 8px; font-size: 14px; font-weight: 600; pointer-events: none; z-index: 999999; opacity: 0; transition: opacity 0.15s, transform 0.1s; white-space: nowrap; border: 2px solid #00ff9d; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.8); display: none; font-family: monospace; min-width: 60px; text-align: center; transform: translateY(-50%);">
         00:00
@@ -2710,17 +2725,11 @@
         <h3><span class="icon">📝</span> Subtitles</h3>
         
         <div class="checkbox-group" style="margin-bottom: 15px;">
-            <label class="checkbox-item" id="anim-reburnSubtitles">
-                <input type="checkbox" id="reburnSubtitles" checked>
-                <span>🔥 Re-burn Subtitles (Top Layer)</span>
-            </label>
-            <label class="checkbox-item" style="margin-top: 8px;">
+            <input type="checkbox" id="reburnSubtitles" checked style="display: none;">
+            <label class="checkbox-item" id="showTitleLabel" onclick="toggleCheckbox('showTitle')">
                 <input type="checkbox" id="showTitle" checked>
-                <span>📝 Show Title</span>
+                <span>📝 Show Title Over Video</span>
             </label>
-            <p style="font-size: 10px; color: #888; margin-top: 5px; padding-left: 28px;">
-                * If enabled, subtitles and titles are rendered on top of B-roll and images in the final export.
-            </p>
         </div>
 
         <div class="control-group">
@@ -2911,6 +2920,17 @@
             </div>
             <p style="font-size: 10px; color: #888; margin-top: 5px;">
                 Snap playhead and hover line to ruler segments.
+            </p>
+            </div>
+
+            <div class="control-group">
+            <label>Automation</label>
+            <div class="checkbox-item" id="autoloadToggleRow" onclick="toggleAutoload(event)">
+                <input type="checkbox" id="settingAutoloadEnabled" style="display: none;">
+                <span id="autoloadStatusLabel">🔄 Auto-load Last Preset</span>
+            </div>
+            <p style="font-size: 10px; color: #888; margin-top: 5px;">
+                Automatically load the most recent preset for this theme on startup.
             </p>
         </div>
     </div>
@@ -3284,10 +3304,7 @@
                         <div style="margin-top: 2px; color: #00ff9d;">${themeStart} - ${themeEnd}</div>
                     </div>
                 `;
-                // Auto-check re-burn for themes
-                if (themeNumber) {
-                    document.getElementById('reburnSubtitles').checked = true;
-                }
+                // Auto-check re-burn for themes - removed, now always true
             } catch (error) {
                 console.error('Failed to load theme info:', error);
                 document.getElementById('videoInfo').innerHTML = `<strong>Error loading video</strong><br>${error.message}`;
@@ -3315,10 +3332,6 @@
                 <strong>${filename}</strong><br>
                 Folder: <span title="${escapedFolder}" style="cursor: help; border-bottom: 1px dotted #00ff9d;">${displayFolder}</span> | Theme: ${themeNumber || 'N/A'}
             `;
-
-            if (themeNumber) {
-                document.getElementById('reburnSubtitles').checked = true;
-            }
         }
 
         // Update timeline on video metadata load
@@ -3804,8 +3817,8 @@
             // Start with defaults
             const settings = {
                 fontSize: 80,
-                fontName: 'Arial',
-                font_name: 'Arial',
+                fontName: 'Avenir Black',
+                font_name: 'Avenir Black',
                 font_weight: 'normal',
                 primaryColor: '#ffffff',
                 outlineColor: '#000000',
@@ -4043,7 +4056,13 @@
 
                 const scale = canvas.height / 1920;
                 const baseFontSize = (this.settings.fontSize || 80) * scale;
-                const fontFamily = this.settings.fontName || this.settings.font_name || 'Arial';
+                let fontFamily = this.settings.fontName || this.settings.font_name || 'Avenir Black';
+                
+                // Fallback to Arial only if font is truly missing
+                if (fontFamily === 'Arial' && this.settings.fontName !== 'Arial') {
+                    fontFamily = 'Avenir Black';
+                }
+                
                 const baseFontWeight = this.settings.font_weight || 'normal';
                 const outlineColor = this.settings.outlineColor || '#000000';
                 const primaryColor = this.settings.primaryColor || '#ffffff';
@@ -4064,15 +4083,24 @@
                 // Detect RTL
                 this.isRTL = this._isArabic(words);
 
+                if (currentTime === 0 || Math.random() < 0.01) {
+                    console.log('🎨 CANVAS FONT DEBUG:', {
+                        fontFamily,
+                        baseFontWeight,
+                        baseFontSize,
+                        fontString: `${baseFontWeight} ${baseFontSize}px "${fontFamily}"`
+                    });
+                }
+
                 const setWordFont = (wordObj, scaleMultiplier = 1.0) => {
                     const weight = wordObj.bold ? 'bold' : baseFontWeight;
                     const style = wordObj.italic ? 'italic' : '';
                     const size = baseFontSize * (wordObj.sizeMultiplier || 1.0) * scaleMultiplier;
-                    ctx.font = `${style} ${weight} ${size}px ${fontFamily}`;
+                    ctx.font = `${style} ${weight} ${size}px "${fontFamily}"`;
                 };
 
                 const maxWidth = canvas.width - (140 * scale);
-                ctx.font = `${baseFontWeight} ${baseFontSize}px ${fontFamily}`;
+                ctx.font = `${baseFontWeight} ${baseFontSize}px "${fontFamily}"`;
                 const spaceWidth = ctx.measureText(' ').width;
                 const lines = [];
                 let currentLine = [];
@@ -4259,16 +4287,23 @@
             subtitleCanvas.width = 1080;
             subtitleCanvas.height = 1920;
 
+            // Wait for fonts to load
+            try {
+                await document.fonts.ready;
+                console.log('✅ Fonts ready');
+            } catch (e) {
+                console.warn('Font loading check failed:', e);
+            }
+
             await loadSubtitleCues();
             await loadWordTimestamps();
 
             const settings = getCurrentSubtitleSettings();
             subtitleRenderer = new UniversalSubtitleRenderer(subtitleCanvas, video, wordTimestamps, settings);
-            
+
             // Render immediately if paused
             renderSubtitlesAtCurrentTime();
         }
-
         // Render subtitles at current video time
         function renderSubtitlesAtCurrentTime() {
             if (!subtitleRenderer || !allThemeCues || allThemeCues.length === 0) return;
@@ -4330,19 +4365,24 @@
         }
 
         function getEffectiveDuration() {
-            if (video.dataset.themeStart && video.dataset.themeEnd) {
-                return parseFloat(video.dataset.themeEnd) - parseFloat(video.dataset.themeStart);
+            const themeStartStr = video.dataset.themeStart;
+            const themeEndStr = video.dataset.themeEnd;
+            if (themeStartStr !== undefined && themeEndStr !== undefined) {
+                const s = parseFloat(themeStartStr);
+                const e = parseFloat(themeEndStr);
+                if (!isNaN(s) && !isNaN(e)) return e - s;
             }
             return video.duration || 1;
         }
 
         function getEffectiveTime() {
-            if (video.dataset.themeStart) {
-                return Math.max(0, video.currentTime - parseFloat(video.dataset.themeStart));
+            const themeStartStr = video.dataset.themeStart;
+            if (themeStartStr !== undefined) {
+                const s = parseFloat(themeStartStr);
+                if (!isNaN(s)) return Math.max(0, video.currentTime - s);
             }
             return video.currentTime;
         }
-
         // Time formatting
         function formatTime(seconds) {
             const h = Math.floor(seconds / 3600);
@@ -4662,6 +4702,27 @@
         }
 
         let snappingEnabled = localStorage.getItem('fc_snapping_enabled') !== 'false'; // Default to true
+        let autoloadEnabled = localStorage.getItem('fc_autoload_enabled') === 'true'; // Default to false
+
+        function toggleAutoload(e) {
+            if (e) {
+                e.stopPropagation();
+                e.preventDefault();
+            }
+            autoloadEnabled = !autoloadEnabled;
+            localStorage.setItem('fc_autoload_enabled', autoloadEnabled);
+            syncAutoloadUI();
+        }
+
+        function syncAutoloadUI() {
+            const settingCheckbox = document.getElementById('settingAutoloadEnabled');
+            const settingLabel = document.getElementById('autoloadStatusLabel');
+            if (settingCheckbox) settingCheckbox.checked = autoloadEnabled;
+            if (settingLabel) {
+                if (autoloadEnabled) settingLabel.parentElement.classList.add('active');
+                else settingLabel.parentElement.classList.remove('active');
+            }
+        }
 
         function toggleSnapping(e) {
             if (e) {
@@ -4705,6 +4766,43 @@
                 settingLabel.textContent = snappingEnabled ? '🧲 Snapping Enabled' : '🚫 Snapping Disabled';
                 if (snappingEnabled) settingLabel.parentElement.classList.add('active');
                 else settingLabel.parentElement.classList.remove('active');
+            }
+
+            syncAutoloadUI();
+
+            // Auto-load last preset if enabled
+            if (autoloadEnabled) {
+                setTimeout(() => {
+                    const key = `videoEditor_${videoPath}`;
+                    try {
+                        const existing = localStorage.getItem(key);
+                        if (existing) {
+                            const presets = JSON.parse(existing);
+                            const names = Object.keys(presets);
+                            if (names.length > 0) {
+                                // Find the most recent preset (last one in the object or by savedAt)
+                                let lastPresetName = names[names.length - 1];
+                                let latestDate = 0;
+                                
+                                names.forEach(name => {
+                                    if (presets[name].savedAt) {
+                                        const d = new Date(presets[name].savedAt).getTime();
+                                        if (d > latestDate) {
+                                            latestDate = d;
+                                            lastPresetName = name;
+                                        }
+                                    }
+                                });
+
+                                console.log(`🔄 Auto-loading last preset: ${lastPresetName}`);
+                                applySettings(presets[lastPresetName].settings || presets[lastPresetName]);
+                                showNotification(`Auto-loaded preset: ${lastPresetName}`, 'success');
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Auto-load failed:', e);
+                    }
+                }, 1500); // Wait for theme/video to initialize
             }
         });
 
@@ -8761,15 +8859,20 @@ function createImageMarker(markerData) {
                 return;
             }
 
+            const mainDuration = getEffectiveDuration();
+            const outroDuration = (outroVideo && outroVideo.enabled) ? outroVideo.duration : 0;
+            const displayDuration = mainDuration + outroDuration;
+
             // Build effect markers data with time ranges
             const effectMarkersData = [];
             for (const [effectType, positionData] of Object.entries(effectPositions)) {
                 if (positionData && document.getElementById(`effect${effectType.charAt(0).toUpperCase() + effectType.slice(1)}`).checked) {
-                    const videoDuration = video.duration || 1;
+                    const startPct = Math.max(0, Math.min(1, positionData.start));
+                    const endPct = Math.max(0, Math.min(1, positionData.end));
                     effectMarkersData.push({
                         type: effectType,
-                        start_time: positionData.start * videoDuration,
-                        end_time: positionData.end * videoDuration
+                        start_time: startPct * displayDuration,
+                        end_time: endPct * displayDuration
                     });
                 }
             }
@@ -8871,29 +8974,36 @@ function createImageMarker(markerData) {
                     const isActive = videoEl && videoEl.dataset.activeMarkerId === m.id;
                     const transition = m.transition || (isActive ? videoEl.className.replace('active', '').trim() : 'fade');
                     
+                    const startPct = Math.max(0, Math.min(1, m.start));
+                    const endPct = Math.max(0, Math.min(1, m.end));
+                    
                     return {
                         name: m.brollName,
-                        start_time: m.start * (video.duration || 1),
-                        end_time: m.end * (video.duration || 1),
+                        start_time: startPct * displayDuration,
+                        end_time: endPct * displayDuration,
                         transition: transition
                     };
                 }),
                 images: [
                     ...imageFiles.map(img => ({
                         name: img.name,
-                        markers: imageMarkers.filter(m => m.imageId === img.id).map(m => ({
-                            start_time: m.start * (video.duration || 1),
-                            end_time: m.end * (video.duration || 1),
-                            x: m.posX,
-                            y: m.posY,
-                            scale: m.scale
-                        }))
+                        markers: imageMarkers.filter(m => m.imageId === img.id).map(m => {
+                            const startPct = Math.max(0, Math.min(1, m.start));
+                            const endPct = Math.max(0, Math.min(1, m.end));
+                            return {
+                                start_time: startPct * displayDuration,
+                                end_time: endPct * displayDuration,
+                                x: m.posX,
+                                y: m.posY,
+                                scale: m.scale
+                            };
+                        })
                     })),
                     ...(activeLogo.enabled && activeLogo.id ? [{
                         name: activeLogo.name,
                         markers: [{
                             start_time: 0,
-                            end_time: video.duration || 1,
+                            end_time: displayDuration,
                             x: activeLogo.posX,
                             y: activeLogo.posY,
                             scale: activeLogo.scale,
@@ -8901,6 +9011,7 @@ function createImageMarker(markerData) {
                         }]
                     }] : [])
                 ],
+                display_duration: displayDuration,
                 output_dir: 'edited_shorts' // Export to edited_shorts folder
             };
 
@@ -8926,8 +9037,12 @@ function createImageMarker(markerData) {
 
         // Send edit settings to backend
         async function processVideoEdit(settings, quality = 'standard') {
-            const urlParams = new URLSearchParams(window.location.search);
-            const videoPath = urlParams.get('video');
+            const videoPathToUse = actualVideoPath; // Use the globally loaded path
+
+            if (!videoPathToUse) {
+                showNotification('Video path not loaded yet. Please wait.', 'error');
+                return;
+            }
 
             isExporting = true;
             updateExportButton();
@@ -8941,7 +9056,7 @@ function createImageMarker(markerData) {
             progressText.textContent = 'Starting...';
 
             try {
-                console.log('Sending export request...');
+                console.log('Sending export request for:', videoPathToUse);
                 // Start the export
                 const response = await fetch('/api/process-edit', {
                     method: 'POST',
@@ -8949,7 +9064,7 @@ function createImageMarker(markerData) {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        video_path: videoPath,
+                        video_path: videoPathToUse,
                         settings: settings,
                         quality: quality
                     })
@@ -9315,11 +9430,10 @@ function createImageMarker(markerData) {
             effectMarkersData = [];
             for (const [effectType, positionData] of Object.entries(effectPositions)) {
                 if (positionData && document.getElementById(`effect${effectType.charAt(0).toUpperCase() + effectType.slice(1)}`)?.checked) {
-                    const videoDuration = video.duration || 1;
                     effectMarkersData.push({
                         type: effectType,
-                        start_time: positionData.start * videoDuration,
-                        end_time: positionData.end * videoDuration
+                        start_time: positionData.start * displayDuration,
+                        end_time: positionData.end * displayDuration
                     });
                 }
             }
@@ -9394,17 +9508,30 @@ function createImageMarker(markerData) {
                     name: img.name,
                     serverPath: img.serverPath,
                     markers: imageMarkers.filter(m => m.imageId === img.id).map(m => ({
+                        // UI restoration keys (keep these)
                         start: m.start,
                         end: m.end,
                         duration: m.duration,
                         posX: m.posX,
                         posY: m.posY,
                         scale: m.scale,
-                        layer: m.layer || 0
+                        layer: m.layer || 0,
+                        // VideoProcessor export keys (add these)
+                        start_time: m.start * displayDuration,
+                        end_time: m.end * displayDuration,
+                        x: m.posX,
+                        y: m.posY,
+                        scale_val: m.scale // VideoProcessor uses scale_val to avoid conflict
                     }))
                 })),
                 logoFiles: logoFiles.map(l => ({ id: l.id, name: l.name })),
-                activeLogo: activeLogo,
+                activeLogo: {
+                    ...activeLogo,
+                    x: activeLogo.posX,
+                    y: activeLogo.posY,
+                    scale: activeLogo.scale,
+                    stretch_width: activeLogo.stretchWidth
+                },
                 broll_markers: brollMarkers.map(m => ({
                     name: m.brollName,
                     start_time: m.start * displayDuration,
@@ -9771,7 +9898,13 @@ function createImageMarker(markerData) {
             }
 
             if (settings.activeLogo) {
-                activeLogo = { ...settings.activeLogo };
+                const al = settings.activeLogo;
+                activeLogo = { 
+                    ...al,
+                    posX: al.posX !== undefined ? al.posX : (al.x !== undefined ? al.x : 50),
+                    posY: al.posY !== undefined ? al.posY : (al.y !== undefined ? al.y : 50),
+                    stretchWidth: al.stretchWidth !== undefined ? al.stretchWidth : (al.stretch_width !== undefined ? al.stretch_width : false)
+                };
                 const toggle = document.getElementById('logoEnabled');
                 if (toggle) toggle.checked = activeLogo.enabled;
                 updateLogoMasterVisibility();
@@ -10067,6 +10200,53 @@ function createImageMarker(markerData) {
                         savePreset();
                     }
                 });
+            }
+
+            // Sync settings panel UI on load
+            const settingCheckbox = document.getElementById('settingSnappingEnabled');
+            const settingLabel = document.getElementById('snappingStatusLabel');
+            if (settingCheckbox) settingCheckbox.checked = snappingEnabled;
+            if (settingLabel) {
+                settingLabel.textContent = snappingEnabled ? '🧲 Snapping Enabled' : '🚫 Snapping Disabled';
+                if (snappingEnabled) settingLabel.parentElement.classList.add('active');
+                else settingLabel.parentElement.classList.remove('active');
+            }
+
+            syncAutoloadUI();
+
+            // Auto-load last preset if enabled
+            if (autoloadEnabled) {
+                setTimeout(() => {
+                    const key = `videoEditor_${videoPath}`;
+                    try {
+                        const existing = localStorage.getItem(key);
+                        if (existing) {
+                            const presets = JSON.parse(existing);
+                            const names = Object.keys(presets);
+                            if (names.length > 0) {
+                                // Find the most recent preset (by savedAt)
+                                let lastPresetName = names[0];
+                                let latestDate = 0;
+                                
+                                names.forEach(name => {
+                                    if (presets[name].savedAt) {
+                                        const d = new Date(presets[name].savedAt).getTime();
+                                        if (d > latestDate) {
+                                            latestDate = d;
+                                            lastPresetName = name;
+                                        }
+                                    }
+                                });
+
+                                console.log(`🔄 Auto-loading last preset: ${lastPresetName}`);
+                                applySettings(presets[lastPresetName].settings || presets[lastPresetName]);
+                                showNotification(`Auto-loaded preset: ${lastPresetName}`, 'success');
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Auto-load failed:', e);
+                    }
+                }, 1500); // Wait for theme/video to initialize
             }
         });
 

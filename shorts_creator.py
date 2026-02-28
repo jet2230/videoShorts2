@@ -63,7 +63,7 @@ def load_settings(settings_file: str = 'settings.ini') -> configparser.ConfigPar
         }
         config['subtitle'] = {
             'max_subtitle_lines': '2',    # Maximum number of lines for subtitles
-            'font_name': 'Arial',         # Subtitle font
+            'font_name': 'Avenir Black',         # Subtitle font
             'font_size': '24',            # Base font size
             'primary_colour': '&HFFFFFF', # Text color (ASS format)
             'back_colour': '&H80000000',  # Background color with transparency
@@ -1499,7 +1499,7 @@ Video Path: {video_info['video_path']}
             'auto_emoji': karaoke_style.get('autoEmoji', False),
             'keyword_scaling': karaoke_style.get('keywordScaling', False),
             'fontSize': adjust_settings.get('fontSize', 48 * 2), # Use saved size or default
-            'fontName': adjust_settings.get('fontName', 'Arial'),
+            'fontName': adjust_settings.get('fontName', 'Avenir Black'),
             'textColor': karaoke_style.get('textColor', '#ffff00'),
             'primaryColor': adjust_settings.get('primaryColor', '#ffffff'),
             'pastColor': karaoke_style.get('past_color', '#808080'),

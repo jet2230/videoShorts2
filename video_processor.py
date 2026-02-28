@@ -64,6 +64,7 @@ class VideoProcessor:
         import subprocess
         import tempfile
         import os
+        import shutil
 
         def log(msg):
             if log_callback:
@@ -183,40 +184,8 @@ class VideoProcessor:
         
         # Input index for subsequent inputs
         input_index = 1
-        
-        # Add additional inputs for images
-        image_inputs = []
-        for img in image_settings:
-            img_path = self.find_media(img['name'])
-            
-            if img_path and img_path.exists():
-                # Loop image for duration
-                cmd.extend(['-loop', '1', '-i', str(img_path.absolute())])
-                image_inputs.append({
-                    **img,
-                    'input_index': input_index
-                })
-                input_index += 1
-            else:
-                log(f"WARNING: Image {img['name']} not found.")
 
-        # Add additional inputs for B-roll
-        broll_inputs = []
-        for marker in broll_markers:
-            br_path = self.find_media(marker['name'])
-            
-            if br_path and br_path.exists():
-                # Stream loop for B-roll files
-                cmd.extend(['-stream_loop', '-1', '-i', str(br_path.absolute())])
-                broll_inputs.append({
-                    **marker,
-                    'input_index': input_index
-                })
-                input_index += 1
-            else:
-                log(f"WARNING: B-roll {marker['name']} not found.")
-
-        # Add additional input for custom audio
+        # Add additional input for custom audio EARLY to keep indices stable
         custom_audio_index = None
         if audio_settings.get('file'):
             audio_path = self.find_media(audio_settings['file'])
@@ -234,6 +203,90 @@ class VideoProcessor:
                 cmd.extend(['-i', str(audio_path.absolute())])
                 custom_audio_index = input_index
                 input_index += 1
+
+        # Calculate reference duration for percentage mapping
+        # Prefer display_duration from settings (passed by server for theme clips)
+        # otherwise fall back to video duration.
+        display_duration = settings.get('display_duration')
+        if display_duration is None:
+            display_duration = self.total_frames / (self.fps if self.fps > 0 else 30)
+
+        log(f"Using display_duration={display_duration:.2f}s for marker time mapping")
+
+        # Add additional inputs for images
+        image_inputs = []
+        log(f"DEBUG_VP: Processing {len(image_settings)} image inputs")
+        for i, img in enumerate(image_settings):
+            img_path = self.find_media(img['name'])
+            
+            if img_path and img_path.exists():
+                log(f"DEBUG_VP: Found image {i} '{img['name']}' at {img_path} (Absolute: {img_path.absolute()})")
+                # Loop image for duration
+                cmd.extend(['-loop', '1', '-i', str(img_path.absolute())])
+                
+                # Apply internal_start offset if we fell back to original source
+                # because markers are 0-based relative to the trim.
+                updated_markers = []
+                for m_idx, m in enumerate(img.get('markers', [])):
+                    # Resolve timing: prefer start_time (seconds), fall back to start (percentage)
+                    s = m.get('start_time')
+                    e = m.get('end_time')
+                    
+                    if s is None and 'start' in m:
+                        s = m['start'] * display_duration
+                    if e is None and 'end' in m:
+                        e = m['end'] * display_duration
+                    
+                    # Markers are 0-based relative to the trim.
+                    s = (s if s is not None else 0)
+                    e = (e if e is not None else display_duration)
+                    log(f"  - Marker {m_idx}: {s:.2f}s to {e:.2f}s")
+                    updated_markers.append({**m, 'start_time': s, 'end_time': e})
+
+                image_inputs.append({
+                    **img,
+                    'markers': updated_markers,
+                    'input_index': input_index
+                })
+                input_index += 1
+            else:
+                log(f"WARNING_VP: Image {i} '{img['name']}' not found in media root.")
+
+        # Add additional inputs for B-roll
+        broll_inputs = []
+        log(f"DEBUG_VP: Processing {len(broll_markers)} B-roll markers")
+        for i, marker in enumerate(broll_markers):
+            br_path = self.find_media(marker['name'])
+
+            if br_path and br_path.exists():
+                log(f"DEBUG_VP: Found B-roll {i} '{marker['name']}' at {br_path} (Absolute: {br_path.absolute()})")
+                # Stream loop for B-roll files
+                cmd.extend(['-stream_loop', '-1', '-i', str(br_path.absolute())])
+
+                # Resolve timing: prefer start_time (seconds), fall back to start (percentage)
+                s = marker.get('start_time')
+                e = marker.get('end_time')
+
+                if s is None and 'start' in marker:
+                    s = marker['start'] * display_duration
+                if e is None and 'end' in marker:
+                    e = marker['end'] * display_duration
+
+                # Use original marker timing (relative to theme/trim)
+                s = (s if s is not None else 0)
+                e = (e if e is not None else display_duration)
+                log(f"  - B-roll {i} Timing: {s:.2f}s to {e:.2f}s")
+
+                broll_inputs.append({
+                    **marker,
+                    'start_time': s,
+                    'end_time': e,
+                    'input_index': input_index
+                })
+                input_index += 1
+            else:
+                log(f"WARNING_VP: B-roll {i} '{marker['name']}' not found in media root.")
+
 
         # Build filter complex
         vf_filters = []
@@ -414,13 +467,13 @@ class VideoProcessor:
             # Each B-roll marker uses its own input once. 
             # If multiple markers used same B-roll file, they have different input_index.
             input_label = f"[{marker['input_index']}:v]"
-            output_label = f"[v_br{overlay_count}]"
+            br_stream_label = f"[br_stream_{i}]"
             
             s = marker['start_time']
             e = marker['end_time']
             
             # If hideLogo is enabled, clamp end time to main video duration
-            if outro_settings.get('hideLogo', True) and end_time:
+            if outro_settings.get('hideLogo', False) and end_time:
                 main_dur = to_sec(end_time) - to_sec(start_time)
                 if e > main_dur:
                     e = main_dur
@@ -432,24 +485,21 @@ class VideoProcessor:
             enable = f"between(t,{s},{e})"
             
             # Base scaling for B-roll - MUST MATCH MAIN VIDEO (1080x1920)
-            # NOTE: Transitions on the input stream MUST use times relative to the clip start (0)
-            # So we first normalize PTS to start at 0
             br_filters = [
                 f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(iw-ow)/2:(ih-oh)/2,format=rgba",
-                "setpts=PTS-STARTPTS"
+                "settb=1/30,setpts=PTS-STARTPTS"
             ]
             
             if transition == 'fade':
                 br_filters.append(f"fade=t=in:st=0:d={trans_dur}:alpha=1")
                 br_filters.append(f"fade=t=out:st={duration-trans_dur}:d={trans_dur}:alpha=1")
             elif transition == 'zoom':
-                # Continuous zoom in/out over the clip duration
-                br_filters.append(f"zoompan=z='min(zoom+0.001,1.5)':d=1:s=1080x1920:fps={self.fps if self.fps > 0 else 30}")
+                br_filters.append(f"zoompan=z='min(zoom+0.001,1.5)':d=1:s=1080x1920:fps=30")
             
-            # NOW shift the PTS to the start time in the main video for the overlay filter
-            br_filters.append(f"setpts=PTS+{s}/TB")
+            # Shift PTS to start time
+            br_filters.append(f"setpts=PTS+{s}*30")
             
-            filter_complex.append(f"{input_label}{','.join(br_filters)}{output_label}")
+            filter_complex.append(f"{input_label}{','.join(br_filters)}{br_stream_label}")
             
             # Slide transitions are handled by dynamic x/y in the overlay filter
             x_pos = "0"
@@ -464,11 +514,10 @@ class VideoProcessor:
             elif transition == 'slide-down':
                 y_pos = f"if(between(t,{s},{s+trans_dur}),-H+(t-{s})/{trans_dur}*H,if(between(t,{e-trans_dur},{e}),(t-({e-trans_dur}))/{trans_dur}*H,0))"
             
-            # Overlay B-roll over main video
-            final_ov_label = f"[v_ov{overlay_count}]"
-            filter_complex.append(f"{last_v}{output_label}overlay=x='{x_pos}':y='{y_pos}':enable='{enable}'{final_ov_label}")
-            last_v = final_ov_label
-            overlay_count += 1
+            # Overlay B-roll over the LAST video stream
+            current_ov_label = f"[v_ov_br{i}]"
+            filter_complex.append(f"{last_v}{br_stream_label}overlay=x='{x_pos}':y='{y_pos}':enable='{enable}'{current_ov_label}")
+            last_v = current_ov_label
             
         # 3. Add image overlay filters
         for i, img_data in enumerate(image_inputs):
@@ -487,12 +536,21 @@ class VideoProcessor:
                 output_label = f"[v_ov{overlay_count}]"
                 input_m_label = f"[img_{i}_m{m_idx}]"
                 
-                s = marker['start_time']
-                e = marker['end_time']
+                # Resolve timing: prefer start_time (seconds), fall back to start (percentage)
+                s = marker.get('start_time')
+                e = marker.get('end_time')
+                
+                if s is None and 'start' in marker:
+                    s = marker['start'] * display_duration
+                if e is None and 'end' in marker:
+                    e = marker['end'] * display_duration
+                
+                s = s if s is not None else 0
+                e = e if e is not None else display_duration
                 
                 # If hideLogo is enabled, we clamp the end time to the main video duration
                 # to prevent logos/images from showing over the outro clip
-                if outro_settings.get('hideLogo', True) and end_time:
+                if outro_settings.get('hideLogo', False) and end_time:
                     main_dur = to_sec(end_time) - to_sec(start_time)
                     if e > main_dur:
                         e = main_dur
@@ -520,7 +578,8 @@ class VideoProcessor:
                 else:
                     target_w = f"(1080*0.4*{scale_factor})"
                 
-                filter_complex.append(f"{input_m_label}scale=w='{target_w}':h='-1'{scaled_marker_label}")
+                # IMPORTANT: Reset timebase and PTS for images too
+                filter_complex.append(f"{input_m_label}scale=w='{target_w}':h='-1',settb=1/30,setpts=PTS-STARTPTS+({s}*30){scaled_marker_label}")
                 
                 filter_complex.append(f"{last_v}{scaled_marker_label}overlay=x='{x_pos}':y='{y_pos}':enable='{enable}'{output_label}")
                 last_v = output_label
@@ -688,15 +747,22 @@ class VideoProcessor:
             # If we also have reburn, we need a temp file here
             face_output = output_path
             if reburn_subs:
-                face_output = os.path.join(temp_dir_for_cleanup or tempfile.mkdtemp(), 'face_tracked.mp4')
+                face_output = os.path.join(temp_dir_for_cleanup or tempfile.gettempdir(), 'face_tracked.mp4')
             
             self._apply_face_tracking(intermediate_output, face_output, global_effects, cancel_flag, log_callback, progress_offset=current_offset, progress_scale=p_scale)
             intermediate_output = face_output
             current_offset += (100 * p_scale)
 
+        # FINAL STEP: Ensure the result is at the requested output_path
+        if intermediate_output != output_path:
+            log(f"Moving final result to {output_path}")
+            if os.path.exists(output_path):
+                os.remove(output_path)
+            shutil.move(intermediate_output, output_path)
+
         # Return the path of the processed video so server.py can do the final pass
         log("Video effects pass complete!")
-        return intermediate_output
+        return output_path
 
     def _format_time(self, seconds):
         """Format seconds to HH:MM:SS."""

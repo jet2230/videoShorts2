@@ -177,29 +177,39 @@ class UniversalSubtitleRenderer:
 
         font_path = self._font_path_cache.get(family)
         if not font_path:
-            # First, check media/fonts directory for custom fonts
+            # Use absolute path for media/fonts
             import os
-            # subtitle_renderer.py is in the project root, so just use dirname once
-            media_fonts_dir = os.path.join(os.path.dirname(__file__), 'media', 'fonts')
-            print(f"[FONT DEBUG] Looking for font '{family}', media_fonts_dir={media_fonts_dir}, exists={os.path.exists(media_fonts_dir)}")
+            base_dir = Path(__file__).parent.absolute()
+            media_fonts_dir = base_dir / 'media' / 'fonts'
+            logger.info(f"[FONT DEBUG] Looking for font '{family}', media_fonts_dir={media_fonts_dir}, exists={media_fonts_dir.exists()}")
 
-            if os.path.exists(media_fonts_dir):
+            if media_fonts_dir.exists():
                 # Try exact match
-                exact_path = os.path.join(media_fonts_dir, f"{family}.ttf")
-                print(f"[FONT DEBUG] Exact path: {exact_path}, exists={os.path.exists(exact_path)}")
-                if os.path.exists(exact_path):
-                    font_path = exact_path
+                exact_path = media_fonts_dir / f"{family}.ttf"
+                if exact_path.exists():
+                    font_path = str(exact_path)
+                    logger.info(f"[FONT DEBUG] Found exact match: {font_path}")
                 else:
-                    # Try case-insensitive match
-                    try:
-                        for f in os.listdir(media_fonts_dir):
-                            target = f"{family.lower()}.ttf".replace('_', ' ').replace('-', ' ')
-                            current = f.lower().replace('_', ' ').replace('-', ' ')
-                            if current == target:
-                                font_path = os.path.join(media_fonts_dir, f)
-                                print(f"[FONT DEBUG] Found via fuzzy match: {font_path}")
-                                break
-                    except: pass
+                    # Try common variations for Avenir Black
+                    variations = [f"{family}.ttf", f"{family.replace(' ', '')}.ttf", f"{family.replace(' ', '_')}.ttf"]
+                    for var in variations:
+                        v_path = media_fonts_dir / var
+                        if v_path.exists():
+                            font_path = str(v_path)
+                            logger.info(f"[FONT DEBUG] Found via variation: {font_path}")
+                            break
+                    
+                    if not font_path:
+                        # Try case-insensitive match
+                        try:
+                            for f in os.listdir(str(media_fonts_dir)):
+                                target = f"{family.lower()}.ttf".replace('_', ' ').replace('-', ' ')
+                                current = f.lower().replace('_', ' ').replace('-', ' ')
+                                if current == target:
+                                    font_path = str(media_fonts_dir / f)
+                                    logger.info(f"[FONT DEBUG] Found via fuzzy match: {font_path}")
+                                    break
+                        except: pass
 
             # If not found in media/fonts, try fc-match for system fonts
             if not font_path:
@@ -207,7 +217,7 @@ class UniversalSubtitleRenderer:
                     res = subprocess.run(['fc-match', '-f', '%{file}', family], capture_output=True, text=True)
                     if res.returncode == 0 and res.stdout.strip():
                         font_path = res.stdout.strip()
-                        print(f"[FONT DEBUG] fc-match returned: {font_path}")
+                        logger.info(f"[FONT DEBUG] fc-match returned: {font_path}")
                 except: pass
 
             # Fallback to system fonts
@@ -216,16 +226,18 @@ class UniversalSubtitleRenderer:
                 for p in fallbacks:
                     if os.path.exists(p):
                         font_path = p
-                        print(f"[FONT DEBUG] Using fallback: {font_path}")
+                        logger.info(f"[FONT DEBUG] Using fallback: {font_path}")
                         break
 
             if font_path: self._font_path_cache[family] = font_path
 
-        print(f"[FONT DEBUG] Final font path for '{family}': {font_path}")
+        logger.info(f"[FONT DEBUG] Final font path for '{family}': {font_path}")
         try:
             if font_path: font_obj = ImageFont.truetype(font_path, size)
             else: font_obj = ImageFont.load_default()
-        except: font_obj = ImageFont.load_default()
+        except Exception as e:
+            logger.error(f"Error loading font {font_path}: {e}")
+            font_obj = ImageFont.load_default()
 
         self._font_obj_cache[cache_key] = font_obj
         return font_obj
@@ -550,6 +562,9 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
         with open(edit_file, 'r', encoding='utf-8') as f: edits = json.load(f)
 
     # Initialize renderer and split segments FIRST, before applying edits
+    # DEBUG: Log incoming font settings
+    logger.info(f"DEBUG: render_canvas_karaoke_video settings: fontName={settings.get('fontName')}, fontSize={settings.get('fontSize')}")
+    
     renderer = UniversalSubtitleRenderer(video_path, words, settings)
     
     # ENFORCE MAX LINES: Split segments if they result in too many lines

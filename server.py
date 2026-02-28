@@ -52,6 +52,11 @@ exporter_logger = logging.getLogger('canvas_karaoke_exporter')
 exporter_logger.setLevel(logging.INFO)
 exporter_logger.addHandler(log_handler)
 
+# Ensure subtitle_renderer logger also logs to file
+subtitle_logger = logging.getLogger('subtitle_renderer')
+subtitle_logger.setLevel(logging.INFO)
+subtitle_logger.addHandler(log_handler)
+
 # Keep console output too
 console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setLevel(logging.INFO)
@@ -1612,7 +1617,7 @@ def ensure_adjust_file(folder_number: str, theme_number: str):
             'primaryColor': '#ffffff',
             'bgColor': '#000000',
             'bgOpacity': 0.5,
-            'fontName': 'Arial',
+            'fontName': 'Avenir Black',
             'title_font_size': 67,
             'title_bg_type': 'gradient',
             'title_text_color': '#00ff9d',
@@ -3253,19 +3258,10 @@ def process_video_edit():
                     break
             
             if folder:
-                # If we are re-burning subtitles, switch to the CLEAN master video 
-                # (the one in the folder root) so we don't get double subtitles.
-                reburn_enabled = edit_settings.get('subtitles', {}).get('reburn', True)
-                
-                # CRITICAL: If B-roll or Images are added, we MUST reburn subtitles
-                # otherwise the B-roll will cover the original subtitles.
-                has_overlays = bool(edit_settings.get('broll_markers')) or bool(edit_settings.get('images'))
-                if has_overlays and not reburn_enabled:
-                    app_logger.info("Automatically enabling re-burn because overlays (B-roll/Images) are present.")
-                    reburn_enabled = True
-                    # Update the settings dict so other functions see the change
-                    if 'subtitles' not in edit_settings: edit_settings['subtitles'] = {}
-                    edit_settings['subtitles']['reburn'] = True
+                # We ALWAYS enable reburn for theme edits now to ensure 
+                # all overlays (B-roll, Images, Subtitles) are correctly layered.
+                reburn_enabled = True
+                edit_settings['subtitles']['reburn'] = True
                 
                 # Get adjustments for this theme to get metadata timing
                 adjust_settings = get_theme_adjust_settings(folder, t_num)
@@ -3566,6 +3562,25 @@ def run_edit_task(edit_id: str, input_video: str, output_video: str, edit_settin
 
         # --- STEP 2: APPLY EFFECTS & OVERLAYS ---
         log_message("STEP 2: Applying Logo, Audio, and B-roll overlays...")
+        
+        # DEBUG: Log images and B-roll data
+        images_to_process = edit_settings.get('images', [])
+        broll_to_process = edit_settings.get('broll_markers', [])
+        log_message(f"DEBUG: Images to process: {len(images_to_process)}")
+        for i, img in enumerate(images_to_process):
+            log_message(f"  - Image {i}: {img.get('name')} ({len(img.get('markers', []))} markers)")
+        
+        log_message(f"DEBUG: B-roll markers to process: {len(broll_to_process)}")
+        for i, br in enumerate(broll_to_process):
+            log_message(f"  - B-roll {i}: {br.get('name')} at {br.get('start_time')}s to {br.get('end_time')}s")
+
+        # Calculate display_duration for marker time mapping (main + outro)
+        # This is CRITICAL for mapping relative % to absolute seconds in VideoProcessor
+        main_dur = actual_end - actual_start
+        outro_conf = edit_settings.get('outro', {})
+        outro_dur = float(outro_conf.get('duration', 0)) if outro_conf.get('effect') != 'none' else 0
+        edit_settings['display_duration'] = main_dur + outro_dur
+        
         processor = VideoProcessor(input_video)
         intermediate_video = processor.apply_effects(output_video, edit_settings, cancel_flag=lambda: edit_processes.get(edit_id, {}).get('cancelled', False), log_callback=log_message)
         
@@ -4128,8 +4143,18 @@ def get_word_timestamps_api(folder_number):
 def get_theme_adjust_settings(folder_path, theme_number):
     """Read theme adjustment settings from theme_XXX_adjust.md."""
     adjust_file = folder_path / 'shorts' / f'theme_{int(theme_number):03d}_adjust.md'
-    settings = {
-        'subtitle_position': 'bottom',
+    
+    # Load defaults from settings.ini
+    default_font = settings.get('subtitle', 'font_name', fallback='Arial')
+    default_size = int(settings.get('subtitle', 'font_size', fallback='80'))
+    default_primary = settings.get('subtitle', 'primary_colour', fallback='#FFFFFF')
+    default_align = settings.get('subtitle', 'alignment', fallback='bottom')
+    
+    settings_dict = {
+        'fontName': default_font,
+        'fontSize': default_size,
+        'primaryColor': default_primary,
+        'subtitle_position': default_align,
         'subtitle_left': None,
         'subtitle_top': None,
         'subtitle_h_align': 'center',
@@ -4154,92 +4179,92 @@ def get_theme_adjust_settings(folder_path, theme_number):
             
         # Extract title and time range
         title_match = re.search(r'\*\*Title:\*\*\s*(.+)', content)
-        if title_match: settings['title'] = title_match.group(1).strip()
+        if title_match: settings_dict['title'] = title_match.group(1).strip()
         
         time_match = re.search(r'\*\*Time Range:\*\*\s*(.+)', content)
-        if time_match: settings['time_range'] = time_match.group(1).strip()
+        if time_match: settings_dict['time_range'] = time_match.group(1).strip()
         
         folder_match = re.search(r'\*\*Folder:\*\*\s*(.+)', content)
-        if folder_match: settings['folder'] = folder_match.group(1).strip()
+        if folder_match: settings_dict['folder'] = folder_match.group(1).strip()
 
         # Extract subtitle position
         pos_match = re.search(r'\*\*subtitle_position:\*\*\s*(\w+)', content)
         if pos_match:
-            settings['subtitle_position'] = pos_match.group(1)
+            settings_dict['subtitle_position'] = pos_match.group(1)
             
         # Extract custom coordinates if they exist
         left_match = re.search(r'\*\*subtitle_left:\*\*\s*(\d+)', content)
         if left_match:
-            settings['subtitle_left'] = int(left_match.group(1))
+            settings_dict['subtitle_left'] = int(left_match.group(1))
             
         top_match = re.search(r'\*\*subtitle_top:\*\*\s*(\d+)', content)
         if top_match:
-            settings['subtitle_top'] = int(top_match.group(1))
+            settings_dict['subtitle_top'] = int(top_match.group(1))
             
         h_align_match = re.search(r'\*\*subtitle_h_align:\*\*\s*(\w+)', content)
         if h_align_match:
-            settings['subtitle_h_align'] = h_align_match.group(1)
+            settings_dict['subtitle_h_align'] = h_align_match.group(1)
             
         v_align_match = re.search(r'\*\*subtitle_v_align:\*\*\s*(\w+)', content)
         if v_align_match:
-            settings['subtitle_v_align'] = v_align_match.group(1)
+            settings_dict['subtitle_v_align'] = v_align_match.group(1)
             
         # Additional styling fields
         font_size_match = re.search(r'\*\*subtitle_font_size:\*\*\s*(\d+)', content)
         if font_size_match:
-            settings['fontSize'] = int(font_size_match.group(1))
+            settings_dict['fontSize'] = int(font_size_match.group(1))
             
         primary_color_match = re.search(r'\*\*subtitle_primary_color:\*\*\s*(#[0-9a-fA-F]+)', content)
         if primary_color_match:
-            settings['primaryColor'] = primary_color_match.group(1)
+            settings_dict['primaryColor'] = primary_color_match.group(1)
             
         bg_color_match = re.search(r'\*\*subtitle_bg_color:\*\*\s*(#[0-9a-fA-F]+)', content)
         if bg_color_match:
-            settings['bgColor'] = bg_color_match.group(1)
+            settings_dict['bgColor'] = bg_color_match.group(1)
             
         bg_opacity_match = re.search(r'\*\*subtitle_bg_opacity:\*\*\s*([0-9.]+)', content)
         if bg_opacity_match:
-            settings['bgOpacity'] = float(bg_opacity_match.group(1)) / 100.0 if float(bg_opacity_match.group(1)) > 1.0 else float(bg_opacity_match.group(1))
+            settings_dict['bgOpacity'] = float(bg_opacity_match.group(1)) / 100.0 if float(bg_opacity_match.group(1)) > 1.0 else float(bg_opacity_match.group(1))
             
         font_name_match = re.search(r'\*\*subtitle_font_name:\*\*\s*(.+)', content)
         if font_name_match:
-            settings['fontName'] = font_name_match.group(1).strip()
+            settings_dict['fontName'] = font_name_match.group(1).strip()
             
         subtitle_bold_match = re.search(r'\*\*subtitle_bold:\*\*\s*(true|false)', content)
         if subtitle_bold_match:
-            settings['subtitle_bold'] = subtitle_bold_match.group(1) == 'true'
+            settings_dict['subtitle_bold'] = subtitle_bold_match.group(1) == 'true'
 
         karaoke_match = re.search(r'\*\*karaoke_highlighting:\*\*\s*(true|false)', content)
         if karaoke_match:
-            settings['karaoke_enabled'] = karaoke_match.group(1) == 'true'
+            settings_dict['karaoke_enabled'] = karaoke_match.group(1) == 'true'
             
         # Title styling fields
         ttop_match = re.search(r'\*\*title_top:\*\*\s*(\d+)', content)
-        if ttop_match: settings['title_top'] = int(ttop_match.group(1))
+        if ttop_match: settings_dict['title_top'] = int(ttop_match.group(1))
 
         tfs_match = re.search(r'\*\*title_font_size:\*\*\s*(\d+)', content)
-        if tfs_match: settings['title_font_size'] = int(tfs_match.group(1))
+        if tfs_match: settings_dict['title_font_size'] = int(tfs_match.group(1))
         
         tbt_match = re.search(r'\*\*title_bg_type:\*\*\s*(\w+)', content)
-        if tbt_match: settings['title_bg_type'] = tbt_match.group(1)
+        if tbt_match: settings_dict['title_bg_type'] = tbt_match.group(1)
         
         ttc_match = re.search(r'\*\*title_text_color:\*\*\s*(#[0-9a-fA-F]+)', content)
-        if ttc_match: settings['title_text_color'] = ttc_match.group(1)
+        if ttc_match: settings_dict['title_text_color'] = ttc_match.group(1)
         
         tfw_match = re.search(r'\*\*title_font_weight:\*\*\s*(\d+)', content)
-        if tfw_match: settings['title_font_weight'] = int(tfw_match.group(1))
+        if tfw_match: settings_dict['title_font_weight'] = int(tfw_match.group(1))
         
         tow_match = re.search(r'\*\*title_outline_width:\*\*\s*([0-9.]+)', content)
-        if tow_match: settings['title_outline_width'] = float(tow_match.group(1))
+        if tow_match: settings_dict['title_outline_width'] = float(tow_match.group(1))
         
         toc_match = re.search(r'\*\*title_outline_color:\*\*\s*(#[0-9a-fA-F]+)', content)
-        if toc_match: settings['title_outline_color'] = toc_match.group(1)
+        if toc_match: settings_dict['title_outline_color'] = toc_match.group(1)
         
         tac_match = re.search(r'\*\*title_all_caps:\*\*\s*(true|false)', content)
-        if tac_match: settings['title_all_caps'] = tac_match.group(1) == 'true'
+        if tac_match: settings_dict['title_all_caps'] = tac_match.group(1) == 'true'
 
         st_match = re.search(r'\*\*show_title:\*\*\s*(true|false)', content)
-        if st_match: settings['show_title'] = st_match.group(1) == 'true'
+        if st_match: settings_dict['show_title'] = st_match.group(1) == 'true'
             
     # Load global highlight style if it exists
     highlight_file = folder_path / 'highlight_style.json'
@@ -4248,19 +4273,19 @@ def get_theme_adjust_settings(folder_path, theme_number):
             with open(highlight_file, 'r', encoding='utf-8') as f:
                 h_style = json.load(f)
                 # Map highlight style fields to the settings keys expected by the renderer
-                if 'textColor' in h_style: settings['textColor'] = h_style['textColor']
-                if 'glowColor' in h_style: settings['glowColor'] = h_style['glowColor']
-                if 'glowBlur' in h_style: settings['glowBlur'] = h_style['glowBlur']
-                if 'fontWeight' in h_style: settings['font_weight'] = h_style['fontWeight']
-                if 'effectType' in h_style: settings['effect_type'] = h_style['effectType']
-                if 'karaoke_mode' in h_style: settings['mode'] = h_style['karaoke_mode']
-                if 'autoEmoji' in h_style: settings['auto_emoji'] = h_style['autoEmoji']
-                if 'keywordScaling' in h_style: settings['keyword_scaling'] = h_style['keywordScaling']
-                if 'past_color' in h_style: settings['pastColor'] = h_style['past_color']
+                if 'textColor' in h_style: settings_dict['textColor'] = h_style['textColor']
+                if 'glowColor' in h_style: settings_dict['glowColor'] = h_style['glowColor']
+                if 'glowBlur' in h_style: settings_dict['glowBlur'] = h_style['glowBlur']
+                if 'fontWeight' in h_style: settings_dict['font_weight'] = h_style['fontWeight']
+                if 'effectType' in h_style: settings_dict['effect_type'] = h_style['effectType']
+                if 'karaoke_mode' in h_style: settings_dict['mode'] = h_style['karaoke_mode']
+                if 'autoEmoji' in h_style: settings_dict['auto_emoji'] = h_style['autoEmoji']
+                if 'keywordScaling' in h_style: settings_dict['keyword_scaling'] = h_style['keywordScaling']
+                if 'past_color' in h_style: settings_dict['pastColor'] = h_style['past_color']
         except Exception as e:
             app_logger.warning(f"Failed to load highlight_style.json: {e}")
 
-    return settings
+    return settings_dict
 
 
 def write_theme_adjust_settings(adjust_file, theme_number, title, time_range, folder_name, settings_dict):
@@ -4912,7 +4937,17 @@ def export_canvas_karaoke():
                         'title_text_color': settings_dict.get('titleTextColor', '#00ff9d'),
                     },
                     'folder_number': f_num,
-                    'theme_number': t_num
+                    'theme_number': t_num,
+                    # Include all overlay and effect settings from the request
+                    'images': settings_dict.get('images', []),
+                    'broll_markers': settings_dict.get('broll_markers', []),
+                    'audio': settings_dict.get('audio', {}),
+                    'outro': settings_dict.get('outro', {}),
+                    'effects': settings_dict.get('effects', {}),
+                    'lighting': settings_dict.get('lighting', {}),
+                    'animations': settings_dict.get('animations', {}),
+                    'effect_markers': settings_dict.get('effect_markers', []),
+                    'display_duration': end_time - start_time
                 }
                 
                 # Check if we can use the "Fast Lane" (Native FFmpeg for everything)
@@ -5120,8 +5155,12 @@ if __name__ == '__main__':
     # Initialize shared state
     ensure_manager()
 
+    now = datetime.now()
+    start_time_str = now.strftime("%Y-%m-%d %H:%M:%S")
+
     print("=" * 60)
     print("YouTube Shorts Creator - Web Server")
+    print(f"Started at: {start_time_str}")
     print("=" * 60)
     print(f"Server running at: http://localhost:5000")
     print(f"Video directory: {settings.get('video', 'output_dir')}")
@@ -5129,7 +5168,7 @@ if __name__ == '__main__':
 
     # Log server startup
     app_logger.info("=" * 60)
-    app_logger.info("YouTube Shorts Creator - Web Server STARTED")
+    app_logger.info(f"YouTube Shorts Creator - Web Server STARTED at {start_time_str}")
     app_logger.info(f"Server running at: http://localhost:5000")
     app_logger.info(f"Video directory: {settings.get('video', 'output_dir')}")
     app_logger.info("=" * 60)
