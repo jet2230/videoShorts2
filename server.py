@@ -82,6 +82,11 @@ def set_headers(response):
     
     response.headers['Cross-Origin-Embedder-Policy'] = 'require-corp'
     response.headers['Cross-Origin-Opener-Policy'] = 'same-origin'
+    response.headers['Cross-Origin-Resource-Policy'] = 'cross-origin'
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Range'
+    response.headers['Access-Control-Expose-Headers'] = 'Content-Length, Content-Range'
     return response
 
 @app.route('/api/font/<name>')
@@ -3021,6 +3026,76 @@ def _extract_audio_levels(video_path: Path, start_time: float, end_time: float) 
             levels = [l / max_level for l in levels]
             
         return levels
+
+@app.route('/api/audio-library')
+def get_audio_library():
+    """Returns a list of audio files available in media/audio."""
+    audio_dir = Path('media/audio')
+    if not audio_dir.exists():
+        return jsonify([])
+    
+    # Get all audio files
+    audio_files = []
+    for ext in ['*.mp3', '*.wav', '*.aac', '*.m4a', '*.ogg']:
+        for f in audio_dir.glob(ext):
+            audio_files.append({
+                'name': f.name,
+                'path': f'audio/{f.name}'
+            })
+            
+    # Sort alphabetically
+    audio_files.sort(key=lambda x: x['name'].lower())
+    return jsonify(audio_files)
+
+@app.route('/api/image-library')
+def get_image_library():
+    """Returns a list of image files available in media/images."""
+    image_dir = Path('media/images')
+    if not image_dir.exists():
+        return jsonify([])
+    
+    image_files = []
+    for ext in ['*.png', '*.jpg', '*.jpeg', '*.webp', '*.eps']:
+        for f in image_dir.glob(ext):
+            image_files.append({
+                'name': f.name,
+                'path': f'images/{f.name}'
+            })
+            
+    image_files.sort(key=lambda x: x['name'].lower())
+    return jsonify(image_files)
+
+@app.route('/api/broll-library')
+def get_broll_library():
+    """Returns a list of video files available in media/video."""
+    video_dir = Path('media/video')
+    if not video_dir.exists():
+        return jsonify([])
+    
+    video_files = []
+    for ext in ['*.mp4', '*.mkv', '*.webm', '*.mov', '*.avi']:
+        for f in video_dir.glob(ext):
+            # Try to get duration if possible
+            duration = 5.0
+            try:
+                import subprocess
+                cmd = [
+                    'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+                    '-of', 'default=noprint_wrappers=1:nokey=1', str(f)
+                ]
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode == 0:
+                    duration = float(result.stdout.strip())
+            except: pass
+
+            video_files.append({
+                'name': f.name,
+                'path': f'video/{f.name}',
+                'duration': duration
+            })
+            
+    video_files.sort(key=lambda x: x['name'].lower())
+    return jsonify(video_files)
 
 @app.route('/media/<path:filename>')
 def serve_media(filename):

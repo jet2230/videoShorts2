@@ -282,24 +282,59 @@ class YouTubeShortsCreator:
                 print(msg)
 
         import shutil
+        import unicodedata
 
         # Handle special characters in filename (like full-width question mark "？")
         # Use the path directly without resolve() to avoid encoding issues
         video_file = Path(video_path)
 
+        _log_msg(f"Looking for video file: {video_path}")
+        _log_msg(f"Absolute path would be: {video_file.resolve()}")
+
         if not video_file.exists():
             # If direct path doesn't work, try globbing for the file
             # This handles encoding issues with special characters
             parent_dir = video_file.parent
-            # Try with and without extension
             filename_stem = video_file.stem
+
+            _log_msg(f"File not found at direct path. Searching in: {parent_dir}")
+            _log_msg(f"Filename stem: {filename_stem}")
+
+            # Normalize unicode for comparison (handles full-width vs half-width characters)
+            def normalize_filename(name):
+                """Normalize unicode characters (NFKC decomposes full-width to half-width)"""
+                # Also normalize spaces and special characters
+                return unicodedata.normalize('NFKC', name).lower().replace(' ', '_').replace(':', '')
+
+            normalized_stem = normalize_filename(filename_stem)
+            _log_msg(f"Normalized stem: {normalized_stem}")
+
+            # Try exact glob first
             possible_files = list(parent_dir.glob(f"{filename_stem}*.mp4")) + list(parent_dir.glob(f"{filename_stem}*.MP4"))
+            _log_msg(f"Exact glob found: {len(possible_files)} files")
+
+            # If not found, search recursively in base_dir
+            if not possible_files:
+                _log_msg(f"Searching recursively in base_dir: {self.base_dir}")
+                base_mp4s = list(self.base_dir.glob("**/*.mp4")) + list(self.base_dir.glob("**/*.MP4"))
+                _log_msg(f"Found {len(base_mp4s)} MP4 files in base_dir recursive search")
+
+                # Filter by normalized name matching
+                matching_files = []
+                for f in base_mp4s:
+                    f_normalized = normalize_filename(f.stem)
+                    # Check if normalized names match
+                    if f_normalized == normalized_stem or f_normalized.endswith(normalized_stem) or normalized_stem.endswith(f_normalized):
+                        matching_files.append(f)
+                        _log_msg(f"  MATCH: {f.stem} -> {f_normalized}")
+
+                possible_files = matching_files
 
             if possible_files:
                 video_file = possible_files[0]
                 _log_msg(f"Found video using glob search: {video_file}")
             else:
-                raise FileNotFoundError(f"Video file not found: {video_path}")
+                raise FileNotFoundError(f"Video file not found: {video_path}\n(searched in: {parent_dir} and {self.base_dir})")
 
         # Check if video is already in the correct folder structure (videos/XXX_name/)
         parent_folder = video_file.parent

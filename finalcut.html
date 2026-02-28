@@ -167,6 +167,7 @@
             display: flex;
             height: calc(100vh - 60px);
             position: relative;
+            overflow: hidden;
         }
 
         .toolbar-left, .toolbar-right {
@@ -579,42 +580,61 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: flex-start;
-            padding: 10px 20px;
-            gap: 15px;
+            justify-content: center;
+            padding: 10px; /* Reduced padding */
             height: 100%;
-            overflow: hidden;
+            width: 100%;
             position: relative;
+            z-index: 1;
+            overflow: hidden; /* Prevent area itself from scrolling */
         }
 
         .video-wrapper {
             position: relative;
             background: #000;
-            border-radius: 12px;
-            overflow: visible;
+            border-radius: 0;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-            max-height: calc(100% - 200px);
-            aspect-ratio: 9/16;
+            height: 65vh;
+            width: calc(65vh * 9 / 16);
             border: 1px solid #333;
-            margin-top: 10px;
-            flex-shrink: 1;
+            margin: 0 auto;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
         }
 
         #imageOverlay {
             /* Overlay container */
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 5 !important;
         }
 
         .video-wrapper video {
             width: 100%;
             height: 100%;
-            object-fit: contain;
+            object-fit: cover;
+            opacity: 1 !important;
+            visibility: visible !important;
+            display: block !important;
         }
 
         /* Preview video should crop to fill the 9:16 frame */
         #mainVideo {
             width: 100% !important;
             height: 100% !important;
+            min-width: 100%;
+            min-height: 100%;
+            display: block !important;
             object-fit: cover !important;
+            z-index: 1 !important;
+            background: #000;
         }
 
         /* CUSTOM VIDEO CONTROLS */
@@ -774,8 +794,7 @@
             border-radius: 10px;
             padding: 12px;
             position: relative;
-            margin-top: auto;
-            margin-bottom: 20px;
+            margin: 10px auto; /* Centered with small margin */
             flex-shrink: 0;
             z-index: 10;
         }
@@ -1158,19 +1177,24 @@
 
         .timeline-track {
             position: relative;
-            height: 50px;
-            background: #222;
-            border-radius: 6px;
+            height: 125px; /* Increased height for stacking */
+            background: #1a1a1a;
+            border-radius: 8px;
             overflow: visible;
             cursor: pointer;
             width: 100%;
             min-width: 100%;
             transition: width 0.3s ease;
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.5);
+            border: 1px solid #333;
+            /* Lane Indicators */
+            background-image: linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px);
+            background-size: 100% 25px;
         }
 
         .timeline-video {
             position: absolute;
-            height: 18px;
+            height: 20px;
             top: 4px;
             left: 0;
             right: 0;
@@ -1198,21 +1222,23 @@
         .timeline-trim {
             position: absolute;
             height: 100%;
-            background: rgba(255, 255, 0, 0.15);
-            border: 2px solid #ffff00;
+            background: rgba(255, 255, 0, 0.1);
+            border: 1px solid #ffff00;
             border-radius: 4px;
             pointer-events: none;
             display: none;
+            z-index: 2;
         }
 
         .timeline-playhead {
             position: absolute;
-            top: 0;
+            top: -5px;
             width: 2px;
-            height: 100%;
+            height: calc(100% + 10px);
             background: #fff;
             pointer-events: none;
-            z-index: 5;
+            z-index: 100;
+            box-shadow: 0 0 10px rgba(255,255,255,0.8);
         }
 
         .trim-handle {
@@ -1729,6 +1755,40 @@
                 position: fixed;
             }
         }
+        .audio-library-item {
+            padding: 8px 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 11px;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #ddd;
+            margin-bottom: 4px;
+        }
+
+        .audio-library-item:hover {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.3);
+            transform: translateX(5px);
+            color: #fff;
+        }
+
+        .audio-library-item.active {
+            border-left: 3px solid #00ff9d !important;
+            background: rgba(0, 255, 157, 0.1) !important;
+            color: #00ff9d !important;
+        }
+
+        .audio-library-item span {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex: 1;
+        }
     </style>
 
     <!-- MediaPipe Face Detection -->
@@ -1826,32 +1886,48 @@
             </button>
         </div>
 
+        <!-- Video Info - Fixed to Left Side -->
+        <div class="video-info" id="videoInfo" style="position: fixed; top: 110px; left: 5px; z-index: 10000; background: rgba(0,0,0,0.8); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(0,255,157,0.3); pointer-events: none; font-size: 10px; max-width: 200px; backdrop-filter: blur(10px);">
+            Loading video info...
+        </div>
+
         <!-- Preview Area -->
         <div class="preview-area">
             <div class="video-wrapper">
-                <div id="videoAnimationContainer" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative;">
-                    <video id="mainVideo" style="cursor: pointer;" onclick="togglePlay()"></video>
-                </div>
-                <!-- Custom Video Controls Overlay -->
-                <div class="video-controls-overlay" id="customControls">
-                    <button class="control-btn" id="playPauseBtn" onclick="togglePlay()">▶</button>
-                </div>
-                <video id="brollOverlayVideo" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 12 !important; object-fit: cover;" muted></video>
+                <!-- Flat Layering: Main Video at Bottom -->
+                <video id="mainVideo" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; cursor: pointer; background: #000;" onclick="togglePlay()" playsinline preload="auto"></video>
+                
+                <!-- Overlays (z-index 10+) -->
+                <video id="brollOverlayVideo" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10 !important; object-fit: cover; opacity: 0; transition: opacity 0.3s ease;" muted></video>
                 <video id="outroOverlayVideo" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 13 !important; object-fit: contain; opacity: 0; transition: opacity 0.3s ease;" muted></video>
                 <canvas id="outlineCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 11 !important; display: none !important;"></canvas>
-                <div id="imageOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10 !important; display: block !important;"></div>
+                <div id="imageOverlay"></div>
                 <div id="logoOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 14 !important; display: block !important;"></div>
-                <!-- Canvas-based subtitle rendering layer -->
                 <canvas id="subtitleCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 15 !important;"></canvas>
-                <!-- Title overlay for draggable title -->
+                
+                <!-- Draggable Title -->
                 <div id="title-overlay" class="title-overlay hidden" style="z-index: 16 !important;" contenteditable="true">
                     <span class="title-text"></span>
                     <div class="resize-handle"></div>
                     <div class="style-handle"></div>
                 </div>
-            </div>
-            <div class="video-info" id="videoInfo">
-                Loading video info...
+
+                <!-- Custom Video Controls -->
+                <div class="video-controls-overlay" id="customControls" style="z-index: 100;">
+                    <button class="control-btn" id="playPauseBtn" onclick="togglePlay()">▶</button>
+                </div>
+
+                <!-- Time Display above seekbar -->
+                <div id="videoTimeDisplay" style="position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%); color: #fff; font-size: 12px; font-weight: 500; text-shadow: 0 1px 3px rgba(0,0,0,0.8); z-index: 200; pointer-events: none; white-space: nowrap; opacity: 0; transition: opacity 0.2s;">
+                    00:00 / 00:00
+                </div>
+
+                <!-- Full-width Seekbar at bottom -->
+                <div id="videoSeekbar" style="position: absolute; bottom: 0; left: 0; right: 0; height: 15px; background: rgba(255,255,255,0.15); cursor: pointer; z-index: 200; transition: background 0.2s;">
+                    <div id="videoSeekbarProgress" style="height: 100%; background: linear-gradient(90deg, #00ff9d, #00ccff); width: 0%; position: relative;">
+                        <div id="videoSeekbarThumb" style="position: absolute; right: -8px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; background: #fff; border-radius: 50%; box-shadow: 0 0 8px rgba(0,255,157,0.8); opacity: 0; transition: opacity 0.2s, transform 0.1s;"></div>
+                    </div>
+                </div>
             </div>
             <div class="timeline">
                 <div class="timeline-header">
@@ -1907,6 +1983,10 @@
                                 <div class="trim-handle end" id="trimEnd"></div>
                             </div>
                             <div class="timeline-playhead" id="playhead"></div>
+                        </div>
+                        <!-- Floating time tooltip -->
+                        <div id="timelineTimeTooltip" style="position: absolute; background: rgba(0, 0, 0, 0.95); color: #fff; padding: 8px 14px; border-radius: 8px; font-size: 14px; font-weight: 600; pointer-events: none; z-index: 999999; opacity: 0; transition: opacity 0.15s; white-space: nowrap; border: 2px solid #00ff9d; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.8); display: none; font-family: monospace; min-width: 60px; text-align: center;">
+                            00:00
                         </div>
                     </div>
                     <button class="timeline-effect-btn outro-btn" onclick="togglePanel('outro')" data-panel="outro">
@@ -2562,12 +2642,24 @@
     <div class="tool-panel right" id="panel-audio">
         <button class="close-panel" onclick="closePanel('audio')">×</button>
         <h3><span class="icon">🎵</span> Add Audio</h3>
+        
         <div class="file-upload" onclick="document.getElementById('audioFile').click()">
             <input type="file" id="audioFile" accept="audio/*" onchange="handleAudioUpload(this)">
             <div class="icon">🎵</div>
-            <div class="text">Add audio</div>
+            <div class="text">Upload new audio</div>
             <div class="filename" id="audioFilename"></div>
         </div>
+
+        <div style="margin-top: 15px; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 15px;">
+            <label style="display: block; font-size: 11px; color: #aaa; margin-bottom: 8px; text-transform: uppercase;">Audio Library</label>
+            <div style="margin-bottom: 8px;">
+                <input type="text" id="audioSearch" placeholder="Search audio..." style="width: 100%; padding: 6px 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: #fff; font-size: 11px;" oninput="filterAudioLibrary(this.value)">
+            </div>
+            <div id="audioLibrary" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 4px;">
+                <div style="padding: 15px; text-align: center; color: #666; font-size: 11px;">Loading library...</div>
+            </div>
+        </div>
+
         <div class="control-group" style="margin-top: 15px;">
             <label>Audio Volume</label>
             <div class="range-wrapper">
@@ -2591,9 +2683,20 @@
         <div class="file-upload" onclick="document.getElementById('imageFile').click()">
             <input type="file" id="imageFile" accept="image/*" multiple onchange="handleImageUpload(this)">
             <div class="icon">🖼️</div>
-            <div class="text">Add images</div>
+            <div class="text">Upload new images</div>
         </div>
-        <div id="imageList" style="margin-top: 15px;"></div>
+
+        <div style="margin-top: 15px; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 15px;">
+            <label style="display: block; font-size: 11px; color: #aaa; margin-bottom: 8px; text-transform: uppercase;">Image Library</label>
+            <div style="margin-bottom: 8px;">
+                <input type="text" id="imageSearch" placeholder="Search images..." style="width: 100%; padding: 6px 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: #fff; font-size: 11px;" oninput="filterImageLibrary(this.value)">
+            </div>
+            <div id="imageLibrary" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 4px;">
+                <div style="padding: 15px; text-align: center; color: #666; font-size: 11px;">Loading library...</div>
+            </div>
+        </div>
+
+        <div id="imageList" style="margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;"></div>
     </div>
 
     <!-- Logo Panel -->
@@ -2657,9 +2760,20 @@
         <div class="file-upload" onclick="document.getElementById('brollFile').click()">
             <input type="file" id="brollFile" accept="video/*" multiple onchange="handleBrollUpload(this)">
             <div class="icon">🎬</div>
-            <div class="text">Add clips</div>
+            <div class="text">Upload new clips</div>
         </div>
-        <div id="brollList" style="margin-top: 15px;"></div>
+
+        <div style="margin-top: 15px; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 15px;">
+            <label style="display: block; font-size: 11px; color: #aaa; margin-bottom: 8px; text-transform: uppercase;">B-Roll Library</label>
+            <div style="margin-bottom: 8px;">
+                <input type="text" id="brollSearch" placeholder="Search B-roll..." style="width: 100%; padding: 6px 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: #fff; font-size: 11px;" oninput="filterBrollLibrary(this.value)">
+            </div>
+            <div id="brollLibrary" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 4px;">
+                <div style="padding: 15px; text-align: center; color: #666; font-size: 11px;">Loading library...</div>
+            </div>
+        </div>
+
+        <div id="brollList" style="margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;"></div>
         
         <div id="brollTimelineContainer" style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; display: none;">
             <h4 style="font-size: 13px; color: #00ff9d; margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
@@ -2878,6 +2992,10 @@
         let subtitleRenderer = null;
         let allCueFormatting = {};
         let subtitleCanvas = null;
+        let audioLibraryFiles = []; // Store fetched audio library files
+        let imageLibraryFiles = []; // Store fetched image library files
+        let brollLibraryFiles = []; // Store fetched b-roll library files
+        let currentlyActiveImages = new Map(); // Track active image markers in DOM: markerId -> element
 
         // Load video
         // For finalcut.html, we load from folder/theme info instead of pre-rendered file
@@ -2913,27 +3031,49 @@
                 }
 
                 // Construct video path from folder and video filename
+                console.log('Theme data received:', data);
                 if (data.video_filename) {
-                    actualVideoPath = `videos/${data.folder}/${data.video_filename}`;
+                    actualVideoPath = `${data.folder}/${data.video_filename}`;
                 } else {
                     // Fallback: try to construct from title (old behavior)
-                    actualVideoPath = `videos/${data.folder}/${data.title}.mp4`;
+                    actualVideoPath = `${data.folder}/${data.title}.mp4`;
                 }
+                console.log('Constructed actualVideoPath:', actualVideoPath);
 
                 videoTitle = data.title || currentTheme.title;
 
-                // Parse theme times to seconds for Media Fragment API
+                // Parse theme times to seconds
                 const themeStartSeconds = parseTime(themeStart);
                 const themeEndSeconds = parseTime(themeEnd);
+                console.log('Theme range (seconds):', themeStartSeconds, 'to', themeEndSeconds);
 
-                // Load the video with Media Fragment API to constrain to theme range
-                const pathParts = actualVideoPath.split('/');
-                const encodedPath = pathParts.map(part => encodeURIComponent(part)).join('/');
-                video.src = `/${encodedPath}#t=${themeStartSeconds},${themeEndSeconds}`;
-
-                // Store theme boundaries for playback constraints
+                // Store theme boundaries BEFORE loading
                 video.dataset.themeStart = themeStartSeconds;
                 video.dataset.themeEnd = themeEndSeconds;
+
+                // Load the video without Media Fragment API for better reliability
+                const pathParts = actualVideoPath.split('/');
+                const encodedPath = pathParts.map(part => encodeURIComponent(part)).join('/');
+                const videoUrl = `/videos/${encodedPath}`; 
+                console.log('Setting video.src to:', videoUrl);
+                
+                video.src = videoUrl;
+                video.load();
+
+                video.addEventListener('loadedmetadata', () => {
+                    console.log('🎬 Video metadata loaded. Duration:', video.duration);
+                    
+                    // Force seek to theme start
+                    console.log('Seeking to theme start:', themeStartSeconds);
+                    video.currentTime = themeStartSeconds;
+                    
+                    applyVideoEffects();
+                }, { once: true });
+
+                video.addEventListener('error', (e) => {
+                    console.error('Video error:', video.error);
+                    showNotification('Error loading video: ' + (video.error ? video.error.message : 'Unknown error'), 'error');
+                });
 
                 const folderName = data.folder || '';
                 const displayFolder = folderName.length > 15 ? folderName.substring(0, 15) + '...' : folderName;
@@ -2966,7 +3106,10 @@
             // Fallback to old method if videoPath provided
             const pathParts = videoPath.split('/');
             const encodedPath = pathParts.map(part => encodeURIComponent(part)).join('/');
-            video.src = `/videos/${encodedPath}`;
+            const videoUrl = `/videos/${encodedPath}`;
+            console.log('🎬 Setting direct video.src to:', videoUrl);
+            video.src = videoUrl;
+            video.load();
 
             const filename = videoPath.split('/').pop();
             const folderName = folderNumber || 'N/A';
@@ -2985,6 +3128,9 @@
 
         // Update timeline on video metadata load
         video.addEventListener('loadedmetadata', async () => {
+            // Initial effects sync
+            applyVideoEffects();
+
             // Use theme duration if available, otherwise full video duration
             let displayDuration = video.duration;
             if (video.dataset.themeStart && video.dataset.themeEnd) {
@@ -3061,11 +3207,135 @@
             }
         }
 
+        // Update seekbar as video plays
+        video.addEventListener('timeupdate', () => {
+            if (video.duration && !isSeeking) {
+                const effectiveDuration = getEffectiveDuration();
+                const effectiveTime = getEffectiveTime();
+                const progress = (effectiveTime / effectiveDuration) * 100;
+                const seekbarProgress = document.getElementById('videoSeekbarProgress');
+                if (seekbarProgress) {
+                    seekbarProgress.style.width = progress + '%';
+                }
+
+                // Update time display
+                if (typeof formatTimeSeconds === 'function') {
+                    const timeDisplay = document.getElementById('videoTimeDisplay');
+                    if (timeDisplay) {
+                        const currentTime = formatTimeSeconds(effectiveTime);
+                        const totalTime = formatTimeSeconds(effectiveDuration);
+                        timeDisplay.textContent = `${currentTime} / ${totalTime}`;
+                    }
+                }
+            }
+        });
+
+        // Seekbar initialization
+        let isSeeking = false;
+
+        function seekToPosition(e) {
+            if (video.duration) {
+                const seekbarEl = document.getElementById('videoSeekbar');
+                if (!seekbarEl) return;
+                const rect = seekbarEl.getBoundingClientRect();
+                const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+
+                // Use theme duration if set
+                const effectiveDuration = getEffectiveDuration();
+                const themeStartOffset = video.dataset.themeStart ? parseFloat(video.dataset.themeStart) : 0;
+                const targetTime = themeStartOffset + (percent * effectiveDuration);
+                video.currentTime = targetTime;
+
+                // Update time display while seeking
+                if (typeof formatTimeSeconds === 'function') {
+                    const timeDisplay = document.getElementById('videoTimeDisplay');
+                    if (timeDisplay) {
+                        const effectiveTime = percent * effectiveDuration;
+                        const currentTime = formatTimeSeconds(effectiveTime);
+                        const totalTime = formatTimeSeconds(effectiveDuration);
+                        timeDisplay.textContent = `${currentTime} / ${totalTime}`;
+                    }
+                }
+            }
+        }
+
+        // Global mouse events for dragging
+        document.addEventListener('mousemove', (e) => {
+            if (isSeeking) {
+                seekToPosition(e);
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isSeeking) {
+                isSeeking = false;
+            }
+        });
+
+        // Initialize seekbar when DOM is ready
+        function initSeekbar() {
+            const seekbar = document.getElementById('videoSeekbar');
+            if (!seekbar) return;
+
+            const seekbarThumb = document.getElementById('videoSeekbarThumb');
+            const timeDisplay = document.getElementById('videoTimeDisplay');
+
+            // Use click for immediate seek, mousedown/mousemove/mouseup for dragging
+            seekbar.addEventListener('click', (e) => {
+                if (video.duration) {
+                    const rect = seekbar.getBoundingClientRect();
+                    const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                    const effectiveDuration = getEffectiveDuration();
+                    const themeStartOffset = video.dataset.themeStart ? parseFloat(video.dataset.themeStart) : 0;
+                    video.currentTime = themeStartOffset + (percent * effectiveDuration);
+                }
+            });
+
+            seekbar.addEventListener('mousedown', (e) => {
+                isSeeking = true;
+                seekToPosition(e);
+            });
+
+            seekbar.addEventListener('mouseenter', () => {
+                seekbar.style.background = 'rgba(255,255,255,0.25)';
+                if (seekbarThumb) seekbarThumb.style.opacity = '1';
+                if (timeDisplay) timeDisplay.style.opacity = '1';
+            });
+
+            seekbar.addEventListener('mouseleave', () => {
+                seekbar.style.background = 'rgba(255,255,255,0.15)';
+                if (seekbarThumb) seekbarThumb.style.opacity = '0';
+                if (timeDisplay) timeDisplay.style.opacity = '0';
+            });
+
+            // Show hover time while moving over seekbar
+            seekbar.addEventListener('mousemove', (e) => {
+                if (video.duration && typeof formatTimeSeconds === 'function') {
+                    const rect = seekbar.getBoundingClientRect();
+                    const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                    const effectiveDuration = getEffectiveDuration();
+                    const hoverTime = percent * effectiveDuration;
+
+                    if (timeDisplay) {
+                        const currentTime = formatTimeSeconds(hoverTime);
+                        const totalTime = formatTimeSeconds(effectiveDuration);
+                        timeDisplay.textContent = `${currentTime} / ${totalTime}`;
+                    }
+                }
+            });
+        }
+
+        // Call init when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initSeekbar);
+        } else {
+            initSeekbar();
+        }
+
         // Sync CSS animations with video play/pause
         video.addEventListener('play', () => {
             const btn = document.getElementById('playPauseBtn');
             if (btn) btn.textContent = '⏸';
-            document.getElementById('videoAnimationContainer').style.animationPlayState = 'running';
             video.style.animationPlayState = 'running';
             // Start outline face detection if active (global or timeline)
             const isGlobalOutline = activeAnimations.outline && animationToggles.outline !== false;
@@ -3093,7 +3363,6 @@
         video.addEventListener('pause', () => {
             const btn = document.getElementById('playPauseBtn');
             if (btn) btn.textContent = '▶';
-            document.getElementById('videoAnimationContainer').style.animationPlayState = 'paused';
             video.style.animationPlayState = 'paused';
             previewAudio.pause();
 
@@ -4023,6 +4292,45 @@
             return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
         }
 
+        // Timeline hover tooltip - initialize directly
+        (function() {
+            const track = document.getElementById('timelineTrack');
+            const tooltip = document.getElementById('timelineTimeTooltip');
+            if (!track || !tooltip) return;
+
+            track.addEventListener('mouseenter', () => {
+                tooltip.style.display = 'block';
+                tooltip.style.opacity = '1';
+                tooltip.style.visibility = 'visible';
+            });
+
+            track.addEventListener('mousemove', (e) => {
+                const rect = track.getBoundingClientRect();
+                const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                const mainDuration = getEffectiveDuration();
+                const outroDuration = (outroVideo && outroVideo.enabled) ? outroVideo.duration : 0;
+                const displayDuration = mainDuration + outroDuration;
+                const hoverTime = percent * displayDuration;
+
+                tooltip.textContent = formatTimeSeconds(hoverTime);
+                // Position tooltip above cursor, relative to timeline wrapper
+                const wrapperRect = track.parentElement.getBoundingClientRect();
+                const tooltipLeft = e.clientX - wrapperRect.left + 20;
+                const tooltipTop = e.clientY - wrapperRect.top - 50;
+                tooltip.style.left = tooltipLeft + 'px';
+                tooltip.style.top = tooltipTop + 'px';
+            });
+
+            track.addEventListener('mouseleave', () => {
+                tooltip.style.opacity = '0';
+                setTimeout(() => {
+                    if (tooltip.style.opacity === '0') {
+                        tooltip.style.display = 'none';
+                    }
+                }, 150);
+            });
+        })();
+
         function applyVideoStyle(styleName) {
             currentVideoStyle = styleName;
             
@@ -4072,7 +4380,7 @@
 
             // Dynamically update based on level
             if (style === 'pixels') {
-                const container = document.getElementById('videoAnimationContainer');
+                const container = video; // Target video directly
                 if (container) {
                     // Update CSS variable for the grid-mask
                     const pxSize = value;
@@ -4171,6 +4479,15 @@
             panel.classList.add('visible');
             btn.classList.add('active');
             currentPanel = panelName;
+
+            // Load library if opening audio panel
+            if (panelName === 'audio') {
+                loadAudioLibrary();
+            } else if (panelName === 'images') {
+                loadImageLibrary();
+            } else if (panelName === 'broll') {
+                loadBrollLibrary();
+            }
         }
 
         // Close panel
@@ -4284,7 +4601,7 @@
         // Draw magnified view in magnifier
         // Extract waveform when video loads
         video.addEventListener('loadeddata', () => {
-            extractWaveform();
+            generateMockWaveform();
         });
 
         // Set canvas resolution to export size (1080x1920) while CSS handles display size
@@ -4351,6 +4668,260 @@
             if (video) video.volume = Math.min(1.0, vol / 100);
         });
 
+        // Load audio library from server
+        async function loadAudioLibrary() {
+            const container = document.getElementById('audioLibrary');
+            if (!container) return;
+            
+            // Clear search on load
+            const searchInput = document.getElementById('audioSearch');
+            if (searchInput) searchInput.value = '';
+            
+            try {
+                const response = await fetch('/api/audio-library');
+                audioLibraryFiles = await response.json();
+                renderAudioLibrary(audioLibraryFiles);
+            } catch (error) {
+                console.error('Failed to load audio library:', error);
+                container.innerHTML = '<div style="padding: 15px; text-align: center; color: #ff6b6b; font-size: 11px;">Error loading library</div>';
+            }
+        }
+
+        // Render audio library list
+        function renderAudioLibrary(files) {
+            const container = document.getElementById('audioLibrary');
+            if (!container) return;
+
+            if (files.length === 0) {
+                container.innerHTML = '<div style="padding: 15px; text-align: center; color: #666; font-size: 11px;">No audio files found</div>';
+                return;
+            }
+            
+            container.innerHTML = '';
+            files.forEach(file => {
+                const item = document.createElement('div');
+                const isSelected = audioFile && audioFile.name === file.name;
+                item.className = 'audio-library-item' + (isSelected ? ' active' : '');
+                
+                item.innerHTML = `<span>🎵 ${file.name}</span>`;
+                item.onclick = () => selectAudioFromLibrary(file);
+                container.appendChild(item);
+            });
+        }
+
+        // Filter library by search term
+        function filterAudioLibrary(query) {
+            if (!audioLibraryFiles) return;
+            const term = query.toLowerCase();
+            const filtered = audioLibraryFiles.filter(f => f.name.toLowerCase().includes(term));
+            renderAudioLibrary(filtered);
+        }
+
+        // Select audio from library
+        function selectAudioFromLibrary(file) {
+            audioFile = { name: file.name, path: file.path };
+            document.getElementById('audioFilename').textContent = file.name;
+            
+            // Show audio track on timeline
+            audioTrack.style.display = 'block';
+            document.getElementById('audioMasterToggle').style.setProperty('display', 'flex', 'important');
+            document.getElementById('audioEnabled').checked = true;
+            
+            // Update preview audio
+            previewAudio.src = `/media/${file.path}`;
+            previewAudio.load();
+            const vol = document.getElementById('audioVolume').value;
+            previewAudio.volume = Math.min(1.0, vol / 100);
+            
+            if (!video.paused) {
+                previewAudio.currentTime = video.currentTime;
+                previewAudio.muted = false;
+                previewAudio.play().catch(e => console.warn('Audio play failed:', e));
+            }
+            
+            showNotification(`Selected ${file.name} from library`, 'success');
+            
+            // Re-render library to update highlights
+            const searchTerm = document.getElementById('audioSearch').value;
+            filterAudioLibrary(searchTerm);
+        }
+
+        // Load image library from server
+        async function loadImageLibrary() {
+            const container = document.getElementById('imageLibrary');
+            if (!container) return;
+            
+            const searchInput = document.getElementById('imageSearch');
+            if (searchInput) searchInput.value = '';
+            
+            try {
+                const response = await fetch('/api/image-library');
+                imageLibraryFiles = await response.json();
+                renderImageLibrary(imageLibraryFiles);
+            } catch (error) {
+                console.error('Failed to load image library:', error);
+                container.innerHTML = '<div style="padding: 15px; text-align: center; color: #ff6b6b; font-size: 11px;">Error loading library</div>';
+            }
+        }
+
+        // Render image library list
+        function renderImageLibrary(files) {
+            const container = document.getElementById('imageLibrary');
+            if (!container) return;
+
+            if (files.length === 0) {
+                container.innerHTML = '<div style="padding: 15px; text-align: center; color: #666; font-size: 11px;">No images found</div>';
+                return;
+            }
+            
+            container.innerHTML = '';
+            files.forEach(file => {
+                const item = document.createElement('div');
+                item.className = 'audio-library-item';
+                item.innerHTML = `<span>🖼️ ${file.name}</span>`;
+                item.onclick = () => selectImageFromLibrary(file);
+                container.appendChild(item);
+            });
+        }
+
+        // Filter image library
+        function filterImageLibrary(query) {
+            if (!imageLibraryFiles) return;
+            const term = query.toLowerCase();
+            const filtered = imageLibraryFiles.filter(f => f.name.toLowerCase().includes(term));
+            renderImageLibrary(filtered);
+        }
+
+        // Select image from library
+        function selectImageFromLibrary(file) {
+            const mainDuration = getEffectiveDuration();
+            const outroDuration = (outroVideo && outroVideo.enabled) ? outroVideo.duration : 0;
+            const displayDuration = mainDuration + outroDuration;
+
+            // If no timeline position selected, use current video time
+            let start = selectedTimelinePosition;
+            if (start === null) {
+                start = getEffectiveTime() / displayDuration;
+            }
+
+            // Check if already in imageFiles
+            let img = imageFiles.find(i => i.name === file.name);
+            if (!img) {
+                img = {
+                    id: 'img_' + Math.random().toString(36).substr(2, 9),
+                    name: file.name,
+                    serverPath: file.path // Use full path images/name.ext
+                };
+                imageFiles.push(img);
+                updateImageList();
+            }
+            
+            const duration = 5;
+            const end = Math.min(1, start + (duration / displayDuration));
+
+            const markerId = 'imgmarker_' + Math.random().toString(36).substr(2, 9);
+            const markerData = {
+                id: markerId,
+                imageId: img.id,
+                imageName: img.name,
+                start: start,
+                end: end,
+                duration: duration,
+                posX: 50,
+                posY: 50,
+                scale: 1.0,
+                layer: 0
+            };
+
+            imageMarkers.push(markerData);
+            createImageMarker(markerData);
+            showNotification(`Image "${file.name}" added to timeline`, 'success');
+            checkImageMarkers();
+        }
+
+        // Load B-roll library from server
+        async function loadBrollLibrary() {
+            const container = document.getElementById('brollLibrary');
+            if (!container) return;
+            
+            const searchInput = document.getElementById('brollSearch');
+            if (searchInput) searchInput.value = '';
+            
+            try {
+                const response = await fetch('/api/broll-library');
+                brollLibraryFiles = await response.json();
+                renderBrollLibrary(brollLibraryFiles);
+            } catch (error) {
+                console.error('Failed to load B-roll library:', error);
+                container.innerHTML = '<div style="padding: 15px; text-align: center; color: #ff6b6b; font-size: 11px;">Error loading library</div>';
+            }
+        }
+
+        // Render B-roll library list
+        function renderBrollLibrary(files) {
+            const container = document.getElementById('brollLibrary');
+            if (!container) return;
+
+            if (files.length === 0) {
+                container.innerHTML = '<div style="padding: 15px; text-align: center; color: #666; font-size: 11px;">No B-roll clips found</div>';
+                return;
+            }
+            
+            container.innerHTML = '';
+            files.forEach(file => {
+                const item = document.createElement('div');
+                item.className = 'audio-library-item';
+                item.innerHTML = `<span>🎬 ${file.name}</span>`;
+                item.onclick = () => selectBrollFromLibrary(file);
+                container.appendChild(item);
+            });
+        }
+
+        // Filter B-roll library
+        function filterBrollLibrary(query) {
+            if (!brollLibraryFiles) return;
+            const term = query.toLowerCase();
+            const filtered = brollLibraryFiles.filter(f => f.name.toLowerCase().includes(term));
+            renderBrollLibrary(filtered);
+        }
+
+        // Select B-roll from library
+        function selectBrollFromLibrary(file) {
+            const mainDuration = getEffectiveDuration();
+            const outroDuration = (outroVideo && outroVideo.enabled) ? outroVideo.duration : 0;
+            const displayDuration = mainDuration + outroDuration;
+            
+            const startPos = selectedTimelinePosition !== null ? selectedTimelinePosition : (getEffectiveTime() / displayDuration);
+            const duration = file.duration || 5;
+            const endPos = Math.min(1.0, startPos + (duration / displayDuration));
+
+            // Check if already in brollFiles
+            let brollIndex = brollFiles.findIndex(f => f.name === file.name);
+            if (brollIndex === -1) {
+                brollFiles.push({
+                    name: file.name,
+                    path: file.path, // Store path for URL resolution
+                    duration: duration
+                });
+                brollIndex = brollFiles.length - 1;
+                updateBrollList();
+            }
+
+            const marker = {
+                id: 'brollmarker_' + Math.random().toString(36).substr(2, 9),
+                brollIndex: brollIndex,
+                brollName: file.name,
+                start: startPos,
+                end: endPos,
+                duration: duration,
+                layer: 0
+            };
+            brollMarkers.push(marker);
+            createBrollMarker(marker);
+            updateBrollList();
+            showNotification(`Added ${file.name} to timeline`, 'success');
+        }
+
         // Handle audio upload
         async function handleAudioUpload(input) {
             if (input.files && input.files[0]) {
@@ -4414,6 +4985,7 @@
                             brollFiles.push({
                                 file: file,
                                 name: result.filename,
+                                path: result.filename, // Consistent path for resolution
                                 duration: result.duration || 5 // Default to 5s if not returned
                             });
                             updateBrollList();
@@ -4499,11 +5071,11 @@
         // Add B-roll to timeline
         function addBrollToTimeline(index) {
             const file = brollFiles[index];
-            const mainDuration = video.duration || 1;
+            const mainDuration = getEffectiveDuration();
             const outroDuration = (outroVideo && outroVideo.enabled) ? outroVideo.duration : 0;
             const displayDuration = mainDuration + outroDuration;
             
-            const startPos = selectedTimelinePosition !== null ? selectedTimelinePosition : (video.currentTime / displayDuration);
+            const startPos = selectedTimelinePosition !== null ? selectedTimelinePosition : (getEffectiveTime() / displayDuration);
             const duration = file.duration || 5; // Use file duration if available
             const endPos = Math.min(1.0, startPos + (duration / displayDuration));
 
@@ -4513,7 +5085,8 @@
                 brollName: file.name,
                 start: startPos,
                 end: endPos,
-                duration: duration
+                duration: duration,
+                layer: 0
             };
             brollMarkers.push(marker);
             createBrollMarker(marker);
@@ -4530,40 +5103,63 @@
             markerEl.id = markerData.id;
             markerEl.title = `🎬 ${markerData.brollName}`;
             markerEl.style.position = 'absolute';
-            markerEl.style.top = '4px'; // Directly on green video track
-            markerEl.style.height = '18px';
-            markerEl.style.backgroundColor = '#2196f3'; // Solid bright blue
-            markerEl.style.border = '2px solid #fff'; // Thick white border to pop
-            markerEl.style.boxShadow = '0 0 8px rgba(33, 150, 243, 0.8)'; // Blue glow
+            
+            // Dynamic Top calculation
+            const topPos = calculateMarkerTop(markerData, 'broll');
+            markerEl.style.top = `${topPos}px`;
+            
+            markerEl.style.height = '22px';
+            markerEl.style.backgroundColor = 'rgba(33, 150, 243, 0.8)'; // Semi-transparent blue
+            markerEl.style.border = '1px solid #fff'; 
+            markerEl.style.boxShadow = '0 0 10px rgba(33, 150, 243, 0.5)'; 
             markerEl.style.borderRadius = '4px';
             markerEl.style.zIndex = '15';
-            markerEl.style.overflow = 'visible'; // To see label below
+            markerEl.style.overflow = 'visible';
+            markerEl.style.display = 'flex';
+            markerEl.style.alignItems = 'center';
+            markerEl.style.justifyContent = 'center';
             
-            // Text label for the marker - displayed below the blue bar
+            // Text label for the marker
             const label = document.createElement('div');
             label.className = 'marker-label';
-            const displayName = markerData.brollName.length > 5 ? markerData.brollName.substring(0, 5) + "..." : markerData.brollName;
+            label.style.position = 'absolute';
+            label.style.bottom = '-14px';
+            label.style.left = '50%';
+            label.style.transform = 'translateX(-50%)';
+            label.style.fontSize = '8px';
+            label.style.color = '#2196f3';
+            label.style.whiteSpace = 'nowrap';
+            label.style.fontWeight = 'bold';
+            label.style.pointerEvents = 'none';
+            
+            const displayName = markerData.brollName.length > 8 ? markerData.brollName.substring(0, 8) + "..." : markerData.brollName;
             label.textContent = displayName;
-            label.title = `🎬 ${markerData.brollName}`;
             markerEl.appendChild(label);
 
+            const icon = document.createElement('span');
+            icon.innerHTML = '🎬';
+            icon.style.fontSize = '10px';
+            markerEl.appendChild(icon);
+
             const quickRemove = document.createElement('button');
-            quickRemove.innerHTML = '✕';
+            quickRemove.innerHTML = '×';
             quickRemove.style.position = 'absolute';
-            quickRemove.style.right = '2px';
-            quickRemove.style.top = '50%';
-            quickRemove.style.transform = 'translateY(-50%)';
-            quickRemove.style.background = 'rgba(255, 68, 68, 0.8)';
-            quickRemove.style.border = 'none';
+            quickRemove.style.right = '-8px';
+            quickRemove.style.top = '-8px';
+            quickRemove.style.background = '#ff4444';
+            quickRemove.style.border = '1px solid white';
             quickRemove.style.color = 'white';
-            quickRemove.style.borderRadius = '2px';
-            quickRemove.style.width = '12px';
-            quickRemove.style.height = '12px';
-            quickRemove.style.fontSize = '8px';
-            quickRemove.style.lineHeight = '12px';
+            quickRemove.style.borderRadius = '50%';
+            quickRemove.style.width = '16px';
+            quickRemove.style.height = '16px';
+            quickRemove.style.fontSize = '10px';
+            quickRemove.style.lineHeight = '14px';
             quickRemove.style.cursor = 'pointer';
-            quickRemove.style.padding = '0';
-            quickRemove.style.zIndex = '20';
+            quickRemove.style.display = 'none'; // Show on hover
+            quickRemove.style.zIndex = '30';
+            
+            markerEl.onmouseover = () => quickRemove.style.display = 'block';
+            markerEl.onmouseout = () => quickRemove.style.display = 'none';
             quickRemove.onclick = (e) => {
                 e.stopPropagation();
                 // Show inline confirmation popup
@@ -4571,7 +5167,7 @@
             };
             markerEl.appendChild(quickRemove);
 
-            // Function for inline confirmation
+            // Function for inline confirmation and layering
             function showBrollConfirmPopup(parent, data) {
                 // Remove existing popup if any
                 const existing = document.querySelector('.broll-confirm-popup');
@@ -4584,38 +5180,59 @@
                 const rect = parent.getBoundingClientRect();
                 
                 popup.style.position = 'fixed'; // Use fixed to ensure it's on top of everything
-                popup.style.top = `${rect.top - 50}px`;
+                popup.style.top = `${rect.top - 80}px`; // Higher to fit layers
                 popup.style.left = `${rect.left + rect.width / 2}px`;
                 popup.style.transform = 'translateX(-50%)';
                 
                 popup.style.background = '#2c3e50';
-                popup.style.border = '1px solid #e74c3c';
+                popup.style.border = '1px solid #3498db';
                 popup.style.borderRadius = '4px';
-                popup.style.padding = '8px';
+                popup.style.padding = '10px';
                 popup.style.zIndex = '999999'; // Super high z-index
                 popup.style.display = 'flex';
                 popup.style.flexDirection = 'column';
-                popup.style.gap = '8px';
-                popup.style.minWidth = '120px';
+                popup.style.gap = '10px';
+                popup.style.minWidth = '140px';
                 popup.style.boxShadow = '0 8px 16px rgba(0,0,0,0.6)';
 
                 popup.innerHTML = `
-                    <div style="font-size: 11px; color: white; text-align: center; margin-bottom: 2px; font-weight: bold;">Remove Segment?</div>
-                    <div style="display: flex; gap: 6px;">
-                        <button style="flex: 1; padding: 4px 0; background: #e74c3c; color: white; border: none; border-radius: 4px; font-size: 10px; cursor: pointer; font-weight: bold;" id="confirmBrollDel">Yes</button>
-                        <button style="flex: 1; padding: 4px 0; background: #95a5a6; color: white; border: none; border-radius: 4px; font-size: 10px; cursor: pointer; font-weight: bold;" id="cancelBrollDel">No</button>
+                    <div style="font-size: 11px; color: white; text-align: center; font-weight: bold; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;">B-Roll Settings</div>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 5px;">
+                        <div style="font-size: 10px; color: #aaa;">Layer Placement:</div>
+                        <div style="display: flex; gap: 5px;">
+                            <button style="flex: 1; padding: 4px; background: #34495e; color: white; border: 1px solid #3498db; border-radius: 4px; font-size: 9px; cursor: pointer;" id="layerDownBroll">Back</button>
+                            <button style="flex: 1; padding: 4px; background: #34495e; color: white; border: 1px solid #3498db; border-radius: 4px; font-size: 9px; cursor: pointer;" id="layerUpBroll">Forward</button>
+                        </div>
+                        <div style="font-size: 9px; color: #3498db; text-align: center;">Current Layer: ${data.layer || 0}</div>
+                    </div>
+
+                    <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 5px;">
+                        <button style="width: 100%; padding: 5px; background: #e74c3c; color: white; border: none; border-radius: 4px; font-size: 10px; cursor: pointer; font-weight: bold;" id="confirmBrollDel">Remove Segment</button>
                     </div>
                 `;
                 
                 document.body.appendChild(popup); // Append to body to bypass any clipping
 
+                popup.querySelector('#layerUpBroll').onclick = (ev) => {
+                    ev.stopPropagation();
+                    data.layer = (data.layer || 0) + 1;
+                    showNotification(`B-roll layer set to ${data.layer}`, 'info');
+                    popup.querySelector('div:nth-child(2) div:last-child').textContent = `Current Layer: ${data.layer}`;
+                    checkBrollMarkers();
+                };
+
+                popup.querySelector('#layerDownBroll').onclick = (ev) => {
+                    ev.stopPropagation();
+                    data.layer = (data.layer || 0) - 1;
+                    showNotification(`B-roll layer set to ${data.layer}`, 'info');
+                    popup.querySelector('div:nth-child(2) div:last-child').textContent = `Current Layer: ${data.layer}`;
+                    checkBrollMarkers();
+                };
+
                 popup.querySelector('#confirmBrollDel').onclick = (ev) => {
                     ev.stopPropagation();
                     removeBrollMarker(data.id);
-                    popup.remove();
-                };
-                popup.querySelector('#cancelBrollDel').onclick = (ev) => {
-                    ev.stopPropagation();
                     popup.remove();
                 };
 
@@ -4671,6 +5288,7 @@
                 markerData.end = newStartPercent + durationPercent;
                 
                 markerEl.style.left = `${newStartPercent * 100}%`;
+                recalculateLanes('broll');
                 updateBrollList();
             });
 
@@ -4682,20 +5300,78 @@
                 }
             });
 
-            // Make resizable
+            // Make resizable (Right Handle)
             const resizeHandle = document.createElement('div');
             resizeHandle.style.position = 'absolute';
             resizeHandle.style.right = '0';
             resizeHandle.style.top = '0';
-            resizeHandle.style.width = '5px';
+            resizeHandle.style.width = '8px';
             resizeHandle.style.height = '100%';
             resizeHandle.style.cursor = 'ew-resize';
+            resizeHandle.style.background = 'rgba(255,255,255,0.3)';
+            resizeHandle.style.borderLeft = '1px solid rgba(0,0,0,0.2)';
+            resizeHandle.style.borderRadius = '0 4px 4px 0';
+            resizeHandle.title = 'Drag to resize right';
             
+            // Make resizable (Left Handle)
+            const leftResizeHandle = document.createElement('div');
+            leftResizeHandle.style.position = 'absolute';
+            leftResizeHandle.style.left = '0';
+            leftResizeHandle.style.top = '0';
+            leftResizeHandle.style.width = '8px';
+            leftResizeHandle.style.height = '100%';
+            leftResizeHandle.style.cursor = 'ew-resize';
+            leftResizeHandle.style.background = 'rgba(255,255,255,0.3)';
+            leftResizeHandle.style.borderRight = '1px solid rgba(0,0,0,0.2)';
+            leftResizeHandle.style.borderRadius = '4px 0 0 4px';
+            leftResizeHandle.title = 'Drag to resize left';
+
+            markerEl.appendChild(resizeHandle);
+            markerEl.appendChild(leftResizeHandle);
+
+            leftResizeHandle.addEventListener('mousedown', (e) => {
+                e.stopPropagation();
+                let isResizingLeft = true;
+                const initialWidth = markerEl.offsetWidth;
+                const initialLeft = markerEl.offsetLeft;
+                const initialX = e.clientX;
+                markerEl.classList.add('resizing');
+
+                const moveHandler = (moveEvent) => {
+                    if (!isResizingLeft) return;
+                    const rect = track.getBoundingClientRect();
+                    const diff = moveEvent.clientX - initialX;
+                    
+                    const newLeft = Math.max(0, Math.min(initialLeft + initialWidth - 10, initialLeft + diff));
+                    const newWidth = initialWidth + (initialLeft - newLeft);
+                    
+                    markerData.start = newLeft / rect.width;
+                    markerData.end = (newLeft + newWidth) / rect.width;
+                    
+                    markerEl.style.left = `${(markerData.start * 100)}%`;
+                    markerEl.style.width = `${((markerData.end - markerData.start) * 100)}%`;
+                    recalculateLanes('broll');
+                    updateBrollList();
+                };
+
+                const upHandler = () => {
+                    isResizingLeft = false;
+                    markerEl.classList.remove('resizing');
+                    document.removeEventListener('mousemove', moveHandler);
+                    document.removeEventListener('mouseup', upHandler);
+                    applyVideoEffects();
+                };
+
+                document.addEventListener('mousemove', moveHandler);
+                document.addEventListener('mouseup', upHandler);
+            });
+
             resizeHandle.addEventListener('mousedown', (e) => {
                 e.stopPropagation();
                 let isResizing = true;
                 const initialWidth = markerEl.offsetWidth;
                 const initialX = e.clientX;
+                markerEl.classList.add('resizing');
                 
                 const moveHandler = (moveEvent) => {
                     if (!isResizing) return;
@@ -4707,6 +5383,7 @@
                     const widthPercent = newWidth / rect.width;
                     markerData.end = Math.min(1.0, markerData.start + widthPercent);
                     markerEl.style.width = `${(markerData.end - markerData.start) * 100}%`;
+                    recalculateLanes('broll');
                     updateBrollList();
                 };
                 
@@ -4721,7 +5398,6 @@
                 document.addEventListener('mouseup', upHandler);
             });
             
-            markerEl.appendChild(resizeHandle);
             track.appendChild(markerEl);
             markerData.element = markerEl;
         }
@@ -4738,6 +5414,7 @@
                 if (existing) existing.remove();
 
                 brollMarkers.splice(index, 1);
+                recalculateLanes('broll');
                 updateBrollList();
             }
         };
@@ -4864,7 +5541,8 @@
                 duration: duration,
                 posX: 50, // Default center X percentage
                 posY: 50, // Default center Y percentage
-                scale: 1.0 // Default scale
+                scale: 1.0, // Default scale
+                layer: 0
             };
 
             imageMarkers.push(markerData);
@@ -4875,45 +5553,219 @@
             checkImageMarkers();
         }
 
+        // Helper to find an available vertical lane for a marker
+        function calculateMarkerTop(markerData, type) {
+            const laneHeight = 24;
+            const spacing = 2;
+            // B-roll starts at 26, Images start at 78 (leaving 2 lanes for each)
+            const startY = (type === 'image') ? 78 : 26; 
+            const maxLanes = 2;
+            
+            let lane = 0;
+            let foundLane = false;
+            
+            while (!foundLane && lane < maxLanes) {
+                const currentTop = startY + (lane * (laneHeight + spacing));
+                
+                // Check if any existing marker of the SAME TYPE overlaps in this lane
+                const overlaps = (type === 'image' ? imageMarkers : brollMarkers).some(other => {
+                    if (other.id === markerData.id || other.lane !== lane) return false;
+                    // Check horizontal overlap
+                    return (markerData.start < other.end && markerData.end > other.start);
+                });
+                
+                if (!overlaps) {
+                    markerData.lane = lane;
+                    foundLane = true;
+                    return currentTop;
+                }
+                lane++;
+            }
+            
+            markerData.lane = lane;
+            return startY + (lane * (laneHeight + spacing));
+        }
+
+        // Recalculate lanes for all markers of a type to avoid overlaps
+        function recalculateLanes(type) {
+            const markers = (type === 'image' ? imageMarkers : brollMarkers);
+            // Sort by start time first for consistent lane assignment
+            const sortedMarkers = [...markers].sort((a, b) => a.start - b.start);
+            
+            const laneHeight = 24;
+            const spacing = 2;
+            const startY = (type === 'image') ? 78 : 26;
+            
+            // Clear lanes
+            sortedMarkers.forEach(m => m.lane = -1);
+            
+            sortedMarkers.forEach(m => {
+                let lane = 0;
+                let found = false;
+                while (!found) {
+                    const overlaps = sortedMarkers.some(other => {
+                        if (other === m || other.lane !== lane || other.lane === -1) return false;
+                        return (m.start < other.end && m.end > other.start);
+                    });
+                    
+                    if (!overlaps) {
+                        m.lane = lane;
+                        if (m.element) {
+                            m.element.style.top = `${startY + (lane * (laneHeight + spacing))}px`;
+                        }
+                        found = true;
+                    } else {
+                        lane++;
+                    }
+                }
+            });
+        }
+
         // Create image marker on timeline
         function createImageMarker(markerData) {
+            const track = document.getElementById('timelineTrack');
             const marker = document.createElement('div');
             marker.className = `effect-marker image`;
             marker.id = markerData.id;
             marker.style.left = `${markerData.start * 100}%`;
             marker.style.width = `${(markerData.end - markerData.start) * 100}%`;
+            marker.style.zIndex = '14';
+            marker.style.height = '22px';
+            
+            // Dynamic Top calculation
+            const topPos = calculateMarkerTop(markerData, 'image');
+            marker.style.top = `${topPos}px`;
+            
+            marker.style.background = 'linear-gradient(to bottom, rgba(255, 193, 7, 0.8), rgba(255, 145, 0, 0.8))'; 
+            marker.style.border = '1px solid #fff';
+            marker.style.boxShadow = '0 0 10px rgba(255, 145, 0, 0.4)';
+            marker.style.borderRadius = '4px';
+            marker.style.display = 'flex';
+            marker.style.alignItems = 'center';
+            marker.style.justifyContent = 'center';
+            marker.style.overflow = 'visible';
+            marker.title = `🖼️ ${markerData.imageName}`;
 
-            const tooltip = document.createElement('div');
-            tooltip.className = 'effect-marker-tooltip';
-            tooltip.textContent = `🖼️ ${markerData.imageName} (${markerData.duration}s)`;
-            tooltip.style.position = 'fixed';
-            tooltip.style.zIndex = '100000';
-            document.body.appendChild(tooltip);
+            // Add Icon
+            const icon = document.createElement('span');
+            icon.innerHTML = '🖼️';
+            icon.style.fontSize = '12px';
+            icon.style.pointerEvents = 'none';
+            marker.appendChild(icon);
 
-            const updateTooltipPosition = () => {
-                const rect = marker.getBoundingClientRect();
-                tooltip.style.left = `${rect.left + rect.width / 2}px`;
-                tooltip.style.top = `${rect.top - 35}px`;
-                tooltip.style.transform = 'translateX(-50%)';
+            // Red X Remove Button (top-right)
+            const quickRemove = document.createElement('button');
+            quickRemove.innerHTML = '×';
+            quickRemove.style.position = 'absolute';
+            quickRemove.style.right = '-8px';
+            quickRemove.style.top = '-8px';
+            quickRemove.style.background = '#ff4444';
+            quickRemove.style.border = '1px solid white';
+            quickRemove.style.color = 'white';
+            quickRemove.style.borderRadius = '50%';
+            quickRemove.style.width = '16px';
+            quickRemove.style.height = '16px';
+            quickRemove.style.fontSize = '10px';
+            quickRemove.style.lineHeight = '14px';
+            quickRemove.style.cursor = 'pointer';
+            quickRemove.style.display = 'none'; // Show on hover
+            quickRemove.style.zIndex = '30';
+            
+            marker.onmouseover = () => quickRemove.style.display = 'block';
+            marker.onmouseout = () => quickRemove.style.display = 'none';
+            
+            // Function for image settings and layering
+            function showImageSettingsPopup(parent, data) {
+                // Remove existing popup if any
+                const existing = document.querySelector('.image-settings-popup');
+                if (existing) existing.remove();
+
+                const popup = document.createElement('div');
+                popup.className = 'image-settings-popup';
+                
+                // Get marker position to place the popup correctly
+                const rect = parent.getBoundingClientRect();
+                
+                popup.style.position = 'fixed';
+                popup.style.top = `${rect.top - 80}px`;
+                popup.style.left = `${rect.left + rect.width / 2}px`;
+                popup.style.transform = 'translateX(-50%)';
+                
+                popup.style.background = '#2c3e50';
+                popup.style.border = '1px solid #f1c40f';
+                popup.style.borderRadius = '4px';
+                popup.style.padding = '10px';
+                popup.style.zIndex = '999999';
+                popup.style.display = 'flex';
+                popup.style.flexDirection = 'column';
+                popup.style.gap = '10px';
+                popup.style.minWidth = '140px';
+                popup.style.boxShadow = '0 8px 16px rgba(0,0,0,0.6)';
+
+                popup.innerHTML = `
+                    <div style="font-size: 11px; color: white; text-align: center; font-weight: bold; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;">Image Settings</div>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 5px;">
+                        <div style="font-size: 10px; color: #aaa;">Layer Placement:</div>
+                        <div style="display: flex; gap: 5px;">
+                            <button style="flex: 1; padding: 4px; background: #34495e; color: white; border: 1px solid #f1c40f; border-radius: 4px; font-size: 9px; cursor: pointer;" id="layerDownImg">Back</button>
+                            <button style="flex: 1; padding: 4px; background: #34495e; color: white; border: 1px solid #f1c40f; border-radius: 4px; font-size: 9px; cursor: pointer;" id="layerUpImg">Forward</button>
+                        </div>
+                        <div style="font-size: 9px; color: #f1c40f; text-align: center;">Current Layer: ${data.layer || 0}</div>
+                    </div>
+
+                    <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 5px;">
+                        <button style="width: 100%; padding: 5px; background: #e74c3c; color: white; border: none; border-radius: 4px; font-size: 10px; cursor: pointer; font-weight: bold;" id="confirmImgDel">Remove Image</button>
+                    </div>
+                `;
+                
+                document.body.appendChild(popup);
+
+                popup.querySelector('#layerUpImg').onclick = (ev) => {
+                    ev.stopPropagation();
+                    data.layer = (data.layer || 0) + 1;
+                    showNotification(`Image layer set to ${data.layer}`, 'info');
+                    popup.querySelector('div:nth-child(2) div:last-child').textContent = `Current Layer: ${data.layer}`;
+                    checkImageMarkers();
+                };
+
+                popup.querySelector('#layerDownImg').onclick = (ev) => {
+                    ev.stopPropagation();
+                    data.layer = (data.layer || 0) - 1;
+                    showNotification(`Image layer set to ${data.layer}`, 'info');
+                    popup.querySelector('div:nth-child(2) div:last-child').textContent = `Current Layer: ${data.layer}`;
+                    checkImageMarkers();
+                };
+
+                popup.querySelector('#confirmImgDel').onclick = (ev) => {
+                    ev.stopPropagation();
+                    removeImageMarker(data.id);
+                    popup.remove();
+                };
+
+                // Close when clicking outside
+                const closeHandler = (ev) => {
+                    if (!popup.contains(ev.target) && !parent.contains(ev.target)) {
+                        popup.remove();
+                        document.removeEventListener('mousedown', closeHandler);
+                    }
+                };
+                setTimeout(() => document.addEventListener('mousedown', closeHandler), 10);
+            }
+
+            quickRemove.onclick = (e) => {
+                e.stopPropagation();
+                showImageSettingsPopup(marker, markerData);
             };
+            marker.appendChild(quickRemove);
 
-            window.addEventListener('resize', updateTooltipPosition);
-            setTimeout(updateTooltipPosition, 0);
-
-            // Double click to remove
-            tooltip.addEventListener('dblclick', () => {
-                if (confirm(`Remove image "${markerData.imageName}" from timeline?`)) {
-                    removeImageMarker(markerData.id);
-                }
-            });
-
-            // Resizing and dragging logic (similar to effect markers but simplified for now)
-            // For now, let's just make it draggable
+            // Resizing and dragging logic
             let isDragging = false;
             let dragStartX = 0;
             let dragStartLeft = 0;
 
             marker.addEventListener('mousedown', (e) => {
+                if (e.target.classList.contains('resize-handle')) return;
                 isDragging = true;
                 dragStartX = e.clientX;
                 dragStartLeft = parseFloat(marker.style.left) || 0;
@@ -4923,14 +5775,14 @@
 
             const handleMouseMove = (e) => {
                 if (!isDragging) return;
-                const rect = timelineTrack.getBoundingClientRect();
+                const rect = track.getBoundingClientRect();
                 const deltaX = e.clientX - dragStartX;
                 const deltaPercent = (deltaX / rect.width) * 100;
                 const newLeft = Math.max(0, Math.min(100 - parseFloat(marker.style.width), dragStartLeft + deltaPercent));
                 marker.style.left = `${newLeft}%`;
                 markerData.start = newLeft / 100;
                 markerData.end = markerData.start + (parseFloat(marker.style.width) / 100);
-                updateTooltipPosition();
+                recalculateLanes('image');
             };
 
             const handleMouseUp = () => {
@@ -4941,9 +5793,78 @@
             document.addEventListener('mousemove', handleMouseMove);
             document.addEventListener('mouseup', handleMouseUp);
 
+            // Resize Handles
+            const leftHandle = document.createElement('div');
+            leftHandle.className = 'resize-handle left';
+            leftHandle.style.cssText = 'position:absolute;left:0;top:0;width:8px;height:100%;cursor:ew-resize;background:rgba(255,255,255,0.4);border-radius:4px 0 0 4px;';
+            
+            const rightHandle = document.createElement('div');
+            rightHandle.className = 'resize-handle right';
+            rightHandle.style.cssText = 'position:absolute;right:0;top:0;width:8px;height:100%;cursor:ew-resize;background:rgba(255,255,255,0.4);border-radius:0 4px 4px 0;';
+
+            marker.appendChild(leftHandle);
+            marker.appendChild(rightHandle);
+
+            leftHandle.addEventListener('mousedown', (e) => {
+                e.stopPropagation();
+                let isResizing = true;
+                const startWidth = marker.offsetWidth;
+                const startLeft = marker.offsetLeft;
+                const startX = e.clientX;
+
+                const onMove = (me) => {
+                    if (!isResizing) return;
+                    const rect = track.getBoundingClientRect();
+                    const diff = me.clientX - startX;
+                    const newLeft = Math.max(0, Math.min(startLeft + startWidth - 10, startLeft + diff));
+                    const newWidth = startWidth + (startLeft - newLeft);
+                    
+                    marker.style.left = `${(newLeft / rect.width) * 100}%`;
+                    marker.style.width = `${(newWidth / rect.width) * 100}%`;
+                    markerData.start = newLeft / rect.width;
+                    markerData.end = (newLeft + newWidth) / rect.width;
+                    recalculateLanes('image');
+                };
+
+                const onUp = () => {
+                    isResizing = false;
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', onUp);
+                };
+
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+            });
+
+            rightHandle.addEventListener('mousedown', (e) => {
+                e.stopPropagation();
+                let isResizing = true;
+                const startWidth = marker.offsetWidth;
+                const startX = e.clientX;
+
+                const onMove = (me) => {
+                    if (!isResizing) return;
+                    const rect = track.getBoundingClientRect();
+                    const diff = me.clientX - startX;
+                    const newWidth = Math.max(10, startWidth + diff);
+                    
+                    marker.style.width = `${Math.min(100 - parseFloat(marker.style.left), (newWidth / rect.width) * 100)}%`;
+                    markerData.end = markerData.start + (parseFloat(marker.style.width) / 100);
+                    recalculateLanes('image');
+                };
+
+                const onUp = () => {
+                    isResizing = false;
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', onUp);
+                };
+
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+            });
+
             markerData.element = marker;
-            markerData.tooltip = tooltip;
-            timelineTrack.appendChild(marker);
+            track.appendChild(marker);
         }
 
         // Remove image marker
@@ -5264,8 +6185,8 @@
             if (index !== -1) {
                 const markerData = imageMarkers[index];
                 if (markerData.element) markerData.element.remove();
-                if (markerData.tooltip) markerData.tooltip.remove();
                 imageMarkers.splice(index, 1);
+                recalculateLanes('image');
             }
         }
 
@@ -5816,17 +6737,63 @@
             }
         }
 
+        // Helper to setup drag/resize for image containers
+        function setupImageContainerInteractions(container, activeMarker, handle) {
+            const onMove = (e) => {
+                // Find imageOverlay
+                const overlay = document.getElementById('imageOverlay');
+                if (!overlay) return;
+
+                if (container.dataset.isResizing === 'true') {
+                    const deltaX = e.clientX - parseInt(container.dataset.startX);
+                    activeMarker.scale = Math.max(0.1, Math.min(5.0, parseFloat(container.dataset.startScale) + (deltaX / 200)));
+                    container.style.width = `${activeMarker.scale * 40}%`;
+                } else if (container.dataset.isDragging === 'true') {
+                    const rect = overlay.getBoundingClientRect();
+                    activeMarker.posX = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+                    activeMarker.posY = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+                    container.style.left = `${activeMarker.posX}%`;
+                    container.style.top = `${activeMarker.posY}%`;
+                }
+            };
+
+            const onUp = () => { 
+                container.dataset.isDragging = 'false'; 
+                container.dataset.isResizing = 'false';
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+                document.body.style.cursor = '';
+            };
+
+            container.onmousedown = (e) => {
+                if (e.target === handle || e.target.classList.contains('image-resize-handle')) { 
+                    container.dataset.isResizing = 'true'; 
+                    container.dataset.startScale = activeMarker.scale; 
+                    container.dataset.startX = e.clientX; 
+                    document.body.style.cursor = 'nwse-resize';
+                } else { 
+                    container.dataset.isDragging = 'true'; 
+                    document.body.style.cursor = 'move';
+                }
+                
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+                
+                e.preventDefault(); 
+                e.stopPropagation();
+            };
+        }
+
         // Check if playhead has crossed any image markers
         function checkImageMarkers() {
             if (!video.duration) return;
 
-            const mainDuration = video.duration || 1;
+            const mainDuration = getEffectiveDuration();
             const outroDuration = (outroVideo && outroVideo.enabled) ? outroVideo.duration : 0;
             const displayDuration = mainDuration + outroDuration;
             
-            let currentTime = video.currentTime;
+            let currentTime = getEffectiveTime();
             
-            // If outro is playing, calculate the extended time for the playhead
             if (outroPlaying) {
                 const elapsed = (Date.now() - outroStartTime) / 1000;
                 currentTime = mainDuration + elapsed;
@@ -5838,143 +6805,93 @@
             const overlay = document.getElementById('imageOverlay');
             if (!overlay) return;
 
-            let activeMarker = null;
-            for (let i = imageMarkers.length - 1; i >= 0; i--) {
-                const marker = imageMarkers[i];
-                if (currentPercent >= marker.start && currentPercent <= marker.end) {
-                    activeMarker = marker;
-                    break;
+            // Find all markers that should be active now
+            const activeMarkers = imageMarkers.filter(marker => 
+                currentPercent >= marker.start && currentPercent <= marker.end
+            );
+
+            const activeMarkerIds = new Set(activeMarkers.map(m => m.id));
+
+            // 1. Remove markers that are no longer active
+            for (const [markerId, container] of currentlyActiveImages.entries()) {
+                if (!activeMarkerIds.has(markerId)) {
+                    container.remove();
+                    currentlyActiveImages.delete(markerId);
                 }
             }
 
-            if (activeMarker) {
-                // If same marker already active, don't re-render unless content is missing
-                if (overlay.dataset.activeMarkerId === activeMarker.id && overlay.innerHTML !== '') return;
+            // 2. Add or update active markers
+            activeMarkers.forEach(activeMarker => {
+                let container = currentlyActiveImages.get(activeMarker.id);
                 
-                overlay.dataset.activeMarkerId = activeMarker.id;
-                overlay.innerHTML = ''; 
+                if (!container) {
+                    // Create new container if it doesn't exist
+                    container = document.createElement('div');
+                    container.id = `overlayContainer_${activeMarker.id}`;
+                    container.className = 'image-overlay-container';
+                    // Base z-index 10, plus layer (offset)
+                    const zIndex = 10 + (activeMarker.layer || 0);
+                    container.style.cssText = `position:absolute;left:${activeMarker.posX}%;top:${activeMarker.posY}%;transform:translate(-50%,-50%);width:${activeMarker.scale * 40}%;z-index:${zIndex};border:2px solid #00ff9d;background:rgba(0,0,0,0.2);min-width:50px;min-height:50px;pointer-events:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#00ff9d;font-size:12px;text-align:center;overflow:visible;`;
+                    
+                    const infoText = document.createElement('div');
+                    infoText.innerHTML = `<b>${activeMarker.imageName}</b><br>Loading...`;
+                    container.appendChild(infoText);
+                    overlay.appendChild(container);
 
-                const img = imageFiles.find(i => i.id === activeMarker.imageId);
-                
-                const container = document.createElement('div');
-                container.id = 'overlayContainer';
-                container.style.cssText = `position:absolute;left:${activeMarker.posX}%;top:${activeMarker.posY}%;transform:translate(-50%,-50%);width:${activeMarker.scale * 40}%;z-index:40;border:2px solid #00ff9d;background:rgba(0,0,0,0.2);min-width:100px;min-height:100px;pointer-events:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#00ff9d;font-size:12px;text-align:center;overflow:visible;`;
-                
-                const infoText = document.createElement('div');
-                infoText.innerHTML = `<b>${activeMarker.imageName}</b><br>Loading...`;
-                container.appendChild(infoText);
-                overlay.appendChild(container);
+                    const imgEl = document.createElement('img');
+                    imgEl.style.cssText = 'width:100%;height:auto;display:block;';
+                    
+                    const handle = document.createElement('div');
+                    handle.className = 'image-resize-handle';
+                    handle.style.cssText = 'position:absolute;width:20px;height:20px;background:#00ff9d;border:2px solid #fff;border-radius:50%;bottom:-10px;right:-10px;cursor:nwse-resize;z-index:10001;pointer-events:auto;box-shadow:0 0 10px rgba(0,0,0,0.5);';
 
-                const imgEl = document.createElement('img');
-                imgEl.style.cssText = 'width:100%;height:auto;display:block;';
-                
-                const handle = document.createElement('div');
-                handle.className = 'image-resize-handle';
-                handle.style.cssText = 'position:absolute;width:20px;height:20px;background:#00ff9d;border:2px solid #fff;border-radius:50%;bottom:-10px;right:-10px;cursor:nwse-resize;z-index:10001;pointer-events:auto;box-shadow:0 0 10px rgba(0,0,0,0.5);';
-
-                const renderImage = (src) => {
-                    imgEl.onload = () => {
-                        container.innerHTML = '';
-                        container.appendChild(imgEl);
-                        container.appendChild(handle);
+                    const renderImage = (src) => {
+                        imgEl.onload = () => {
+                            container.innerHTML = '';
+                            container.appendChild(imgEl);
+                            container.appendChild(handle);
+                        };
+                        imgEl.onerror = () => {
+                            infoText.innerHTML = `<span style="color:#ff4444">Error loading image</span>`;
+                        };
+                        imgEl.src = src;
                     };
-                    imgEl.onerror = () => {
-                        infoText.innerHTML = `<span style="color:#ff4444">Error loading image</span>`;
-                    };
-                    imgEl.src = src;
-                };
 
-                if (!img) {
-                    infoText.innerHTML = `<b>Image Missing</b>`;
-                } else if (img.file) {
-                    const reader = new FileReader();
-                    reader.onload = (e) => renderImage(e.target.result);
-                    reader.onerror = (e) => { 
-                        console.error("FileReader error:", e);
-                        // Fallback to serverPath if FileReader fails
-                        if (img.serverPath) {
-                            renderImage(`/media/${img.serverPath}`);
-                        } else {
-                            infoText.innerHTML = "Read Error"; 
-                        }
-                    };
-                    try {
+                    const img = imageFiles.find(i => i.id === activeMarker.imageId);
+                    if (!img) {
+                        infoText.innerHTML = `<b>Image Missing</b>`;
+                    } else if (img.file) {
+                        const reader = new FileReader();
+                        reader.onload = (e) => renderImage(e.target.result);
                         reader.readAsDataURL(img.file);
-                    } catch (err) {
-                        console.error("Error reading file object:", err);
-                        if (img.serverPath) {
-                            renderImage(`/media/${img.serverPath}`);
-                        } else {
-                            infoText.innerHTML = "Read Error";
-                        }
+                    } else if (img.serverPath) {
+                        renderImage(`/media/${img.serverPath.split('/').map(part => encodeURIComponent(part)).join('/')}`);
                     }
-                } else if (img.serverPath) {
-                    renderImage(`/media/${img.serverPath}`);
-                }
 
-                // Dragging and Resizing
-                let isDragging = false;
-                let isResizing = false;
-                let startScale = activeMarker.scale;
-                let startX = 0;
-
-                const onMove = (e) => {
-                    if (isResizing) {
-                        const deltaX = e.clientX - startX;
-                        activeMarker.scale = Math.max(0.1, Math.min(5.0, startScale + (deltaX / 200)));
-                        container.style.width = `${activeMarker.scale * 40}%`;
-                    } else if (isDragging) {
-                        const rect = overlay.getBoundingClientRect();
-                        activeMarker.posX = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-                        activeMarker.posY = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
-                        container.style.left = `${activeMarker.posX}%`;
-                        container.style.top = `${activeMarker.posY}%`;
-                    }
-                };
-
-                const onUp = () => { 
-                    isDragging = false; 
-                    isResizing = false;
-                    document.removeEventListener('mousemove', onMove);
-                    document.removeEventListener('mouseup', onUp);
-                    document.body.style.cursor = '';
-                };
-
-                container.onmousedown = (e) => {
-                    if (e.target === handle || e.target.classList.contains('image-resize-handle')) { 
-                        isResizing = true; 
-                        startScale = activeMarker.scale; 
-                        startX = e.clientX; 
-                        document.body.style.cursor = 'nwse-resize';
-                    } else { 
-                        isDragging = true; 
-                        document.body.style.cursor = 'move';
-                    }
+                    // Setup interactions
+                    setupImageContainerInteractions(container, activeMarker, handle);
                     
-                    document.addEventListener('mousemove', onMove);
-                    document.addEventListener('mouseup', onUp);
-                    
-                    e.preventDefault(); 
-                    e.stopPropagation();
-                };
-
-            } else {
-                if (overlay.dataset.activeMarkerId !== '') {
-                    overlay.innerHTML = '';
-                    overlay.dataset.activeMarkerId = '';
+                    currentlyActiveImages.set(activeMarker.id, container);
+                } else {
+                    // Update existing container's position and scale if changed (e.g. during drag)
+                    const zIndex = 10 + (activeMarker.layer || 0);
+                    container.style.left = `${activeMarker.posX}%`;
+                    container.style.top = `${activeMarker.posY}%`;
+                    container.style.width = `${activeMarker.scale * 40}%`;
+                    container.style.zIndex = zIndex;
                 }
-            }
+            });
         }
 
         // Check if playhead has crossed any b-roll markers
         function checkBrollMarkers() {
             if (!video.duration) return;
             
-            const mainDuration = video.duration || 1;
+            const mainDuration = getEffectiveDuration();
             const outroDuration = (outroVideo && outroVideo.enabled) ? outroVideo.duration : 0;
             const displayDuration = mainDuration + outroDuration;
             
-            let currentTime = video.currentTime;
+            let currentTime = getEffectiveTime();
             
             // If outro is playing, calculate the extended time for the playhead
             if (outroPlaying) {
@@ -5998,12 +6915,18 @@
             }
 
             if (activeMarker) {
-                const brollUrl = '/media/' + encodeURIComponent(activeMarker.brollName);
+                const brollInfo = brollFiles[activeMarker.brollIndex];
+                const brollPath = (brollInfo && brollInfo.path) ? brollInfo.path : activeMarker.brollName;
+                const brollUrl = '/media/' + brollPath.split('/').map(part => encodeURIComponent(part)).join('/');
+
                 if (brollVideo.dataset.activeMarkerId !== activeMarker.id) {
                     brollVideo.dataset.activeMarkerId = activeMarker.id;
                     brollVideo.src = brollUrl;
+                    brollVideo.load(); // Ensure source is loaded
                     
-                    // Assign a random transition effect if not set
+                    // Set z-index based on layer (base 10)
+                    brollVideo.style.setProperty('z-index', (10 + (activeMarker.layer || 0)).toString(), 'important');
+                    
                     const effects = ['slide-left', 'slide-right', 'slide-up', 'slide-down', 'fade', 'zoom'];
                     const chosenEffect = activeMarker.transition || effects[Math.floor(Math.random() * effects.length)];
                     brollVideo.className = chosenEffect;
@@ -6011,7 +6934,12 @@
                     // Trigger active class in next frame for transition
                     requestAnimationFrame(() => {
                         brollVideo.classList.add('active');
+                        brollVideo.style.opacity = '1';
                     });
+                } else if (!brollVideo.classList.contains('active')) {
+                    // Force active if it was removed by cleanup but we're still on the same marker
+                    brollVideo.classList.add('active');
+                    brollVideo.style.opacity = '1';
                 }
 
                 // Calculate where we are in the broll segment relative to combined duration
@@ -6019,8 +6947,9 @@
                 const timeInSegment = (currentPercent - activeMarker.start) * displayDuration;
 
                 // Increased sync precision for fluid seeking
-                if (Math.abs(brollVideo.currentTime - timeInSegment) > 0.01) {
-                    brollVideo.currentTime = timeInSegment % (brollVideo.duration || segmentDuration || 1);
+                const brollDuration = brollVideo.duration || segmentDuration || 1;
+                if (!isNaN(brollDuration) && Math.abs(brollVideo.currentTime - timeInSegment) > 0.01) {
+                    brollVideo.currentTime = timeInSegment % brollDuration;
                 }
 
                 if (!video.paused && brollVideo.paused) {
@@ -6040,8 +6969,9 @@
                     // Wait for transition to finish before clearing
                     setTimeout(() => {
                         // Re-check if any broll should be active now
-                        const currentPercent = video.currentTime / video.duration;
-                        const isAnyActive = brollMarkers.some(m => currentPercent >= m.start && currentPercent <= m.end);
+                        const nowTime = getEffectiveTime();
+                        const nowPercent = nowTime / displayDuration;
+                        const isAnyActive = brollMarkers.some(m => nowPercent >= m.start && nowPercent <= m.end);
                         
                         // Only clear if no new marker became active and this is still the relevant cleanup call
                         if (!isAnyActive && brollVideo.dataset.captureTime == captureTime) {
@@ -6049,6 +6979,7 @@
                             brollVideo.dataset.activeMarkerId = '';
                             brollVideo.src = '';
                             brollVideo.className = '';
+                            brollVideo.style.opacity = '0';
                         }
                     }, 400); // Match CSS transition duration
                 }
@@ -6175,221 +7106,157 @@
         }
 
         function applyVideoEffects() {
-            const animContainer = document.getElementById('videoAnimationContainer');
-            // Ensure flash keyframes are generated
-            if (typeof updateFlashIntensityDisplay === 'function') {
-                updateFlashIntensityDisplay();
-            }
-
-            // Check if face tracking is enabled and preserve its transform
-            const faceTrackingEnabled = document.getElementById('faceTracking').checked;
-            const faceTrackingZoom = faceTrackingEnabled ? parseFloat(document.getElementById('faceZoomLevel').value) : null;
-
-            // Reset video styles to base state
-            video.style.transition = 'none';
-            video.style.objectFit = 'contain';
-            video.style.transformOrigin = 'center center';
+            if (!video) return;
             
-            let transforms = [];
-            let filters = [];
-            let finalScale = 1.0;
-
-            // Clear animations from container
-            animContainer.classList.remove('shake-animation');
-            animContainer.classList.remove('glare-animation');
-            animContainer.classList.remove('vhs-animation');
-            animContainer.classList.remove('kenburns-animation');
-            animContainer.classList.remove('scanlines-animation');
-            animContainer.classList.remove('heartbeat-animation');
-            animContainer.classList.remove('tiltshift-animation');
-            animContainer.classList.remove('audioborder-animation');
-            
-            // Clear styles from container
-            animContainer.classList.remove('style-pixels');
-            animContainer.classList.remove('style-paint');
-            animContainer.classList.remove('style-pencil');
-            animContainer.classList.remove('style-neon');
-            animContainer.classList.remove('style-poster');
-            animContainer.classList.remove('style-retro');
-            
-            if (currentVideoStyle && currentVideoStyle !== 'none') {
-                animContainer.classList.add('style-' + currentVideoStyle);
-                
-                // Dynamic overrides for styles with sliders
-                if (currentVideoStyle === 'neon') {
-                    const level = parseInt(document.getElementById('styleNeonLevel').value);
-                    filters.push(`invert(1) hue-rotate(180deg) brightness(${1.0 + level/5}) contrast(${1.5 + level/10}) saturate(${1.5 + level/5})`);
-                    video.style.boxShadow = `0 0 ${level * 10}px #ff00ff44`;
-                } else if (currentVideoStyle === 'poster') {
-                    const level = parseInt(document.getElementById('stylePosterLevel').value);
-                    // Update the SVG filter discrete steps
-                    const filter = document.getElementById('svg-posterize');
-                    const steps = [];
-                    for(let i=0; i<level; i++) steps.push(i/(level-1));
-                    const tableValues = steps.join(' ');
-                    filter.querySelectorAll('feFuncR, feFuncG, feFuncB').forEach(f => f.setAttribute('tableValues', tableValues));
-                } else if (currentVideoStyle === 'retro') {
-                    const level = parseInt(document.getElementById('styleRetroLevel').value);
-                    filters.push(`sepia(${level/10}) contrast(${1.0 + level/20}) brightness(${1.0 + level/50})`);
-                    animContainer.style.background = `linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, ${level/40}) 50%)`;
-                    animContainer.style.backgroundSize = `100% ${Math.max(2, 12 - level)}px`;
+            try {
+                // Ensure flash keyframes are generated
+                if (typeof updateFlashIntensityDisplay === 'function') {
+                    updateFlashIntensityDisplay();
                 }
-            }
-            
-            // Sync container play state
-            animContainer.style.animationPlayState = video.paused ? 'paused' : 'running';
 
-            // Remove special animation overlays
-            const progBar = document.getElementById('global-progress-bar');
-            if (progBar) progBar.remove();
-            const particles = document.getElementById('global-particles');
-            if (particles) particles.remove();
-            
-            // Apply global animations to container
-            if (activeAnimations.cameraGlare && animationToggles.cameraGlare !== false) {
-                animContainer.classList.add('glare-animation');
-            }
-            if (activeAnimations.vhs && animationToggles.vhs !== false) {
-                animContainer.classList.add('vhs-animation');
-            }
-            if (activeAnimations.kenBurns && animationToggles.kenBurns !== false) {
-                animContainer.classList.add('kenburns-animation');
-            }
-            if (activeAnimations.scanlines && animationToggles.scanlines !== false) {
-                animContainer.classList.add('scanlines-animation');
-            }
-            if (activeAnimations.heartbeat && animationToggles.heartbeat !== false) {
-                animContainer.classList.add('heartbeat-animation');
-            }
-            if (activeAnimations.tiltShift && animationToggles.tiltShift !== false) {
-                animContainer.classList.add('tiltshift-animation');
-            }
-            if (activeAnimations.audioBorder && animationToggles.audioBorder !== false) {
-                animContainer.classList.add('audioborder-animation');
-            }
-            if (activeAnimations.progressBar && animationToggles.progressBar !== false) {
-                const barContainer = document.createElement('div');
-                barContainer.id = 'global-progress-bar';
-                barContainer.className = 'progressbar-container';
-                const barFill = document.createElement('div');
-                barFill.id = 'global-progress-fill';
-                barFill.className = 'progress-bar-fill';
-                barContainer.appendChild(barFill);
-                document.querySelector('.video-wrapper').appendChild(barContainer);
-            }
-            if (activeAnimations.particles && animationToggles.particles !== false) {
-                const overlay = document.createElement('div');
-                overlay.id = 'global-particles';
-                overlay.className = 'particles-overlay';
-                document.querySelector('.video-wrapper').appendChild(overlay);
-            }
+                // Check if face tracking is enabled and preserve its transform
+                const faceTracking = document.getElementById('faceTracking');
+                const faceTrackingEnabled = faceTracking ? faceTracking.checked : false;
+                const faceZoomEl = document.getElementById('faceZoomLevel');
+                const faceTrackingZoom = (faceTrackingEnabled && faceZoomEl) ? parseFloat(faceZoomEl.value) : null;
 
-            // Apply each active timeline effect
-            for (const effectType of activeEffects) {
-                switch (effectType) {
-                    case 'cameraGlare':
-                        animContainer.classList.add('glare-animation');
-                        break;
-                    case 'outline':
-                        // Handled via updateOutlineEffect below
-                        break;
-                    case 'mirror':
-                        transforms.push('scaleX(-1)');
-                        break;
-                    case 'grayscale':
-                        filters.push('grayscale(100%)');
-                        break;
-                    case 'sepia':
-                        filters.push('sepia(100%)');
-                        break;
-                    case 'blur':
-                        filters.push('blur(5px)');
-                        break;
-                    case 'zoom':
-                        finalScale *= 1.2;
-                        break;
-                    case 'glitch':
-                        filters.push('hue-rotate(90deg) contrast(1.5)');
-                        transforms.push('skewX(2deg)');
-                        break;
-                    case 'vhs':
-                        filters.push('sepia(0.2) brightness(1.1) contrast(1.2) saturate(1.2)');
-                        break;
-                    case 'neon':
-                        filters.push('invert(1) hue-rotate(180deg) brightness(1.5) contrast(2)');
-                        break;
-                    case 'vignette':
-                        // CSS Vignette approximation
-                        filters.push('brightness(0.8) contrast(1.2)');
-                        break;
-                    case 'cinematic':
-                        finalScale *= 1.1;
-                        break;
-                    case 'vibrance':
-                        filters.push('saturate(1.8) contrast(1.1)');
-                        break;
-                    case 'shake':
-                        animContainer.classList.add('shake-animation');
-                        break;
-                    case 'pixelate':
-                        // Closest CSS filter without complex shaders
-                        filters.push('blur(4px) contrast(2) brightness(1.1)');
-                        break;
-                }
-            }
-
-            // Re-apply face tracking transform
-            if (faceTrackingEnabled && faceTrackingZoom) {
-                finalScale *= faceTrackingZoom;
-                
-                const isLandscape = video.videoWidth > video.videoHeight;
-                video.style.transformOrigin = isLandscape ? 'center 35%' : 'center 45%';
+                // Reset video styles to base state
+                video.style.transition = 'none';
+                video.style.transformOrigin = 'center center';
+                video.style.opacity = '1';
+                video.style.visibility = 'visible';
+                video.style.display = 'block';
+                video.style.zIndex = '1';
                 video.style.objectFit = 'cover';
-            }
 
-            // FINAL STAGE PIXELATION (MATCH EXPORT)
-            if (currentVideoStyle === 'pixels') {
-                const pxLevel = parseInt(document.getElementById('stylePixelsLevel').value);
-                // Dynamically update CSS variables for the pixelate filter
-                video.style.setProperty('--px-blur', `${pxLevel / 2}px`);
-                video.style.setProperty('--px-contrast', `${1 + pxLevel / 4}`);
+                let transforms = [];
+                let filters = [];
+                let finalScale = 1.0;
+
+                // Target the video itself for animations now that structure is flat
+                video.classList.remove('shake-animation', 'glare-animation', 'vhs-animation', 'kenburns-animation', 'scanlines-animation', 'heartbeat-animation', 'tiltshift-animation', 'audioborder-animation');
+                video.classList.remove('style-pixels', 'style-paint', 'style-pencil', 'style-neon', 'style-poster', 'style-retro');
+
+                if (currentVideoStyle && currentVideoStyle !== 'none') {
+                    video.classList.add('style-' + currentVideoStyle);
+
+                    // Dynamic overrides for styles with sliders
+                    if (currentVideoStyle === 'neon') {
+                        const levelEl = document.getElementById('styleNeonLevel');
+                        const level = levelEl ? parseInt(levelEl.value) : 5;
+                        filters.push(`invert(1) hue-rotate(180deg) brightness(${1.0 + level/5}) contrast(${1.5 + level/10}) saturate(${1.5 + level/5})`);
+                        video.style.boxShadow = `0 0 ${level * 10}px #ff00ff44`;
+                    } else if (currentVideoStyle === 'poster') {
+                        const levelEl = document.getElementById('stylePosterLevel');
+                        const level = levelEl ? parseInt(levelEl.value) : 4;
+                        const filter = document.getElementById('svg-posterize');
+                        if (filter) {
+                            const steps = [];
+                            for(let i=0; i<level; i++) steps.push(i/(level-1));
+                            const tableValues = steps.join(' ');
+                            filter.querySelectorAll('feFuncR, feFuncG, feFuncB').forEach(f => f.setAttribute('tableValues', tableValues));
+                        }
+                    } else if (currentVideoStyle === 'retro') {
+                        const levelEl = document.getElementById('styleRetroLevel');
+                        const level = levelEl ? parseInt(levelEl.value) : 5;
+                        filters.push(`sepia(${level/10}) contrast(${1.0 + level/20}) brightness(${1.0 + level/50})`);
+                    }
+                }
                 
-                video.style.width = '100%';
-                video.style.height = '100%';
-                video.style.objectFit = 'contain';
-            } else {
-                video.style.width = '100%';
-                video.style.height = '100%';
-                video.style.objectFit = 'contain';
+                // Sync play state
+                video.style.animationPlayState = video.paused ? 'paused' : 'running';
+
+                // Remove special animation overlays
+                const progBar = document.getElementById('global-progress-bar');
+                if (progBar) progBar.remove();
+                const particles = document.getElementById('global-particles');
+                if (particles) particles.remove();
+                
+                // Apply global animations to video
+                if (activeAnimations.cameraGlare && animationToggles.cameraGlare !== false) video.classList.add('glare-animation');
+                if (activeAnimations.vhs && animationToggles.vhs !== false) video.classList.add('vhs-animation');
+                if (activeAnimations.kenBurns && animationToggles.kenBurns !== false) video.classList.add('kenburns-animation');
+                if (activeAnimations.scanlines && animationToggles.scanlines !== false) video.classList.add('scanlines-animation');
+                if (activeAnimations.heartbeat && animationToggles.heartbeat !== false) video.classList.add('heartbeat-animation');
+                if (activeAnimations.tiltShift && animationToggles.tiltShift !== false) video.classList.add('tiltshift-animation');
+                if (activeAnimations.audioBorder && animationToggles.audioBorder !== false) video.classList.add('audioborder-animation');
+                if (activeAnimations.shake && animationToggles.shake !== false) video.classList.add('shake-animation');
+
+                if (activeAnimations.progressBar && animationToggles.progressBar !== false) {
+                    const barContainer = document.createElement('div');
+                    barContainer.id = 'global-progress-bar';
+                    barContainer.className = 'progressbar-container';
+                    const barFill = document.createElement('div');
+                    barFill.id = 'global-progress-fill';
+                    barFill.className = 'progress-bar-fill';
+                    barContainer.appendChild(barFill);
+                    const wrapper = document.querySelector('.video-wrapper');
+                    if (wrapper) wrapper.appendChild(barContainer);
+                }
+                if (activeAnimations.particles && animationToggles.particles !== false) {
+                    const overlay = document.createElement('div');
+                    overlay.id = 'global-particles';
+                    overlay.className = 'particles-overlay';
+                    const wrapper = document.querySelector('.video-wrapper');
+                    if (wrapper) wrapper.appendChild(overlay);
+                }
+
+                // Apply each active timeline effect
+                for (const effectType of activeEffects) {
+                    switch (effectType) {
+                        case 'cameraGlare': video.classList.add('glare-animation'); break;
+                        case 'mirror': transforms.push('scaleX(-1)'); break;
+                        case 'grayscale': filters.push('grayscale(100%)'); break;
+                        case 'sepia': filters.push('sepia(100%)'); break;
+                        case 'blur': filters.push('blur(5px)'); break;
+                        case 'zoom': finalScale *= 1.2; break;
+                        case 'glitch': 
+                            filters.push('hue-rotate(90deg) contrast(1.5)'); 
+                            transforms.push('skewX(2deg)'); 
+                            break;
+                        case 'vhs': filters.push('sepia(0.2) brightness(1.1) contrast(1.2) saturate(1.2)'); break;
+                        case 'neon': filters.push('invert(1) hue-rotate(180deg) brightness(1.5) contrast(2)'); break;
+                        case 'vignette': filters.push('brightness(0.8) contrast(1.2)'); break;
+                        case 'cinematic': finalScale *= 1.1; break;
+                        case 'vibrance': filters.push('saturate(1.8) contrast(1.1)'); break;
+                        case 'shake': video.classList.add('shake-animation'); break;
+                        case 'pixelate': filters.push('blur(4px) contrast(2) brightness(1.1)'); break;
+                    }
+                }
+
+                // Re-apply face tracking transform
+                if (faceTrackingEnabled && faceTrackingZoom) {
+                    finalScale *= faceTrackingZoom;
+                    const isLandscape = video.videoWidth > video.videoHeight;
+                    video.style.transformOrigin = isLandscape ? 'center 35%' : 'center 45%';
+                }
+
+                // FINAL STAGE PIXELATION
+                if (currentVideoStyle === 'pixels') {
+                    const pxLevelEl = document.getElementById('stylePixelsLevel');
+                    const pxLevel = pxLevelEl ? parseInt(pxLevelEl.value) : 8;
+                    video.style.setProperty('--px-blur', `${pxLevel / 2}px`);
+                    video.style.setProperty('--px-contrast', `${1 + pxLevel / 4}`);
+                }
+
+                if (finalScale !== 1.0) transforms.push(`scale(${finalScale})`);
+                video.style.transform = transforms.join(' ');
+                
+                const b = document.getElementById('lightBrightness')?.value || 100;
+                const c = document.getElementById('lightContrast')?.value || 100;
+                const s = document.getElementById('lightSaturation')?.value || 100;
+                const e = parseFloat(document.getElementById('lightExposure')?.value || 0);
+                
+                filters.push(`brightness(${b}%)`);
+                filters.push(`contrast(${c}%)`);
+                filters.push(`saturate(${s}%)`);
+                if (e !== 0) filters.push(`brightness(${100 + (e * 20)}%)`);
+
+                video.style.filter = filters.join(' ');
+                updateOutlineEffect();
+            } catch (err) {
+                console.error('❌ Error in applyVideoEffects:', err);
             }
-
-            // Apply consolidated scale
-            if (finalScale !== 1.0) {
-                transforms.push(`scale(${finalScale})`);
-            }
-
-            // Apply combined styles
-            video.style.transform = transforms.join(' ');
-            
-            // Add lighting effects to filters
-            const b = document.getElementById('lightBrightness')?.value || 100;
-            const c = document.getElementById('lightContrast')?.value || 100;
-            const s = document.getElementById('lightSaturation')?.value || 100;
-            const e = parseFloat(document.getElementById('lightExposure')?.value || 0);
-            
-            // Convert to CSS values
-            filters.push(`brightness(${b}%)`);
-            filters.push(`contrast(${c}%)`);
-            filters.push(`saturate(${s}%)`);
-            if (e !== 0) {
-                // Approximate exposure with brightness/contrast combination for preview
-                filters.push(`brightness(${100 + (e * 20)}%)`);
-            }
-
-            video.style.filter = filters.join(' ');
-
-            // Handle outline effect separately with canvas overlay
-            updateOutlineEffect();
         }
 
         // Outline effect variables
@@ -6493,6 +7360,7 @@
 
             // Continue detection loop
             if (videoElement && !videoElement.paused && hasOutline) {
+                if (outlineAnimationId) cancelAnimationFrame(outlineAnimationId);
                 outlineAnimationId = requestAnimationFrame(() => processVideoForFaceDetection());
             }
         }
@@ -6555,8 +7423,11 @@
             ctx.globalAlpha = 1.0;
         }
 
+        let isProcessingFace = false;
         // Process video frame for face detection
         async function processVideoForFaceDetection() {
+            if (isProcessingFace) return;
+            
             const isGlobalOutline = activeAnimations.outline && animationToggles.outline !== false;
             const hasOutline = activeEffects.has('outline') || isGlobalOutline;
 
@@ -6573,7 +7444,12 @@
             canvas.height = rect.height;
 
             // Send video frame to face detection
-            await faceDetection.send({image: video});
+            try {
+                isProcessingFace = true;
+                await faceDetection.send({image: video});
+            } finally {
+                isProcessingFace = false;
+            }
         }
 
         // Update outline effect visibility and drawing
@@ -7866,7 +8742,8 @@
                         duration: m.duration,
                         posX: m.posX,
                         posY: m.posY,
-                        scale: m.scale
+                        scale: m.scale,
+                        layer: m.layer || 0
                     }))
                 })),
                 logoFiles: logoFiles.map(l => ({ id: l.id, name: l.name })),
@@ -7877,7 +8754,8 @@
                     brollName: m.brollName,
                     start: m.start,
                     end: m.end,
-                    duration: m.duration
+                    duration: m.duration,
+                    layer: m.layer || 0
                 })),
                 animations: activeAnimations,
                 animationToggles: animationToggles
@@ -8094,7 +8972,8 @@
                                 duration: markerData.duration,
                                 posX: markerData.posX || 50,
                                 posY: markerData.posY || 50,
-                                scale: markerData.scale || 1.0
+                                scale: markerData.scale || 1.0,
+                                layer: markerData.layer || 0
                             };
                             imageMarkers.push(marker);
                             createImageMarker(marker);
@@ -8122,7 +9001,8 @@
                             brollName: m.brollName,
                             start: m.start,
                             end: m.end,
-                            duration: m.duration
+                            duration: m.duration,
+                            layer: m.layer || 0
                         };
                         brollMarkers.push(marker);
                         createBrollMarker(marker);
@@ -8169,6 +9049,8 @@
             }
 
             // Final sync of all visual states
+            recalculateLanes('image');
+            recalculateLanes('broll');
             applyVideoEffects();
             updateTimeline();
         }
