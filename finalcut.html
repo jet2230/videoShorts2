@@ -1017,6 +1017,7 @@
             align-items: center;
             gap: 10px;
             overflow: hidden; /* Prevent buttons from being pushed out */
+            position: relative;
         }
 
         .timeline-track-wrapper {
@@ -1211,6 +1212,40 @@
             width: 100%;
             height: 100%;
             display: block;
+        }
+
+        .timeline-magnet-btn {
+            position: absolute;
+            top: 2px;
+            left: 30px;
+            width: 20px;
+            height: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 2000;
+            font-size: 11px;
+            transition: all 0.2s ease;
+            color: #888;
+            user-select: none;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+        }
+
+        .timeline-magnet-btn:hover {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.4);
+            color: #fff;
+        }
+
+        .timeline-magnet-btn.active {
+            color: #00ff9d;
+            border-color: #00ff9d;
+            background: rgba(0, 255, 157, 0.1);
+            box-shadow: 0 0 10px rgba(0, 255, 157, 0.2);
         }
 
         .timeline-video {
@@ -2005,6 +2040,7 @@
                     👤 Face Tracking
                 </div>
                 <div class="timeline-container">
+                    <div class="timeline-magnet-btn" id="timelineMagnet" title="Toggle Snapping (Magnet)" onclick="toggleSnapping(event)">🧲</div>
                     <button class="timeline-effect-btn intro-btn" onclick="togglePanel('intro')" data-panel="intro">
                         📥
                         <span class="tooltip">Intro</span>
@@ -4417,6 +4453,27 @@
             return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
         }
 
+        let snappingEnabled = true;
+
+        function toggleSnapping(e) {
+            if (e) {
+                e.stopPropagation();
+                e.preventDefault();
+            }
+            snappingEnabled = !snappingEnabled;
+            const btn = document.getElementById('timelineMagnet');
+            if (btn) {
+                if (snappingEnabled) btn.classList.add('active');
+                else btn.classList.remove('active');
+            }
+        }
+
+        // Initialize magnet state
+        document.addEventListener('DOMContentLoaded', () => {
+            const btn = document.getElementById('timelineMagnet');
+            if (btn && snappingEnabled) btn.classList.add('active');
+        });
+
         // Timeline hover tooltip - initialize directly
         (function() {
             const track = document.getElementById('timelineTrack');
@@ -4434,12 +4491,41 @@
 
             wrapper.addEventListener('mousemove', (e) => {
                 const rect = track.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const percent = Math.max(0, Math.min(1, x / rect.width));
+                let x = e.clientX - rect.left;
+                let percent = Math.max(0, Math.min(1, x / rect.width));
+                
                 const mainDuration = getEffectiveDuration();
                 const outroDuration = (outroVideo && outroVideo.enabled) ? outroVideo.duration : 0;
                 const displayDuration = mainDuration + outroDuration;
-                const hoverTime = percent * displayDuration;
+                
+                let hoverTime = percent * displayDuration;
+
+                // Implement Snapping if enabled
+                if (snappingEnabled && displayDuration > 0) {
+                    const pixelsPerSecond = rect.width / displayDuration;
+                    
+                    // Same logic as ruler to find tick density
+                    let secondsPerTick = 1;
+                    if (pixelsPerSecond > 50) secondsPerTick = 1;
+                    else if (pixelsPerSecond > 20) secondsPerTick = 2;
+                    else if (pixelsPerSecond > 10) secondsPerTick = 5;
+                    else if (pixelsPerSecond > 5) secondsPerTick = 10;
+                    else if (pixelsPerSecond > 2) secondsPerTick = 30;
+                    else secondsPerTick = 60;
+
+                    const minorTickDiv = (secondsPerTick >= 5) ? 5 : 2;
+                    const snapInterval = secondsPerTick / minorTickDiv;
+                    
+                    // Snap time to nearest interval
+                    const snappedTime = Math.round(hoverTime / snapInterval) * snapInterval;
+                    
+                    // Only snap if mouse is close enough (e.g., within 10 pixels)
+                    const snappedX = (snappedTime / displayDuration) * rect.width;
+                    if (Math.abs(x - snappedX) < 10) {
+                        hoverTime = snappedTime;
+                        percent = snappedTime / displayDuration;
+                    }
+                }
 
                 tooltip.textContent = formatTimeSeconds(hoverTime);
                 // Position tooltip to the right of the cursor
