@@ -553,13 +553,19 @@
 
         /* Theme clip preview - 9:16 aspect ratio for YouTube Shorts */
         .preview-wrapper {
-            aspect-ratio: 9/16;
-            height: 500px;
-            max-height: 500px;
-            width: fit-content !important;
+            position: relative;
             background: #000;
-            display: block;
+            border-radius: 0;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            height: 65vh;
+            width: calc(65vh * 9 / 16);
+            border: 1px solid #333;
             margin: 0 auto 16px auto;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
         }
 
         video {
@@ -574,6 +580,7 @@
             width: 100% !important;
             height: 100% !important;
             object-fit: cover !important;
+            display: block !important;
         }
 
         /* Universal Subtitle Canvas */
@@ -829,7 +836,8 @@
             height: 25px;
             background: #111;
             border-bottom: 2px solid #333;
-            pointer-events: none;
+            pointer-events: auto; /* Enable clicks */
+            cursor: crosshair;
             overflow: hidden;
             border-top-left-radius: 8px;
             border-top-right-radius: 8px;
@@ -2416,6 +2424,9 @@
                 
                 if (wrapper.classList.contains('preview-wrapper')) {
                     // Shorts preview is strictly 9:16
+                    // Maintain the 65vh height set in CSS
+                    wrapper.style.height = '65vh';
+                    wrapper.style.width = 'calc(65vh * 9 / 16)';
                     wrapper.style.aspectRatio = '9/16';
                 } else {
                     // Original video matches content
@@ -5150,53 +5161,63 @@
                 themeBox.classList.remove('highlight-right');
             });
 
+            // Helper for unified timeline seeking logic
+            function seekFromMouseEvent(e, trackElement) {
+                const rect = trackElement.getBoundingClientRect();
+                let x = e.clientX - rect.left;
+                let percent = Math.max(0, Math.min(1, x / rect.width));
+                
+                let totalDuration, startTimeOffset;
+                if (timelineZoomed) {
+                    const bufferStart = Math.max(0, originalStartSeconds - bufferLeftSeconds);
+                    const bufferEnd = Math.min(fullVideoDuration, originalEndSeconds + bufferRightSeconds);
+                    totalDuration = bufferEnd - bufferStart;
+                    startTimeOffset = bufferStart;
+                } else {
+                    totalDuration = fullVideoDuration;
+                    startTimeOffset = 0;
+                }
+                
+                let seekTimeRelative = percent * totalDuration;
+                let seekTimeAbsolute = startTimeOffset + seekTimeRelative;
+
+                // Snapping logic for seek
+                if (snappingEnabled && totalDuration > 0) {
+                    const pixelsPerSecond = rect.width / totalDuration;
+                    let secondsPerTick = 1;
+                    if (pixelsPerSecond > 60) secondsPerTick = 1;
+                    else if (pixelsPerSecond > 30) secondsPerTick = 2;
+                    else if (pixelsPerSecond > 15) secondsPerTick = 5;
+                    else if (pixelsPerSecond > 8) secondsPerTick = 10;
+                    else if (pixelsPerSecond > 4) secondsPerTick = 30;
+                    else if (pixelsPerSecond > 2) secondsPerTick = 60;   // 1 min
+                    else if (pixelsPerSecond > 1) secondsPerTick = 120;  // 2 min
+                    else if (pixelsPerSecond > 0.5) secondsPerTick = 300; // 5 min
+                    else if (pixelsPerSecond > 0.2) secondsPerTick = 600; // 10 min
+                    else secondsPerTick = 1200; // 20 min
+
+                    const minorTickDiv = (secondsPerTick >= 60) ? 4 : ((secondsPerTick >= 5) ? 5 : 2);
+                    const snapInterval = secondsPerTick / minorTickDiv;
+                    const snappedTimeRelative = Math.round(seekTimeRelative / snapInterval) * snapInterval;
+                    const snappedX = (snappedTimeRelative / totalDuration) * rect.width;
+                    if (Math.abs(x - snappedX) < 15) {
+                        seekTimeAbsolute = startTimeOffset + snappedTimeRelative;
+                    }
+                }
+
+                originalVideo.currentTime = seekTimeAbsolute;
+            }
+
             // Timeline click to seek (snapping aware)
             timelineTrack.addEventListener('mousedown', (e) => {
                 if (e.target !== handleLeft && e.target !== handleRight && e.target !== themeBox && e.target !== themeBoxContent) {
-                    const rect = timelineTrack.getBoundingClientRect();
-                    let x = e.clientX - rect.left;
-                    let percent = Math.max(0, Math.min(1, x / rect.width));
-                    
-                    let totalDuration, startTimeOffset;
-                    if (timelineZoomed) {
-                        const bufferStart = Math.max(0, originalStartSeconds - bufferLeftSeconds);
-                        const bufferEnd = Math.min(fullVideoDuration, originalEndSeconds + bufferRightSeconds);
-                        totalDuration = bufferEnd - bufferStart;
-                        startTimeOffset = bufferStart;
-                    } else {
-                        totalDuration = fullVideoDuration;
-                        startTimeOffset = 0;
-                    }
-                    
-                    let seekTimeRelative = percent * totalDuration;
-                    let seekTimeAbsolute = startTimeOffset + seekTimeRelative;
-
-                    // Snapping logic for seek
-                    if (snappingEnabled && totalDuration > 0) {
-                        const pixelsPerSecond = rect.width / totalDuration;
-                        let secondsPerTick = 1;
-                        if (pixelsPerSecond > 60) secondsPerTick = 1;
-                        else if (pixelsPerSecond > 30) secondsPerTick = 2;
-                        else if (pixelsPerSecond > 15) secondsPerTick = 5;
-                        else if (pixelsPerSecond > 8) secondsPerTick = 10;
-                        else if (pixelsPerSecond > 4) secondsPerTick = 30;
-                        else if (pixelsPerSecond > 2) secondsPerTick = 60;   // 1 min
-                        else if (pixelsPerSecond > 1) secondsPerTick = 120;  // 2 min
-                        else if (pixelsPerSecond > 0.5) secondsPerTick = 300; // 5 min
-                        else if (pixelsPerSecond > 0.2) secondsPerTick = 600; // 10 min
-                        else secondsPerTick = 1200; // 20 min
-
-                        const minorTickDiv = (secondsPerTick >= 60) ? 4 : ((secondsPerTick >= 5) ? 5 : 2);
-                        const snapInterval = secondsPerTick / minorTickDiv;
-                        const snappedTimeRelative = Math.round(seekTimeRelative / snapInterval) * snapInterval;
-                        const snappedX = (snappedTimeRelative / totalDuration) * rect.width;
-                        if (Math.abs(x - snappedX) < 10) {
-                            seekTimeAbsolute = startTimeOffset + snappedTimeRelative;
-                        }
-                    }
-
-                    originalVideo.currentTime = seekTimeAbsolute;
+                    seekFromMouseEvent(e, timelineTrack);
                 }
+            });
+
+            // Ruler click to seek
+            document.getElementById('timelineRulerContainer')?.addEventListener('mousedown', (e) => {
+                seekFromMouseEvent(e, document.getElementById('timelineRulerContainer'));
             });
 
             document.addEventListener('mousemove', (e) => {

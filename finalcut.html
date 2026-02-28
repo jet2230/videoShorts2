@@ -1018,14 +1018,18 @@
             gap: 10px;
             overflow: hidden; /* Prevent buttons from being pushed out */
             position: relative;
-            height: 160px; /* Fixed height for entire timeline area */
+            height: auto;
+            max-height: 250px; /* Allow growth but cap it */
+            min-height: 160px;
         }
 
         .timeline-track-wrapper {
             flex: 1;
-            height: 155px; /* Fixed height including ruler and scrollbar space */
+            height: auto;
+            max-height: 240px;
+            min-height: 155px;
             overflow-x: auto;
-            overflow-y: hidden;
+            overflow-y: auto; /* Enable vertical scrolling */
             scrollbar-width: thin;
             scrollbar-color: rgba(0, 255, 157, 0.4) transparent;
             min-width: 0;
@@ -1034,6 +1038,7 @@
 
         .timeline-track-wrapper::-webkit-scrollbar {
             height: 8px;
+            width: 6px; /* Added width for vertical scrollbar */
             background: transparent;
         }
 
@@ -1187,7 +1192,8 @@
 
         .timeline-track {
             position: relative;
-            height: 125px; /* Increased height for stacking */
+            height: auto;
+            min-height: 125px;
             background: #1a1a1a;
             border-radius: 8px;
             overflow: visible;
@@ -1201,6 +1207,7 @@
             background-image: linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px);
             background-size: 100% 25px;
             margin-top: 25px; /* Space for ruler */
+            padding-bottom: 50px; /* Buffer for extra layers */
         }
 
         .timeline-ruler {
@@ -1211,7 +1218,8 @@
             height: 25px;
             background: #111;
             border-bottom: 2px solid #333;
-            pointer-events: none;
+            pointer-events: auto; /* Enable clicks */
+            cursor: crosshair;
             overflow: hidden;
             border-top-left-radius: 8px;
             border-top-right-radius: 8px;
@@ -1316,6 +1324,12 @@
             z-index: 90;
             display: none;
             box-shadow: 0 0 5px rgba(0, 255, 157, 0.3);
+        }
+
+        .timeline-marker.selected, .effect-marker.selected {
+            border: 2px solid #00ff9d !important;
+            box-shadow: 0 0 15px rgba(0, 255, 157, 0.8) !important;
+            z-index: 100 !important;
         }
 
         .trim-handle {
@@ -1965,10 +1979,14 @@
                 🎨
                 <span class="tooltip">Style</span>
             </button>
+            <button class="tool-btn" onclick="togglePanel('settings')" data-panel="settings">
+                ⚙️
+                <span class="tooltip">Settings</span>
+            </button>
         </div>
 
         <!-- Video Info - Fixed to Left Side -->
-        <div class="video-info" id="videoInfo" style="position: fixed; top: 110px; left: 5px; z-index: 10000; background: rgba(0,0,0,0.8); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(0,255,157,0.3); pointer-events: none; font-size: 10px; max-width: 200px; backdrop-filter: blur(10px);">
+        <div class="video-info" id="videoInfo" style="position: fixed; top: 110px; left: 5px; z-index: 10000; background: rgba(0,0,0,0.8); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(0,255,157,0.3); pointer-events: auto; font-size: 10px; max-width: 200px; backdrop-filter: blur(10px);">
             Loading video info...
         </div>
 
@@ -1982,8 +2000,8 @@
                 <video id="brollOverlayVideo" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10 !important; object-fit: cover; opacity: 0; transition: opacity 0.3s ease;" muted></video>
                 <video id="outroOverlayVideo" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 13 !important; object-fit: contain; opacity: 0; transition: opacity 0.3s ease;" muted></video>
                 <canvas id="outlineCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 11 !important; display: none !important;"></canvas>
-                <div id="imageOverlay"></div>
-                <div id="logoOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 14 !important; display: block !important;"></div>
+                <div id="imageOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20 !important; display: block !important;"></div>
+                <div id="logoOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 21 !important; display: block !important;"></div>
                 <canvas id="subtitleCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 15 !important;"></canvas>
                 
                 <!-- Draggable Title -->
@@ -2866,6 +2884,23 @@
         </div>
     </div>
 
+    <!-- Settings Panel -->
+    <div class="tool-panel right" id="panel-settings">
+        <button class="close-panel" onclick="closePanel('settings')">×</button>
+        <h3><span class="icon">⚙️</span> Editor Settings</h3>
+        
+        <div class="control-group">
+            <label>Timeline Snapping</label>
+            <div class="checkbox-item" id="snappingToggleRow" onclick="toggleSnapping(event)">
+                <input type="checkbox" id="settingSnappingEnabled" style="display: none;">
+                <span id="snappingStatusLabel">🧲 Snapping Enabled</span>
+            </div>
+            <p style="font-size: 10px; color: #888; margin-top: 5px;">
+                Snap playhead and hover line to ruler segments.
+            </p>
+        </div>
+    </div>
+
     <!-- Intro Panel -->
     <div class="tool-panel left" id="panel-intro">
         <button class="close-panel" onclick="closePanel('intro')">×</button>
@@ -3004,6 +3039,44 @@
         let imageFiles = [];
         let imageMarkers = [];
         let logoFiles = [];
+        let logoMarkers = [];
+        let selectedItem = null; // { type: 'image'|'broll'|'subtitle', id: string, data: object }
+
+        function selectItem(type, id, data) {
+            // Remove previous selection styling
+            document.querySelectorAll('.timeline-marker, .effect-marker').forEach(el => {
+                el.classList.remove('selected');
+            });
+
+            if (selectedItem && selectedItem.id === id) {
+                // Toggle off
+                selectedItem = null;
+            } else {
+                selectedItem = { type, id, data };
+                const el = document.getElementById(id);
+                if (el) el.classList.add('selected');
+            }
+
+            // Update all markers' visual state immediately
+            imageMarkers.forEach(m => {
+                if (m.element) {
+                    if (selectedItem && m.id === selectedItem.id) m.element.classList.add('selected');
+                    else m.element.classList.remove('selected');
+                }
+            });
+            brollMarkers.forEach(m => {
+                if (m.element) {
+                    if (selectedItem && m.id === selectedItem.id) m.element.classList.add('selected');
+                    else m.element.classList.remove('selected');
+                }
+            });
+
+            // Force visual refresh for canvas items
+            checkImageMarkers();
+            checkBrollMarkers();
+            renderSubtitlesAtCurrentTime();
+        }
+
         let activeLogo = {
             enabled: false,
             id: null,
@@ -3166,11 +3239,10 @@
                     <div style="margin-bottom: 2px;"><strong>${videoTitle}</strong></div>
                     <div style="color: #fff; margin-bottom: 2px;">Theme ${themeNumber}: <span title="${adjustedTitle.replace(/"/g, '&quot;')}">${displayThemeTitle}</span></div>
                     <div style="font-size: 9px; opacity: 0.8;">
-                        Folder: <span title="${escapedFolder}" style="cursor: help; border-bottom: 1px dotted #00ff9d;">${displayFolder}</span> | 
-                        <span>${themeStart} - ${themeEnd}</span>
+                        Folder: <span title="${escapedFolder}" style="cursor: help; border-bottom: 1px dotted #00ff9d;">${displayFolder}</span>
+                        <div style="margin-top: 2px; color: #00ff9d;">${themeStart} - ${themeEnd}</div>
                     </div>
                 `;
-
                 // Auto-check re-burn for themes
                 if (themeNumber) {
                     document.getElementById('reburnSubtitles').checked = true;
@@ -4162,6 +4234,19 @@
             }
 
             subtitleRenderer.renderFrame(adjustedTime, subtitleText, highlightedWordIndex);
+
+            // Draw selection outline for subtitle if it's the selected item
+            if (selectedItem && selectedItem.type === 'subtitle' && selectedItem.data === currentCue) {
+                const ctx = subtitleRenderer.ctx;
+                const padding = 20;
+                ctx.save();
+                ctx.strokeStyle = '#00ff9d';
+                ctx.lineWidth = 5;
+                ctx.setLineDash([15, 10]); // Dashed line for subtitles
+                // Use a reasonable bounding box for subtitles (center-bottom area)
+                ctx.strokeRect(50, 1400, 980, 400); 
+                ctx.restore();
+            }
         }
 
         function getEffectiveDuration() {
@@ -4362,72 +4447,77 @@
             positionMarker.style.left = `${selectedTimelinePosition * 100}%`;
         }
 
+        // Helper for unified timeline seeking logic
+        function seekFromMouseEvent(e, trackElement) {
+            const rect = trackElement.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            let percent = Math.max(0, Math.min(1, x / rect.width));
+
+            const mainDuration = getEffectiveDuration();
+            const outroDuration = (outroVideo && outroVideo.enabled) ? outroVideo.duration : 0;
+            const displayDuration = mainDuration + outroDuration;
+            
+            let targetTime = percent * displayDuration;
+
+            // Implement Snapping if enabled
+            if (snappingEnabled && displayDuration > 0) {
+                const pixelsPerSecond = rect.width / displayDuration;
+                
+                // Same logic as ruler to find tick density
+                let secondsPerTick = 1;
+                if (pixelsPerSecond > 50) secondsPerTick = 1;
+                else if (pixelsPerSecond > 20) secondsPerTick = 2;
+                else if (pixelsPerSecond > 10) secondsPerTick = 5;
+                else if (pixelsPerSecond > 5) secondsPerTick = 10;
+                else if (pixelsPerSecond > 2) secondsPerTick = 30;
+                else secondsPerTick = 60;
+
+                const minorTickDiv = (secondsPerTick >= 5) ? 5 : 2;
+                const snapInterval = secondsPerTick / minorTickDiv;
+                
+                // Snap time to nearest interval
+                const snappedTime = Math.round(targetTime / snapInterval) * snapInterval;
+                
+                // Only snap if click is close enough
+                const snappedX = (snappedTime / displayDuration) * rect.width;
+                if (Math.abs(x - snappedX) < 15) {
+                    targetTime = snappedTime;
+                    percent = snappedTime / displayDuration;
+                }
+            }
+
+            selectedTimelinePosition = percent;
+            const themeStartOffset = video.dataset.themeStart ? parseFloat(video.dataset.themeStart) : 0;
+            
+            if (targetTime <= mainDuration) {
+                video.currentTime = themeStartOffset + targetTime;
+                outroPlaying = false;
+                outroCompleted = false;
+            } else {
+                video.currentTime = themeStartOffset + mainDuration;
+                if (outroVideo && outroVideo.enabled) {
+                    const elapsedInOutro = targetTime - mainDuration;
+                    outroPlaying = true;
+                    outroStartTime = Date.now() - (elapsedInOutro * 1000);
+                    outroCompleted = false;
+                    checkOutroVideo();
+                }
+            }
+            
+            updatePositionMarker();
+            updatePlayhead();
+        }
+
         // Timeline click to seek and track position
         timelineTrack.addEventListener('click', (e) => {
             if (e.target !== trimStart && e.target !== trimEnd) {
-                const rect = timelineTrack.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                let percent = Math.max(0, Math.min(1, x / rect.width));
-
-                const mainDuration = getEffectiveDuration();
-                const outroDuration = (outroVideo && outroVideo.enabled) ? outroVideo.duration : 0;
-                const displayDuration = mainDuration + outroDuration;
-                
-                let targetTime = percent * displayDuration;
-
-                // Implement Snapping if enabled
-                if (snappingEnabled && displayDuration > 0) {
-                    const pixelsPerSecond = rect.width / displayDuration;
-                    
-                    // Same logic as ruler to find tick density
-                    let secondsPerTick = 1;
-                    if (pixelsPerSecond > 50) secondsPerTick = 1;
-                    else if (pixelsPerSecond > 20) secondsPerTick = 2;
-                    else if (pixelsPerSecond > 10) secondsPerTick = 5;
-                    else if (pixelsPerSecond > 5) secondsPerTick = 10;
-                    else if (pixelsPerSecond > 2) secondsPerTick = 30;
-                    else secondsPerTick = 60;
-
-                    const minorTickDiv = (secondsPerTick >= 5) ? 5 : 2;
-                    const snapInterval = secondsPerTick / minorTickDiv;
-                    
-                    // Snap time to nearest interval
-                    const snappedTime = Math.round(targetTime / snapInterval) * snapInterval;
-                    
-                    // Only snap if click is close enough (e.g., within 10 pixels)
-                    const snappedX = (snappedTime / displayDuration) * rect.width;
-                    if (Math.abs(x - snappedX) < 10) {
-                        targetTime = snappedTime;
-                        percent = snappedTime / displayDuration;
-                    }
-                }
-
-                selectedTimelinePosition = percent; // Track selected position relative to full timeline
-                
-                const themeStartOffset = video.dataset.themeStart ? parseFloat(video.dataset.themeStart) : 0;
-                
-                // If it's in the main video area, seek video
-                if (targetTime <= mainDuration) {
-                    video.currentTime = themeStartOffset + targetTime;
-                    outroPlaying = false; // Stop outro if we seek back to main video
-                    outroCompleted = false;
-                } else {
-                    // It's in the outro area - video can only be at the end
-                    video.currentTime = themeStartOffset + mainDuration;
-                    
-                    // Start or seek the outro
-                    if (outroVideo && outroVideo.enabled) {
-                        const elapsedInOutro = targetTime - mainDuration;
-                        outroPlaying = true;
-                        outroStartTime = Date.now() - (elapsedInOutro * 1000);
-                        outroCompleted = false;
-                        checkOutroVideo();
-                    }
-                }
-                
-                updatePositionMarker();
-                updatePlayhead();
+                seekFromMouseEvent(e, timelineTrack);
             }
+        });
+
+        // Ruler click to seek
+        document.getElementById('timelineRulerContainer')?.addEventListener('click', (e) => {
+            seekFromMouseEvent(e, document.getElementById('timelineRulerContainer'));
         });
 
         // Trim handle dragging
@@ -4491,7 +4581,7 @@
             return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
         }
 
-        let snappingEnabled = true;
+        let snappingEnabled = localStorage.getItem('fc_snapping_enabled') !== 'false'; // Default to true
 
         function toggleSnapping(e) {
             if (e) {
@@ -4499,17 +4589,43 @@
                 e.preventDefault();
             }
             snappingEnabled = !snappingEnabled;
+            localStorage.setItem('fc_snapping_enabled', snappingEnabled);
+            
+            // Update quick toggle button
             const btn = document.getElementById('timelineMagnet');
             if (btn) {
                 if (snappingEnabled) btn.classList.add('active');
                 else btn.classList.remove('active');
+            }
+
+            // Update settings panel UI
+            const settingCheckbox = document.getElementById('settingSnappingEnabled');
+            const settingLabel = document.getElementById('snappingStatusLabel');
+            if (settingCheckbox) settingCheckbox.checked = snappingEnabled;
+            if (settingLabel) {
+                settingLabel.textContent = snappingEnabled ? '🧲 Snapping Enabled' : '🚫 Snapping Disabled';
+                if (snappingEnabled) settingLabel.parentElement.classList.add('active');
+                else settingLabel.parentElement.classList.remove('active');
             }
         }
 
         // Initialize magnet state
         document.addEventListener('DOMContentLoaded', () => {
             const btn = document.getElementById('timelineMagnet');
-            if (btn && snappingEnabled) btn.classList.add('active');
+            if (btn) {
+                if (snappingEnabled) btn.classList.add('active');
+                else btn.classList.remove('active');
+            }
+            
+            // Also sync settings panel UI on load
+            const settingCheckbox = document.getElementById('settingSnappingEnabled');
+            const settingLabel = document.getElementById('snappingStatusLabel');
+            if (settingCheckbox) settingCheckbox.checked = snappingEnabled;
+            if (settingLabel) {
+                settingLabel.textContent = snappingEnabled ? '🧲 Snapping Enabled' : '🚫 Snapping Disabled';
+                if (snappingEnabled) settingLabel.parentElement.classList.add('active');
+                else settingLabel.parentElement.classList.remove('active');
+            }
         });
 
         // Timeline hover tooltip - initialize directly
@@ -5374,6 +5490,16 @@
             markerEl.style.display = 'flex';
             markerEl.style.alignItems = 'center';
             markerEl.style.justifyContent = 'center';
+            markerEl.style.cursor = 'pointer';
+
+            markerEl.onclick = (e) => {
+                e.stopPropagation();
+                selectItem('broll', markerData.id, markerData);
+            };
+
+            if (selectedItem && selectedItem.id === markerData.id) {
+                markerEl.classList.add('selected');
+            }
             
             // Text label for the marker
             const label = document.createElement('div');
@@ -5901,6 +6027,16 @@
             marker.style.justifyContent = 'center';
             marker.style.overflow = 'visible';
             marker.title = `🖼️ ${markerData.imageName}`;
+            marker.style.cursor = 'pointer';
+
+            marker.onclick = (e) => {
+                e.stopPropagation();
+                selectItem('image', markerData.id, markerData);
+            };
+
+            if (selectedItem && selectedItem.id === markerData.id) {
+                marker.classList.add('selected');
+            }
 
             // Add Icon
             const icon = document.createElement('span');
@@ -7006,8 +7142,12 @@
                     container.style.width = `${activeMarker.scale * 40}%`;
                 } else if (container.dataset.isDragging === 'true') {
                     const rect = overlay.getBoundingClientRect();
-                    activeMarker.posX = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-                    activeMarker.posY = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+                    const deltaX = ((e.clientX - parseInt(container.dataset.startMouseX)) / rect.width) * 100;
+                    const deltaY = ((e.clientY - parseInt(container.dataset.startMouseY)) / rect.height) * 100;
+                    
+                    activeMarker.posX = Math.max(0, Math.min(100, parseFloat(container.dataset.startPosX) + deltaX));
+                    activeMarker.posY = Math.max(0, Math.min(100, parseFloat(container.dataset.startPosY) + deltaY));
+                    
                     container.style.left = `${activeMarker.posX}%`;
                     container.style.top = `${activeMarker.posY}%`;
                 }
@@ -7029,6 +7169,11 @@
                     document.body.style.cursor = 'nwse-resize';
                 } else { 
                     container.dataset.isDragging = 'true'; 
+                    // Record start positions for relative dragging
+                    container.dataset.startPosX = activeMarker.posX;
+                    container.dataset.startPosY = activeMarker.posY;
+                    container.dataset.startMouseX = e.clientX;
+                    container.dataset.startMouseY = e.clientY;
                     document.body.style.cursor = 'move';
                 }
                 
@@ -7087,7 +7232,7 @@
                     container.className = 'image-overlay-container';
                     // Base z-index 10, plus layer (offset)
                     const zIndex = 10 + (activeMarker.layer || 0);
-                    container.style.cssText = `position:absolute;left:${activeMarker.posX}%;top:${activeMarker.posY}%;transform:translate(-50%,-50%);width:${activeMarker.scale * 40}%;z-index:${zIndex};border:2px solid #00ff9d;background:rgba(0,0,0,0.2);min-width:50px;min-height:50px;pointer-events:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#00ff9d;font-size:12px;text-align:center;overflow:visible;`;
+                    container.style.cssText = `position:absolute;left:${activeMarker.posX}%;top:${activeMarker.posY}%;transform:translate(-50%,-50%);width:${activeMarker.scale * 40}%;z-index:${zIndex};border:none;background:rgba(0,0,0,0.2);min-width:50px;min-height:50px;pointer-events:auto;display:flex !important; opacity: 1 !important; visibility: visible !important; flex-direction:column;align-items:center;justify-content:center;color:#00ff9d;font-size:12px;text-align:center;overflow:visible;`;
                     
                     const infoText = document.createElement('div');
                     infoText.innerHTML = `<b>${activeMarker.imageName}</b><br>Loading...`;
@@ -7106,6 +7251,9 @@
                             container.innerHTML = '';
                             container.appendChild(imgEl);
                             container.appendChild(handle);
+                            
+                            // Setup interactions only after image is ready
+                            setupImageContainerInteractions(container, activeMarker, handle);
                         };
                         imgEl.onerror = () => {
                             infoText.innerHTML = `<span style="color:#ff4444">Error loading image</span>`;
@@ -7124,10 +7272,21 @@
                         renderImage(`/media/${img.serverPath.split('/').map(part => encodeURIComponent(part)).join('/')}`);
                     }
 
-                    // Setup interactions
-                    setupImageContainerInteractions(container, activeMarker, handle);
+                    // Also allow clicking to select on canvas
+                    container.onclick = (e) => {
+                        if (container.dataset.isDragging === 'true' || container.dataset.isResizing === 'true') return;
+                        e.stopPropagation();
+                        selectItem('image', activeMarker.id, activeMarker);
+                    };
                     
                     currentlyActiveImages.set(activeMarker.id, container);
+
+                    // Draw outline if selected
+                    if (selectedItem && selectedItem.id === activeMarker.id) {
+                        container.style.outline = '3px solid #00ff9d';
+                        container.style.outlineOffset = '2px';
+                        container.style.boxShadow = '0 0 20px rgba(0, 255, 157, 0.6)';
+                    }
                 } else {
                     // Update existing container's position and scale if changed (e.g. during drag)
                     const zIndex = 10 + (activeMarker.layer || 0);
@@ -7135,6 +7294,16 @@
                     container.style.top = `${activeMarker.posY}%`;
                     container.style.width = `${activeMarker.scale * 40}%`;
                     container.style.zIndex = zIndex;
+
+                    // Draw outline if selected
+                    if (selectedItem && selectedItem.id === activeMarker.id) {
+                        container.style.outline = '3px solid #00ff9d';
+                        container.style.outlineOffset = '2px';
+                        container.style.boxShadow = '0 0 20px rgba(0, 255, 157, 0.6)';
+                    } else {
+                        container.style.outline = 'none';
+                        container.style.boxShadow = 'none';
+                    }
                 }
             });
         }
@@ -7179,6 +7348,8 @@
                     brollVideo.dataset.activeMarkerId = activeMarker.id;
                     brollVideo.src = brollUrl;
                     brollVideo.load(); // Ensure source is loaded
+                    brollVideo.style.display = 'block';
+                    brollVideo.style.objectFit = 'cover';
                     
                     // Set z-index based on layer (base 10)
                     brollVideo.style.setProperty('z-index', (10 + (activeMarker.layer || 0)).toString(), 'important');
@@ -7191,11 +7362,13 @@
                     requestAnimationFrame(() => {
                         brollVideo.classList.add('active');
                         brollVideo.style.opacity = '1';
+                        brollVideo.play().catch(e => console.warn('Broll play failed:', e));
                     });
                 } else if (!brollVideo.classList.contains('active')) {
                     // Force active if it was removed by cleanup but we're still on the same marker
                     brollVideo.classList.add('active');
                     brollVideo.style.opacity = '1';
+                    if (!video.paused) brollVideo.play().catch(e => console.warn('Broll play failed:', e));
                 }
 
                 // Calculate where we are in the broll segment relative to combined duration
@@ -7212,6 +7385,16 @@
                     brollVideo.play().catch(e => console.warn('Broll play failed:', e));
                 } else if (video.paused && !brollVideo.paused) {
                     brollVideo.pause();
+                }
+
+                // Draw outline if selected
+                if (selectedItem && selectedItem.id === activeMarker.id) {
+                    brollVideo.style.outline = '3px solid #00ff9d';
+                    brollVideo.style.outlineOffset = '-3px'; 
+                    brollVideo.style.boxShadow = 'inset 0 0 30px rgba(0, 255, 157, 0.6)';
+                } else {
+                    brollVideo.style.outline = 'none';
+                    brollVideo.style.boxShadow = 'none';
                 }
             } else {
                 if (brollVideo.dataset.activeMarkerId) {
@@ -7236,6 +7419,7 @@
                             brollVideo.src = '';
                             brollVideo.className = '';
                             brollVideo.style.opacity = '0';
+                            brollVideo.style.display = 'none';
                         }
                     }, 400); // Match CSS transition duration
                 }
@@ -9468,13 +9652,23 @@
 
         // Save preset with name from input
         function savePreset() {
-            const presetName = document.getElementById('presetNameInput').value.trim();
+            const presetNameInput = document.getElementById('presetNameInput');
+            if (!presetNameInput) return;
+            const presetName = presetNameInput.value.trim();
             if (!presetName) {
                 showNotification('Please enter a preset name', 'error');
                 return;
             }
 
-            const settings = getCurrentSettings();
+            let settings;
+            try {
+                settings = getCurrentSettings();
+            } catch (err) {
+                console.error('Error gathering settings:', err);
+                showNotification('Error gathering settings', 'error');
+                return;
+            }
+
             const key = `videoEditor_${videoPath}`;
 
             // Get existing presets or create new object
@@ -9501,18 +9695,26 @@
                 savedAt: new Date().toISOString()
             };
 
-            localStorage.setItem(key, JSON.stringify(presets));
-            showNotification(`Preset "${presetName}" saved!`, 'success');
+            try {
+                localStorage.setItem(key, JSON.stringify(presets));
+                showNotification(`Preset "${presetName}" saved!`, 'success');
+                
+                // Hide box and clear input
+                toggleSaveInput();
+                presetNameInput.value = '';
 
-            // Refresh the presets list if it's visible
-            const loadBox = document.getElementById('loadPresetsBox');
-            if (loadBox.style.display !== 'none') {
+                // Refresh the presets list if it's visible
+                const loadBox = document.getElementById('loadPresetsBox');
+                if (loadBox && loadBox.style.display !== 'none') {
+                    refreshPresetsList();
+                }
+                
+                // Update save list too
                 refreshPresetsList();
+            } catch (err) {
+                console.error('Error saving to storage:', err);
+                showNotification('Error saving preset', 'error');
             }
-
-            // Clear input and hide box
-            document.getElementById('presetNameInput').value = '';
-            document.getElementById('savePresetBox').style.display = 'none';
         }
 
         // Handle Enter key in preset name input
