@@ -7540,8 +7540,20 @@ function createImageMarker(markerData) {
             }
 
             if (activeMarker) {
-                const brollInfo = brollFiles[activeMarker.brollIndex];
-                const brollPath = (brollInfo && brollInfo.path) ? brollInfo.path : activeMarker.brollName;
+                // Find broll path from library/files or fallback to name
+                let brollPath = '';
+                const brollInfo = brollFiles.find(f => f.name === activeMarker.brollName);
+                
+                if (brollInfo && brollInfo.path) {
+                    brollPath = brollInfo.path;
+                } else {
+                    brollPath = activeMarker.brollName;
+                    // If no folder prefix, default to video/
+                    if (brollPath && !brollPath.includes('/')) {
+                        brollPath = 'video/' + brollPath;
+                    }
+                }
+
                 const brollUrl = '/media/' + brollPath.split('/').map(part => encodeURIComponent(part)).join('/');
 
                 if (brollVideo.dataset.activeMarkerId !== activeMarker.id) {
@@ -9462,27 +9474,55 @@ function createImageMarker(markerData) {
 
             // Apply audio
             if (settings.audio) {
-                document.getElementById('audioVolume').value = settings.audio.volume || 100;
-                document.getElementById('audioVolumeValue').textContent = (settings.audio.volume || 100) + '%';
-                document.getElementById('originalAudioVolume').value = settings.audio.originalVolume || 50;
-                document.getElementById('originalAudioVolumeValue').textContent = (settings.audio.originalVolume || 50) + '%';
-                
+                console.log('🎵 Restoring audio settings:', settings.audio);
+                const audioVolume = document.getElementById('audioVolume');
+                const audioVolumeValue = document.getElementById('audioVolumeValue');
+                const originalAudioVolume = document.getElementById('originalAudioVolume');
+                const originalAudioVolumeValue = document.getElementById('originalAudioVolumeValue');
+
+                if (audioVolume) {
+                    audioVolume.value = settings.audio.volume || 100;
+                    if (audioVolumeValue) audioVolumeValue.textContent = (settings.audio.volume || 100) + '%';
+                }
+                if (originalAudioVolume) {
+                    originalAudioVolume.value = settings.audio.originalVolume || 50;
+                    if (originalAudioVolumeValue) originalAudioVolumeValue.textContent = (settings.audio.originalVolume || 50) + '%';
+                    video.volume = Math.min(1.0, (settings.audio.originalVolume || 50) / 100);
+                }
+
                 if (settings.audio.file) {
+                    console.log('🎵 Restoring audio file:', settings.audio.file);
                     // For loaded projects, we don't have the File object, but we have the server path
-                    audioFile = { name: settings.audio.file };
-                    previewAudio.src = `/media/${encodeURIComponent(settings.audio.file)}`;
+                    audioFile = { name: settings.audio.file.split('/').pop(), path: settings.audio.file };
+
+                    const audioUrl = `/media/${settings.audio.file.split('/').map(part => encodeURIComponent(part)).join('/')}`;
+                    console.log('🎵 Setting previewAudio.src to:', audioUrl);
+
+                    previewAudio.src = audioUrl;
                     previewAudio.load(); // Explicitly load the new source
                     const vol = settings.audio.volume || 100;
                     previewAudio.volume = Math.min(1.0, vol / 100);
-                    
-                    document.getElementById('audioFilename').textContent = settings.audio.file;
-                    document.querySelector('#panel-audio .file-upload').classList.add('has-file');
-                    document.getElementById('audioTrack').style.display = 'block';
-                    document.getElementById('audioMasterToggle').style.setProperty('display', 'flex', 'important');
-                    document.getElementById('audioEnabled').checked = true;
+                    previewAudio.muted = false;
+
+                    const audioFilename = document.getElementById('audioFilename');
+                    if (audioFilename) audioFilename.textContent = audioFile.name;
+
+                    const fileUpload = document.querySelector('#panel-audio .file-upload');
+                    if (fileUpload) fileUpload.classList.add('has-file');
+
+                    if (audioTrack) audioTrack.style.display = 'block';
+                    const masterToggle = document.getElementById('audioMasterToggle');
+                    if (masterToggle) masterToggle.style.setProperty('display', 'flex', 'important');
+
+                    const audioEnabled = document.getElementById('audioEnabled');
+                    if (audioEnabled) audioEnabled.checked = true;
+                } else {
+                    console.log('🎵 No audio file in preset');
+                    audioFile = null;
+                    previewAudio.src = '';
+                    if (audioTrack) audioTrack.style.display = 'none';
                 }
             }
-
             // Apply intro
             if (settings.intro) {
                 document.getElementById('introEffect').value = settings.intro.effect || 'none';
@@ -9656,14 +9696,8 @@ function createImageMarker(markerData) {
             }
 
             // Apply B-roll
-            if ((settings.brollFiles || settings.broll_markers) && Array.isArray(settings.brollFiles || [])) {
+            if (settings.brollFiles || settings.broll_markers || settings.brollMarkers) {
                 console.log('🎬 Restoring B-roll data...');
-                brollFiles = (settings.brollFiles || []).map(f => ({ 
-                    name: f.name, 
-                    path: f.path || ('video/' + f.name),
-                    duration: f.duration || 5
-                }));
-                console.log('🎬 Restored brollFiles:', brollFiles);
                 
                 brollMarkers.forEach(m => {
                     if (m.element) m.element.remove();
@@ -9671,28 +9705,47 @@ function createImageMarker(markerData) {
                 });
                 brollMarkers = [];
 
+                // Rebuild brollFiles if missing
+                if (settings.brollFiles) {
+                    brollFiles = settings.brollFiles.map(f => ({ 
+                        name: f.name, 
+                        path: f.path || ('video/' + f.name),
+                        duration: f.duration || 5
+                    }));
+                }
+
                 const markersToRestore = settings.brollMarkers || settings.broll_markers || [];
                 console.log('🎬 Found markers to restore:', markersToRestore.length);
                 
                 markersToRestore.forEach((m, idx) => {
                     console.log(`🎬 Processing marker ${idx}:`, m);
+                    
+                    const name = m.brollName || m.name;
+                    
+                    // Add to brollFiles if not there
+                    if (!brollFiles.some(f => f.name === name)) {
+                        brollFiles.push({
+                            name: name,
+                            path: 'video/' + name,
+                            duration: m.duration || 5
+                        });
+                    }
+
                     // Handle both old format (start/end percentages) and new format (start_time/end_time seconds)
                     let startPos = m.start;
                     let endPos = m.end;
                     
                     if (startPos === undefined && m.start_time !== undefined) {
                         startPos = m.start_time / (displayDuration || 1);
-                        console.log(`   - Calculated startPos from start_time: ${startPos}`);
                     }
                     if (endPos === undefined && m.end_time !== undefined) {
                         endPos = m.end_time / (displayDuration || 1);
-                        console.log(`   - Calculated endPos from end_time: ${endPos}`);
                     }
 
                     const marker = {
                         id: 'brollmarker_' + Math.random().toString(36).substr(2, 9),
-                        brollIndex: m.brollIndex !== undefined ? m.brollIndex : 0,
-                        brollName: m.brollName || m.name,
+                        brollIndex: brollFiles.findIndex(f => f.name === name),
+                        brollName: name,
                         start: startPos !== undefined ? startPos : 0,
                         end: endPos !== undefined ? endPos : 0.1,
                         duration: m.duration || (m.end_time - m.start_time) || 5,
@@ -9700,7 +9753,6 @@ function createImageMarker(markerData) {
                         transition: m.transition || 'fade'
                     };
                     
-                    console.log('  - Final created marker object:', marker);
                     brollMarkers.push(marker);
                     createBrollMarker(marker);
                 });
