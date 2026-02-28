@@ -1765,14 +1765,18 @@
     <div id="timelineTimeTooltip">00:00</div>
     <div id="notification" class="notification"></div>
     <div class="header">
-        <a href="index.html" class="back-link">
+        <a href="/" class="back-link">
             <span>←</span> Back to Main
         </a>
         <div style="flex-grow: 1; text-align: center;">
             <h1 style="margin: 0; font-size: 18px;" id="header-title">Adjust Theme</h1>
             <p style="margin: 0; font-size: 13px; color: #aaa;" id="header-theme-name"></p>
         </div>
-        <div></div>
+        <div style="width: 120px; text-align: right;">
+            <button onclick="goToFinalCut()" class="action-btn primary" style="padding: 8px 12px; font-size: 12px; white-space: nowrap;">
+                🎬 Final Cut
+            </button>
+        </div>
     </div>
 
     <div id="loading" class="loading">Loading theme details...</div>
@@ -2474,6 +2478,18 @@
         let dragStartValueEnd = 0;
         let videoControlsLocked = false; // Video controls lock state
         let timelineZoomed = false; // Timeline zoom state (zoom to buffer)
+        // Redirect to Final Cut editor
+        function goToFinalCut() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const folder = urlParams.get('folder');
+            const theme = urlParams.get('theme');
+            if (folder && theme) {
+                window.location.href = `finalcut.html?folder=${folder}&theme=${theme}`;
+            } else {
+                showNotification('Missing folder or theme parameters', 'error');
+            }
+        }
+
         let videoFps = 30; // Default FPS, will be updated from metadata if possible
         let snappingEnabled = true;
 

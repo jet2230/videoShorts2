@@ -654,8 +654,11 @@
             pointer-events: auto;
         }
 
-        .video-wrapper:hover .video-controls-overlay {
-            opacity: 1;
+        .video-wrapper:hover .video-controls-overlay,
+        .video-wrapper:hover #videoSeekbar,
+        .video-wrapper:hover #videoTimeDisplay {
+            opacity: 1 !important;
+            pointer-events: auto;
         }
 
         .control-btn {
@@ -1901,7 +1904,6 @@
             <button class="action-btn secondary" id="loadBtn" onclick="toggleLoadPresets()">📂 Load</button>
             <button class="action-btn secondary" id="saveBtn" onclick="toggleSaveInput()">💾 Save</button>
             <button class="action-btn secondary" onclick="resetAll()">↺ Reset</button>
-            <button class="action-btn secondary" onclick="previewChanges()">👁️ Preview</button>
             <div class="primary-wrapper">
                 <div class="export-dropdown">
                     <div class="export-option fast" onclick="exportWithQuality('fast', event)">
@@ -2806,8 +2808,19 @@
         <div class="file-upload" onclick="document.getElementById('logoFile').click()">
             <input type="file" id="logoFile" accept="image/*,.eps" onchange="handleLogoUpload(this)">
             <div class="icon">🏢</div>
-            <div class="text">Add Logo</div>
+            <div class="text">Upload new logo</div>
         </div>
+
+        <div style="margin-top: 15px; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 15px;">
+            <label style="display: block; font-size: 11px; color: #aaa; margin-bottom: 8px; text-transform: uppercase;">Logo Library</label>
+            <div style="margin-bottom: 8px;">
+                <input type="text" id="logoSearch" placeholder="Search logos..." style="width: 100%; padding: 6px 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: #fff; font-size: 11px;" oninput="filterLogoLibrary(this.value)">
+            </div>
+            <div id="logoLibrary" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 4px;">
+                <div style="padding: 15px; text-align: center; color: #666; font-size: 11px;">Loading library...</div>
+            </div>
+        </div>
+
         <div id="logoList" style="margin-top: 15px;"></div>
         <div class="control-group" style="margin-top: 15px;">
             <label class="checkbox-item" title="Make logo cover the entire width of the video">
@@ -3039,6 +3052,7 @@
         let brollMarkers = [];
         let imageFiles = [];
         let imageMarkers = [];
+        let logoLibraryFiles = []; // Store fetched logo library files
         let logoFiles = [];
         let logoMarkers = [];
         let selectedItem = null; // { type: 'image'|'broll'|'subtitle', id: string, data: object }
@@ -3227,8 +3241,33 @@
                 }, { once: true });
 
                 video.addEventListener('error', (e) => {
-                    console.error('Video error:', video.error);
-                    showNotification('Error loading video: ' + (video.error ? video.error.message : 'Unknown error'), 'error');
+                    console.error('Video error details:', video.error);
+                    const errorMsg = video.error ? video.error.message : 'Unknown error';
+                    const currentTime = video.currentTime;
+                    
+                    // Don't show error if it's just a transient abort
+                    if (video.error && video.error.code === 4) return; 
+
+                    showNotification(
+                        `Video playback interrupted: ${errorMsg}. Attempting to recover...`, 
+                        'error', 
+                        10000
+                    );
+
+                    // Automatic recovery attempt
+                    setTimeout(() => {
+                        console.log('🔄 Attempting video recovery at:', currentTime);
+                        const currentSrc = video.src;
+                        video.src = ''; // Clear
+                        video.load();
+                        video.src = currentSrc; // Restore
+                        
+                        video.addEventListener('loadedmetadata', () => {
+                            video.currentTime = currentTime;
+                            if (!video.paused) video.play().catch(() => {});
+                            showNotification('Video recovered', 'success');
+                        }, { once: true });
+                    }, 1000);
                 });
 
                 const folderName = data.folder || '';
@@ -3492,6 +3531,20 @@
             const btn = document.getElementById('playPauseBtn');
             if (btn) btn.textContent = '⏸';
             video.style.animationPlayState = 'running';
+            
+            const wrapper = document.querySelector('.video-wrapper');
+            if (wrapper) wrapper.classList.add('playing');
+
+            // Hide canvas controls
+            const controls = document.getElementById('customControls');
+            if (controls) controls.style.opacity = '0';
+            
+            const seekbar = document.getElementById('videoSeekbar');
+            if (seekbar) seekbar.style.opacity = '0';
+            
+            const timeDisplay = document.getElementById('videoTimeDisplay');
+            if (timeDisplay) timeDisplay.style.opacity = '0';
+
             // Start outline face detection if active (global or timeline)
             const isGlobalOutline = activeAnimations.outline && animationToggles.outline !== false;
             if (activeEffects.has('outline') || isGlobalOutline) {
@@ -3523,6 +3576,19 @@
             if (btn) btn.textContent = '▶';
             video.style.animationPlayState = 'paused';
             previewAudio.pause();
+
+            const wrapper = document.querySelector('.video-wrapper');
+            if (wrapper) wrapper.classList.remove('playing');
+
+            // Show canvas controls
+            const controls = document.getElementById('customControls');
+            if (controls) controls.style.opacity = '1';
+            
+            const seekbar = document.getElementById('videoSeekbar');
+            if (seekbar) seekbar.style.opacity = '1';
+            
+            const timeDisplay = document.getElementById('videoTimeDisplay');
+            if (timeDisplay) timeDisplay.style.opacity = '1';
 
             // Pause outro video
             const outroVideo = document.getElementById('outroOverlayVideo');
@@ -4856,13 +4922,15 @@
             btn.classList.add('active');
             currentPanel = panelName;
 
-            // Load library if opening audio panel
+            // Load library if opening audio/image/logo panel
             if (panelName === 'audio') {
                 loadAudioLibrary();
             } else if (panelName === 'images') {
                 loadImageLibrary();
             } else if (panelName === 'broll') {
                 loadBrollLibrary();
+            } else if (panelName === 'logo') {
+                loadLogoLibrary();
             }
         }
 
@@ -5129,6 +5197,102 @@
             const searchTerm = document.getElementById('audioSearch').value;
             filterAudioLibrary(searchTerm);
         }
+        // Load logo library from server
+        async function loadLogoLibrary() {
+            const container = document.getElementById('logoLibrary');
+            if (!container) return;
+
+            // Clear search on load
+            const searchInput = document.getElementById('logoSearch');
+            if (searchInput) searchInput.value = '';
+
+            try {
+                const response = await fetch('/api/image-library?subfolder=logo');
+                if (response.ok) {
+                    logoLibraryFiles = await response.json();
+                    renderLogoLibrary(logoLibraryFiles);
+                } else {
+                    container.innerHTML = '<div style="padding:15px; text-align:center; color:#ff4444; font-size:11px;">Error loading library</div>';
+                }
+            } catch (error) {
+                console.error('Error loading logo library:', error);
+                container.innerHTML = '<div style="padding:15px; text-align:center; color:#ff4444; font-size:11px;">Error loading library</div>';
+            }
+        }
+
+        // Render logo library items
+        function renderLogoLibrary(files) {
+            const container = document.getElementById('logoLibrary');
+            if (!container) return;
+
+            if (files.length === 0) {
+                container.innerHTML = '<div style="padding:15px; text-align:center; color:#666; font-size:11px;">No logos found</div>';
+                return;
+            }
+
+            container.innerHTML = '';
+            files.forEach(file => {
+                const item = document.createElement('div');
+                item.className = 'audio-library-item'; // Reuse style
+                item.style.padding = '6px 8px';
+                
+                // Highlight if already in logoFiles
+                const isAdded = logoFiles.some(l => l.name === file.name);
+                if (isAdded) {
+                    item.style.borderLeft = '3px solid #00ff9d';
+                    item.style.background = 'rgba(0, 255, 157, 0.05)';
+                }
+
+                item.innerHTML = `
+                    <div style="width: 24px; height: 24px; background: #333; border-radius: 4px; display: flex; align-items: center; justify-content: center; margin-right: 8px; overflow: hidden; flex-shrink: 0;">
+                        <img src="/media/${file.path}" style="max-width: 100%; max-height: 100%; object-fit: contain;">
+                    </div>
+                    <span title="${file.name}">${file.name}</span>
+                    <button class="action-btn secondary" style="padding: 2px 8px; font-size: 10px; margin-left: auto;">
+                        ${isAdded ? 'Add More' : 'Add'}
+                    </button>
+                `;
+                item.onclick = () => selectLogoFromLibrary(file);
+                container.appendChild(item);
+            });
+        }
+
+        // Filter logo library
+        function filterLogoLibrary(term) {
+            term = term.toLowerCase();
+            const filtered = logoLibraryFiles.filter(f => f.name.toLowerCase().includes(term));
+            renderLogoLibrary(filtered);
+        }
+
+        // Select logo from library
+        function selectLogoFromLibrary(file) {
+            const logo = {
+                id: 'logo_' + Math.random().toString(36).substr(2, 9),
+                name: file.name,
+                serverPath: file.name // Note: API returns path relative to media/, but logo logic expects just filename if it's in logo/
+            };
+            
+            // Adjust path if it includes logo/
+            if (file.path.startsWith('logo/')) {
+                logo.serverPath = file.path;
+            } else {
+                logo.serverPath = 'logo/' + file.name;
+            }
+
+            logoFiles.push(logo);
+            updateLogoList();
+            
+            // Auto-select this logo as active
+            const newIndex = logoFiles.length - 1;
+            selectLogo(newIndex);
+            
+            showNotification(`Added ${file.name} to logos`, 'success');
+            
+            // Re-render library to update highlights
+            const searchTerm = document.getElementById('logoSearch').value;
+            filterLogoLibrary(searchTerm);
+        }
+
         // Load image library from server
         async function loadImageLibrary() {
             const container = document.getElementById('imageLibrary');

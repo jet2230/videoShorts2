@@ -3049,22 +3049,22 @@ def get_audio_library():
 
 @app.route('/api/image-library')
 def get_image_library():
-    """Returns a list of image files available in media/images."""
-    image_dir = Path('media/images')
+    """Returns a list of image files available in media/images or specified subfolder."""
+    subfolder = request.args.get('subfolder', 'images')
+    image_dir = Path('media') / subfolder
     if not image_dir.exists():
         return jsonify([])
-    
+
     image_files = []
-    for ext in ['*.png', '*.jpg', '*.jpeg', '*.webp', '*.eps']:
+    for ext in ['*.png', '*.jpg', '*.jpeg', '*.webp', '*.eps', '*.svg']:
         for f in image_dir.glob(ext):
             image_files.append({
                 'name': f.name,
-                'path': f'images/{f.name}'
+                'path': f'{subfolder}/{f.name}'
             })
-            
+
     image_files.sort(key=lambda x: x['name'].lower())
     return jsonify(image_files)
-
 @app.route('/api/broll-library')
 def get_broll_library():
     """Returns a list of video files available in media/video."""
