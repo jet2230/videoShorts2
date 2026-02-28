@@ -686,7 +686,7 @@
             height: auto;
             display: block;
             box-shadow: 0 0 30px rgba(0,0,0,0.5);
-            border: 2px solid #00ff9d; /* Bright green border for visibility */
+            border: none;
             border-radius: 4px;
             cursor: move;
             pointer-events: auto;
@@ -2750,16 +2750,6 @@
             <div class="filename" id="audioFilename"></div>
         </div>
 
-        <div style="margin-top: 15px; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 15px;">
-            <label style="display: block; font-size: 11px; color: #aaa; margin-bottom: 8px; text-transform: uppercase;">Audio Library</label>
-            <div style="margin-bottom: 8px;">
-                <input type="text" id="audioSearch" placeholder="Search audio..." style="width: 100%; padding: 6px 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: #fff; font-size: 11px;" oninput="filterAudioLibrary(this.value)">
-            </div>
-            <div id="audioLibrary" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 4px;">
-                <div style="padding: 15px; text-align: center; color: #666; font-size: 11px;">Loading library...</div>
-            </div>
-        </div>
-
         <div class="control-group" style="margin-top: 15px;">
             <label>Audio Volume</label>
             <div class="range-wrapper">
@@ -2772,6 +2762,16 @@
             <div class="range-wrapper">
                 <input type="range" id="originalAudioVolume" min="0" max="100" value="100">
                 <span class="value" id="originalAudioVolumeValue">100%</span>
+            </div>
+        </div>
+
+        <div style="margin-top: 15px; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 15px;">
+            <label style="display: block; font-size: 11px; color: #aaa; margin-bottom: 8px; text-transform: uppercase;">Audio Library</label>
+            <div style="margin-bottom: 8px;">
+                <input type="text" id="audioSearch" placeholder="Search audio..." style="width: 100%; padding: 6px 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: #fff; font-size: 11px;" oninput="filterAudioLibrary(this.value)">
+            </div>
+            <div id="audioLibrary" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 4px;">
+                <div style="padding: 15px; text-align: center; color: #666; font-size: 11px;">Loading library...</div>
             </div>
         </div>
     </div>
@@ -3034,6 +3034,7 @@
 
         let audioFile = null;
         let previewAudio = new Audio();
+        previewAudio.loop = true; // Loop background audio
         let brollFiles = [];
         let brollMarkers = [];
         let imageFiles = [];
@@ -3498,13 +3499,16 @@
             }
             const audioEnabled = document.getElementById('audioEnabled').checked;
             if (audioFile && audioEnabled) {
-                previewAudio.currentTime = video.currentTime;
+                console.log('🔊 Attempting to play previewAudio at:', video.currentTime);
+                previewAudio.currentTime = getEffectiveTime();
                 // Ensure volume and muted state are synced
                 const vol = document.getElementById('audioVolume').value;
                 previewAudio.volume = Math.min(1.0, vol / 100);
                 previewAudio.muted = false;
-                previewAudio.play().catch(e => {
-                    console.warn('Audio play failed:', e);
+                previewAudio.play().then(() => {
+                    console.log('✅ previewAudio playing');
+                }).catch(e => {
+                    console.warn('❌ Audio play failed:', e);
                 });
             }
 
@@ -3526,7 +3530,7 @@
         });
         
         video.addEventListener('seeking', () => {
-            previewAudio.currentTime = video.currentTime;
+            previewAudio.currentTime = getEffectiveTime();
             // Force previews to update during manual seek (e.g. dragging or keys)
             checkEffectMarkers();
             checkImageMarkers();
@@ -3546,7 +3550,7 @@
         });
 
         video.addEventListener('seeked', () => {
-            previewAudio.currentTime = video.currentTime;
+            previewAudio.currentTime = getEffectiveTime();
             checkEffectMarkers();
             checkImageMarkers();
             checkBrollMarkers();
@@ -5091,33 +5095,40 @@
 
         // Select audio from library
         function selectAudioFromLibrary(file) {
+            console.log('🎵 Selecting audio from library:', file);
             audioFile = { name: file.name, path: file.path };
             document.getElementById('audioFilename').textContent = file.name;
-            
+
             // Show audio track on timeline
             audioTrack.style.display = 'block';
             document.getElementById('audioMasterToggle').style.setProperty('display', 'flex', 'important');
             document.getElementById('audioEnabled').checked = true;
-            
+
             // Update preview audio
-            previewAudio.src = `/media/${file.path}`;
+            const audioUrl = `/media/${file.path.split('/').map(part => encodeURIComponent(part)).join('/')}`;
+            console.log('🎵 Setting previewAudio.src to:', audioUrl);
+
+            previewAudio.src = audioUrl;
             previewAudio.load();
+
             const vol = document.getElementById('audioVolume').value;
             previewAudio.volume = Math.min(1.0, vol / 100);
-            
+            previewAudio.muted = false; // Ensure not muted
+
             if (!video.paused) {
-                previewAudio.currentTime = video.currentTime;
-                previewAudio.muted = false;
-                previewAudio.play().catch(e => console.warn('Audio play failed:', e));
+                console.log('🎵 Video is playing, starting audio at:', video.currentTime);
+                previewAudio.currentTime = getEffectiveTime();
+                previewAudio.play().then(() => {
+                    console.log('✅ Audio library file playing');
+                }).catch(e => console.warn('❌ Audio play failed:', e));
             }
-            
+
             showNotification(`Selected ${file.name} from library`, 'success');
-            
+
             // Re-render library to update highlights
             const searchTerm = document.getElementById('audioSearch').value;
             filterAudioLibrary(searchTerm);
         }
-
         // Load image library from server
         async function loadImageLibrary() {
             const container = document.getElementById('imageLibrary');
@@ -5321,14 +5332,13 @@
                         previewAudio.load(); // Explicitly load the new source
                         const vol = document.getElementById('audioVolume').value;
                         previewAudio.volume = Math.min(1.0, vol / 100);
-                        
+                        previewAudio.muted = false; // Ensure not muted
+
                         // Immediately play if video is already playing
                         if (!video.paused) {
-                            previewAudio.currentTime = video.currentTime;
-                            previewAudio.muted = false;
+                            previewAudio.currentTime = getEffectiveTime();
                             previewAudio.play().catch(e => console.warn('Immediate audio play failed:', e));
-                        }
-                        
+                        }                        
                         showNotification(`${file.name} uploaded successfully`, 'success');
                     }
                 } catch (error) {
@@ -6382,7 +6392,7 @@
             // If video is playing, sync audio state immediately
             if (!video.paused) {
                 if (isEnabled && (audioFile || previewAudio.src)) {
-                    previewAudio.currentTime = video.currentTime;
+                    previewAudio.currentTime = getEffectiveTime();
                     previewAudio.play().catch(e => console.warn('Audio play failed:', e));
                 } else {
                     previewAudio.pause();
@@ -9725,16 +9735,20 @@
                 videoWrapper.addEventListener('click', (e) => {
                     // Ignore clicks on logo or image containers to prevent starting audio during drag
                     if (e.target.closest('#logoOverlayContainer') || 
-                        e.target.closest('#overlayContainer') || 
+                        e.target.closest('[id^="overlayContainer_"]') || 
                         e.target.closest('.image-resize-handle')) {
                         return;
                     }
-
                     if (previewAudio && previewAudio.paused) {
+                        console.log('🔓 Unlocking audio context...');
+                        previewAudio.muted = false;
                         // Play and immediately pause to "unlock" the audio element
                         previewAudio.play().then(() => {
+                            console.log('🔓 Audio context unlocked successfully');
                             previewAudio.pause();
-                        }).catch(() => {});
+                        }).catch((err) => {
+                            console.warn('🔓 Audio context unlock failed:', err);
+                        });
                     }
                 }, { once: true });
             }
