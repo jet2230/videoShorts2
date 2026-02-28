@@ -1018,30 +1018,39 @@
             gap: 10px;
             overflow: hidden; /* Prevent buttons from being pushed out */
             position: relative;
+            height: 160px; /* Fixed height for entire timeline area */
         }
 
         .timeline-track-wrapper {
             flex: 1;
+            height: 155px; /* Fixed height including ruler and scrollbar space */
             overflow-x: auto;
-            overflow-y: visible;
+            overflow-y: hidden;
             scrollbar-width: thin;
-            scrollbar-color: rgba(0, 255, 157, 0.6) rgba(255, 255, 255, 0.05);
+            scrollbar-color: rgba(0, 255, 157, 0.4) transparent;
             min-width: 0;
             position: relative;
         }
 
         .timeline-track-wrapper::-webkit-scrollbar {
-            height: 6px;
+            height: 8px;
+            background: transparent;
         }
 
         .timeline-track-wrapper::-webkit-scrollbar-track {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 3px;
+            background: transparent;
         }
 
         .timeline-track-wrapper::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            border: 2px solid transparent; /* Gives it some breathing room */
+            background-clip: content-box;
+        }
+
+        .timeline-track-wrapper:hover::-webkit-scrollbar-thumb {
             background: rgba(0, 255, 157, 0.3);
-            border-radius: 3px;
+            background-clip: content-box;
         }
 
         .frame-btn {
@@ -4357,15 +4366,44 @@
         timelineTrack.addEventListener('click', (e) => {
             if (e.target !== trimStart && e.target !== trimEnd) {
                 const rect = timelineTrack.getBoundingClientRect();
-                const percent = (e.clientX - rect.left) / rect.width;
-                selectedTimelinePosition = percent; // Track selected position relative to full timeline
+                const x = e.clientX - rect.left;
+                let percent = Math.max(0, Math.min(1, x / rect.width));
 
                 const mainDuration = getEffectiveDuration();
                 const outroDuration = (outroVideo && outroVideo.enabled) ? outroVideo.duration : 0;
                 const displayDuration = mainDuration + outroDuration;
                 
-                // Seek to time based on full timeline duration
-                const targetTime = percent * displayDuration;
+                let targetTime = percent * displayDuration;
+
+                // Implement Snapping if enabled
+                if (snappingEnabled && displayDuration > 0) {
+                    const pixelsPerSecond = rect.width / displayDuration;
+                    
+                    // Same logic as ruler to find tick density
+                    let secondsPerTick = 1;
+                    if (pixelsPerSecond > 50) secondsPerTick = 1;
+                    else if (pixelsPerSecond > 20) secondsPerTick = 2;
+                    else if (pixelsPerSecond > 10) secondsPerTick = 5;
+                    else if (pixelsPerSecond > 5) secondsPerTick = 10;
+                    else if (pixelsPerSecond > 2) secondsPerTick = 30;
+                    else secondsPerTick = 60;
+
+                    const minorTickDiv = (secondsPerTick >= 5) ? 5 : 2;
+                    const snapInterval = secondsPerTick / minorTickDiv;
+                    
+                    // Snap time to nearest interval
+                    const snappedTime = Math.round(targetTime / snapInterval) * snapInterval;
+                    
+                    // Only snap if click is close enough (e.g., within 10 pixels)
+                    const snappedX = (snappedTime / displayDuration) * rect.width;
+                    if (Math.abs(x - snappedX) < 10) {
+                        targetTime = snappedTime;
+                        percent = snappedTime / displayDuration;
+                    }
+                }
+
+                selectedTimelinePosition = percent; // Track selected position relative to full timeline
+                
                 const themeStartOffset = video.dataset.themeStart ? parseFloat(video.dataset.themeStart) : 0;
                 
                 // If it's in the main video area, seek video
