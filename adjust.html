@@ -3016,11 +3016,11 @@
                     const weight = wordObj.bold ? 'bold' : baseFontWeight;
                     const style = wordObj.italic ? 'italic' : '';
                     const size = baseFontSize * (wordObj.sizeMultiplier || 1.0) * scaleMultiplier;
-                    ctx.font = `${style} ${weight} ${size}px ${fontFamily}`;
+                    ctx.font = `${style} ${weight} ${size}px "${fontFamily}"`;
                 };
 
                 const maxWidth = canvas.width - (140 * scale); // Match server's conservative width (roughly 940/1080)
-                ctx.font = `${baseFontWeight} ${baseFontSize}px ${fontFamily}`;
+                ctx.font = `${baseFontWeight} ${baseFontSize}px "${fontFamily}"`;
                 const spaceWidth = ctx.measureText(' ').width;
                 const lines = [];
                 let currentLine = [];
@@ -3832,8 +3832,7 @@
 
             let css = '';
             fonts.forEach(font => {
-                // Only inject for non-system fonts (those likely in media/fonts)
-                // For simplicity, we can try to inject all - system fonts will just fail to load from /api/font/
+                // We inject both normal and bold rules pointing to same file as fallback
                 css += `
                 @font-face {
                     font-family: "${font}";
@@ -3841,9 +3840,21 @@
                     font-weight: normal;
                     font-style: normal;
                 }
+                @font-face {
+                    font-family: "${font}";
+                    src: url("/api/font/${encodeURIComponent(font)}") format("truetype");
+                    font-weight: bold;
+                    font-style: normal;
+                }
                 `;
             });
             styleEl.innerHTML = css;
+            
+            // Trigger a re-render once fonts are loaded
+            document.fonts.ready.then(() => {
+                console.log('✅ All fonts loaded, re-rendering preview');
+                updateSubtitlePreview();
+            });
         }
 
         // Load global position from server
@@ -6172,7 +6183,19 @@
                 autoSaveSubtitle(); // Auto-save subtitle edits
             }
         });
-        document.getElementById('subtitle-font').addEventListener('change', () => { updateSubtitlePreview(); saveGlobalPosition(globalPosition); });
+        document.getElementById('subtitle-font').addEventListener('change', async () => {
+            const fontName = document.getElementById('subtitle-font').value;
+            const fontWeight = document.getElementById('subtitle-bold').checked ? 'bold' : 'normal';
+            // Wait for font to load before updating preview
+            try {
+                await document.fonts.load(`${fontWeight} 16px "${fontName}"`);
+            } catch (e) {
+                // Font loading might fail, but still try to update preview
+                console.warn('Font loading timed out or failed:', e);
+            }
+            updateSubtitlePreview();
+            saveGlobalPosition(globalPosition);
+        });
         document.getElementById('subtitle-size').addEventListener('input', updateSubtitlePreview);
         document.getElementById('subtitle-size').addEventListener('change', () => { saveGlobalPosition(globalPosition); });
         document.getElementById('subtitle-bold').addEventListener('change', () => { updateSubtitlePreview(); saveGlobalPosition(globalPosition); });
