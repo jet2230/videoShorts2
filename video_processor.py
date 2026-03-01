@@ -655,9 +655,18 @@ class VideoProcessor:
             # Add audio fade out if enabled (MUST be in filter_complex if we already used it for mixing)
             if outro_settings.get('fadeAudio') and end_time:
                 main_dur = to_sec(end_time) - to_sec(start_time)
-                fade_st = max(0, main_dur - 1)
-                filter_complex.append(f"{last_a}afade=t=out:st={fade_st}:d=1[a_faded]")
-                last_a = "[a_faded]"
+                fade_mode = outro_settings.get('fadeMode', 'after')
+                
+                if fade_mode == 'before':
+                    # Use the specified outro duration for the audio fade leading up to the cut
+                    audio_fade_dur = float(outro_settings.get('duration', 1.0))
+                    fade_st = max(0, main_dur - audio_fade_dur)
+                    filter_complex.append(f"{last_a}afade=t=out:st={fade_st}:d={audio_fade_dur}[a_faded]")
+                    last_a = "[a_faded]"
+                else:
+                    # 'after' mode: Main video audio stays at 100% until the cut
+                    # (The background audio will continue and fade in the concatenated outro clip)
+                    pass
 
             cmd.extend(['-filter_complex', ";".join(filter_complex)])
             # Map the last result

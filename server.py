@@ -3712,20 +3712,26 @@ def run_edit_task(edit_id: str, input_video: str, output_video: str, edit_settin
                     # Common video filters
                     vf = 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(iw-ow)/2:(ih-oh)/2'
                     
+                    # Get actual duration for fade and trimming
+                    dur_cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', str(outro_path)]
+                    outro_dur_raw = subprocess.run(dur_cmd, capture_output=True).stdout.strip()
+                    try:
+                        actual_dur = float(outro_dur_raw) if outro_dur_raw else float(outro_video_data.get('duration', 3))
+                    except (ValueError, TypeError):
+                        actual_dur = 3.0
+
                     if not outro_has_audio:
                         # Map silence (input 0) and video (input 1)
                         trans_cmd.extend(['-filter_complex', f'[1:v]{vf}[v]', '-map', '[v]', '-map', '0:a'])
                         # Ensure we don't generate infinite silence
-                        dur_cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', str(outro_path)]
-                        outro_dur = subprocess.run(dur_cmd, capture_output=True).stdout.strip()
-                        if outro_dur:
-                            trans_cmd.extend(['-t', outro_dur.decode()])
+                        trans_cmd.extend(['-t', str(actual_dur)])
                     else:
                         trans_cmd.extend(['-vf', vf])
                         # Add audio fade if requested and has audio
                         if outro_conf.get('fadeAudio'):
-                            dur = float(outro_video_data.get('duration', 3))
-                            trans_cmd.extend(['-af', f'afade=t=out:st={max(0, dur-1)}:d=1'])
+                            # Start fade 1 second before actual end
+                            fade_st = max(0, actual_dur - 1)
+                            trans_cmd.extend(['-af', f'afade=t=out:st={fade_st}:d=1'])
                     
                     trans_cmd.extend([
                         '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', str(edit_settings.get('export_crf', 22)),

@@ -2062,7 +2062,7 @@
                 
                 <!-- Overlays (z-index 10+) -->
                 <video id="brollOverlayVideo" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10 !important; object-fit: cover; opacity: 0; display: none !important; transition: opacity 0.3s ease;" muted></video>
-                <video id="outroOverlayVideo" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 13 !important; object-fit: contain; opacity: 0; display: none !important; transition: opacity 0.3s ease;" muted></video>
+                <video id="outroOverlayVideo" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 13 !important; object-fit: contain; opacity: 0; display: none !important; transition: opacity 0.3s ease;" onplay="this.muted=false"></video>
                 <canvas id="outlineCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 11 !important; display: none !important;"></canvas>
                 <div id="imageOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20 !important; display: block !important;"></div>
                 <div id="logoOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 21 !important; display: block !important;"></div>
@@ -3078,9 +3078,17 @@
         <div class="control-group">
             <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
                 <span>Fade Out Audio</span>
-                <input type="checkbox" id="outroFadeAudio" style="width: auto;" checked>
+                <input type="checkbox" id="outroFadeAudio" style="width: auto;" checked onchange="document.getElementById('outroFadeModeGroup').style.display = this.checked ? 'block' : 'none'; syncVolumes();">
             </label>
             <div style="font-size: 10px; color: #888; margin-top: 4px;">Fade out audio during outro</div>
+        </div>
+
+        <div class="control-group" id="outroFadeModeGroup" style="margin-top: 5px; padding-left: 10px; border-left: 2px solid rgba(255,255,255,0.1);">
+            <label style="font-size: 11px; margin-bottom: 5px; display: block; color: #aaa;">Fade Timing</label>
+            <select id="outroFadeMode" class="effect-select" style="font-size: 11px; padding: 4px;" onchange="syncVolumes()">
+                <option value="before">Fade before outro (ends at start)</option>
+                <option value="after" selected>Fade after outro (starts at start)</option>
+            </select>
         </div>
 
         <div class="control-group">
@@ -3424,6 +3432,7 @@
             checkImageMarkers(); // Check if we've crossed any image markers
             checkBrollMarkers(); // Check if we've crossed any b-roll markers
             checkOutroVideo(); // Check if we should show outro video
+            syncVolumes(); // Add volume synchronization during playback
 
             // Constrain playback to theme boundaries
             // REMOVED: Allow full video playback without auto-pausing at theme end
@@ -3588,6 +3597,88 @@
             initSeekbar();
         }
 
+        // Centralized volume sync to handle fading correctly
+        let lastVolumeLogTime = 0;
+        function syncVolumes() {
+            if (!video) return;
+            
+            const mainDuration = getEffectiveDuration();
+            const outroDuration = (outroVideo && outroVideo.enabled) ? outroVideo.duration : 0;
+            const displayDuration = mainDuration + outroDuration;
+            
+            // Calculate current "timeline" time accurately
+            let timelineTime = getEffectiveTime();
+            if (outroPlaying) {
+                const elapsed = (Date.now() - outroStartTime) / 1000;
+                timelineTime = mainDuration + elapsed;
+            } else if (outroCompleted) {
+                timelineTime = displayDuration;
+            }
+            
+            const outroEffectDuration = parseFloat(document.getElementById('outroDuration')?.value ?? 1);
+            const fadeStart = mainDuration - outroEffectDuration;
+            
+            const bgBaseVol = parseFloat(document.getElementById('audioVolume')?.value || 10) / 100;
+            const origBaseVol = parseFloat(document.getElementById('originalAudioVolume')?.value || 100) / 100;
+            
+            const fadeAudioEl = document.getElementById('outroFadeAudio');
+            const fadeAudio = fadeAudioEl ? fadeAudioEl.checked : true;
+            const fadeMode = document.getElementById('outroFadeMode')?.value || 'after';
+            
+            // 1. Main Video Volume (always fades out leading to mainDuration)
+            let origFadeProgress = 1.0;
+            if (timelineTime >= mainDuration) {
+                origFadeProgress = 0.0;
+            } else if (fadeAudio && timelineTime >= fadeStart) {
+                origFadeProgress = Math.max(0, Math.min(1, (mainDuration - timelineTime) / outroEffectDuration));
+            }
+            video.volume = origBaseVol * origFadeProgress;
+
+            // 2. Background Audio Volume
+            let bgFadeProgress = 1.0;
+            if (fadeAudio) {
+                if (fadeMode === 'before') {
+                    // Traditional: Fade out leading to the outro cut
+                    if (timelineTime >= mainDuration) {
+                        bgFadeProgress = 0.0;
+                    } else if (timelineTime >= fadeStart) {
+                        bgFadeProgress = Math.max(0, Math.min(1, (mainDuration - timelineTime) / outroEffectDuration));
+                    }
+                } else {
+                    // Modern: Start fading ONLY when the outro clip starts
+                    if (timelineTime >= mainDuration) {
+                        const remaining = displayDuration - mainDuration;
+                        if (remaining > 0) {
+                            bgFadeProgress = Math.max(0, Math.min(1, 1 - ((timelineTime - mainDuration) / remaining)));
+                        } else {
+                            bgFadeProgress = 0.0;
+                        }
+                    }
+                }
+            } else if (timelineTime >= mainDuration) {
+                bgFadeProgress = 0.0;
+            }
+            
+            if (previewAudio) {
+                previewAudio.volume = bgBaseVol * bgFadeProgress;
+            }
+
+            // 3. Outro Overlay Video Volume
+            const outroOverlay = document.getElementById('outroOverlayVideo');
+            if (outroOverlay && outroVideo.enabled) {
+                outroOverlay.muted = false;
+                let outroFadeProgress = 1.0;
+                // Outro clip's own audio fades out during its last N seconds
+                if (fadeAudio && outroDuration > 0) {
+                    const outroFadeStart = displayDuration - outroEffectDuration;
+                    if (timelineTime >= outroFadeStart) {
+                        outroFadeProgress = Math.max(0, Math.min(1, (displayDuration - timelineTime) / outroEffectDuration));
+                    }
+                }
+                outroOverlay.volume = 1.0 * outroFadeProgress;
+            }
+        }
+
         // Sync CSS animations with video play/pause
         video.addEventListener('play', () => {
             // Clear priming flag - user has started actual playback
@@ -3618,8 +3709,7 @@
             if (audioFile && audioEnabled && previewAudio.paused) {
                 previewAudio.currentTime = getEffectiveTime();
                 // Ensure volume and muted state are synced
-                const vol = document.getElementById('audioVolume').value;
-                previewAudio.volume = Math.min(1.0, vol / 100);
+                syncVolumes();
                 previewAudio.muted = false;
                 previewAudio.play().catch(e => {
                     // Suppress AbortError - this is expected when audio source changes
@@ -3631,7 +3721,7 @@
 
             // Sync outro video play state
             const outroVideoEl = document.getElementById('outroOverlayVideo');
-            if (outroVideoEl && outroVideoEl.style.opacity === '1' && outroVideoEl.paused) {
+            if (outroVideoEl && (outroVideoEl.style.opacity === '1' || outroPlaying) && outroVideoEl.paused) {
                 outroVideoEl.play().catch(e => console.warn('Outro play failed:', e));
             }
         });
@@ -3661,6 +3751,7 @@
         
         video.addEventListener('seeking', () => {
             previewAudio.currentTime = getEffectiveTime();
+            syncVolumes(); // Sync volumes on seek
             // Force previews to update during manual seek (e.g. dragging or keys)
             checkEffectMarkers();
             checkImageMarkers();
@@ -4344,6 +4435,12 @@
         }
 
         // Initialize canvas subtitle renderer
+        // Initialize Outro Panel visibility
+        const fadeAudioCheck = document.getElementById('outroFadeAudio');
+        if (fadeAudioCheck) {
+            document.getElementById('outroFadeModeGroup').style.display = fadeAudioCheck.checked ? 'block' : 'none';
+        }
+
         async function initializeSubtitleRenderer() {
             subtitleCanvas = document.getElementById('subtitleCanvas');
             if (!subtitleCanvas) return;
@@ -4373,6 +4470,13 @@
         // Render subtitles at current video time
         function renderSubtitlesAtCurrentTime() {
             if (!subtitleRenderer || !allThemeCues || allThemeCues.length === 0) return;
+
+            // Block subtitles during outro
+            const themeEnd = video.dataset.themeEnd ? parseFloat(video.dataset.themeEnd) : video.duration;
+            if (outroPlaying || outroCompleted || video.currentTime >= themeEnd) {
+                subtitleRenderer.ctx.clearRect(0, 0, subtitleRenderer.canvas.width, subtitleRenderer.canvas.height);
+                return;
+            }
 
             const currentTime = video.currentTime;
 
@@ -4814,6 +4918,9 @@
                     outroOverlay.style.setProperty("display", "none", "important");
                     outroOverlay.pause();
                 }
+                
+                // Final volume sync for main video seek
+                syncVolumes();
             } else {
                 // Clicked on outro section - seek to end of main video, show outro overlay
                 video.currentTime = themeStartOffset + mainDuration;
@@ -4839,78 +4946,49 @@
                         const outroEffect = document.getElementById('outroEffect')?.value || 'none';
                         const outroEffectDuration = parseFloat(document.getElementById('outroDuration')?.value ?? 1);
                         video.style.transition = 'none';
+                        
+                        // Apply final main video state for this effect
+                        const themeEnd = video.dataset.themeEnd ? parseFloat(video.dataset.themeEnd) : video.duration;
+                        const progress = 0; // At exact end
+                        
                         switch (outroEffect) {
                             case 'fade-out':
                                 video.style.setProperty('opacity', '0', 'important');
-                                video.style.setProperty('transform', '', 'important');
-                                video.style.setProperty('filter', '', 'important');
                                 break;
                             case 'slide-out-left':
                                 video.style.setProperty('transform', 'translateX(-100%)', 'important');
-                                video.style.setProperty('opacity', '1', 'important');
-                                video.style.setProperty('filter', '', 'important');
                                 break;
                             case 'slide-out-right':
                                 video.style.setProperty('transform', 'translateX(100%)', 'important');
-                                video.style.setProperty('opacity', '1', 'important');
-                                video.style.setProperty('filter', '', 'important');
                                 break;
                             case 'slide-out-top':
                                 video.style.setProperty('transform', 'translateY(-100%)', 'important');
-                                video.style.setProperty('opacity', '1', 'important');
-                                video.style.setProperty('filter', '', 'important');
                                 break;
                             case 'slide-out-bottom':
                                 video.style.setProperty('transform', 'translateY(100%)', 'important');
-                                video.style.setProperty('opacity', '1', 'important');
-                                video.style.setProperty('filter', '', 'important');
                                 break;
                             case 'zoom-out':
                                 video.style.setProperty('transform', 'scale(0.5)', 'important');
-                                video.style.setProperty('opacity', '1', 'important');
-                                video.style.setProperty('filter', '', 'important');
                                 break;
                             case 'spin-out':
                                 video.style.setProperty('transform', 'rotate(360deg) scale(0)', 'important');
-                                video.style.setProperty('opacity', '1', 'important');
-                                video.style.setProperty('filter', '', 'important');
                                 break;
                             case 'blur-out':
                                 video.style.setProperty('filter', 'blur(20px)', 'important');
-                                video.style.setProperty('opacity', '1', 'important');
-                                video.style.setProperty('transform', '', 'important');
                                 break;
-                            default:
-                                video.style.setProperty('opacity', '1', 'important');
-                                video.style.setProperty('transform', '', 'important');
-                                video.style.setProperty('filter', '', 'important');
-                                break;
-                        }
-
-                        // Mute main video during outro
-                        video.muted = true;
-
-                        // Hide subtitles during outro
-                        const subtitleCanvas = document.getElementById('subtitleCanvas');
-                        if (subtitleCanvas) {
-                            subtitleCanvas.style.opacity = '0';
-                        }
-
-                        // Hide logo if option is enabled
-                        const logoOverlay = document.getElementById('logoOverlay');
-                        const hideLogo = document.getElementById('outroHideLogo')?.checked ?? true;
-                        if (hideLogo && logoOverlay) {
-                            logoOverlay.style.opacity = '0';
                         }
                     }
-                }
+                    
+                    // Final volume sync for outro section seek
+                syncVolumes();
             }
-            
-            updatePositionMarker();
-            updatePlayhead();
         }
+        
+        updatePositionMarker();
+        updatePlayhead();
+    }
 
-        // Timeline click to seek and track position
+    // Timeline click to seek and track position
         timelineTrack.addEventListener('click', (e) => {
             if (e.target !== trimStart && e.target !== trimEnd) {
                 seekFromMouseEvent(e, timelineTrack);
@@ -5435,15 +5513,14 @@
         document.getElementById('audioVolume').addEventListener('input', (e) => {
             const vol = e.target.value;
             document.getElementById('audioVolumeValue').textContent = `${vol}%`;
-            previewAudio.volume = Math.min(1.0, vol / 100);
+            syncVolumes();
         });
 
         // Original audio volume slider
         document.getElementById('originalAudioVolume').addEventListener('input', (e) => {
             const vol = e.target.value;
             document.getElementById('originalAudioVolumeValue').textContent = `${vol}%`;
-            const video = document.getElementById('mainVideo');
-            if (video) video.volume = Math.min(1.0, vol / 100);
+            syncVolumes();
         });
 
         // Load audio library from server
@@ -5513,8 +5590,7 @@
             previewAudio.src = audioUrl;
             previewAudio.load();
 
-            const vol = document.getElementById('audioVolume').value;
-            previewAudio.volume = Math.min(1.0, vol / 100);
+            syncVolumes();
             previewAudio.muted = false; // Ensure not muted
 
             if (!video.paused) {
@@ -5829,8 +5905,7 @@
                         
                         previewAudio.src = URL.createObjectURL(file);
                         previewAudio.load(); // Explicitly load the new source
-                        const vol = document.getElementById('audioVolume').value;
-                        previewAudio.volume = Math.min(1.0, vol / 100);
+                        syncVolumes();
                         previewAudio.muted = false; // Ensure not muted
 
                         // Immediately play if video is already playing
@@ -7974,6 +8049,10 @@ function createImageMarker(markerData) {
                     outroPlaying = false;
                     outroStartTime = 0;
                     outroCompleted = false;
+
+                    // Reset volumes
+                    syncVolumes();
+                    video.muted = false;
                 }
                 return;
             }
@@ -8031,6 +8110,9 @@ function createImageMarker(markerData) {
                 video.style.removeProperty('opacity');
                 video.style.removeProperty('transform');
                 video.style.removeProperty('filter');
+
+                // Reset audio volumes to base levels
+                syncVolumes();
             }
 
             // Apply outro effect during the fade region (works for both playback and scrubbing)
@@ -8038,6 +8120,9 @@ function createImageMarker(markerData) {
                 // Calculate progress from 0 (at end) to 1 (at fade start)
                 const fadeProgress = (themeEnd - video.currentTime) / outroEffectDuration;
                 const progress = Math.max(0, Math.min(1, fadeProgress));
+
+                // Apply audio fade if enabled
+                syncVolumes();
 
                 // Disable transitions for instant scrubbing feedback
                 video.style.transition = 'none';
@@ -8171,6 +8256,9 @@ function createImageMarker(markerData) {
                 // Mute main video during outro
                 video.muted = true;
 
+                // Mute background audio during outro if fade-out is enabled
+                syncVolumes();
+
                 // Hide subtitles during outro
                 const subtitleCanvas = document.getElementById('subtitleCanvas');
                 if (subtitleCanvas) {
@@ -8196,6 +8284,9 @@ function createImageMarker(markerData) {
                     outroStartTime += (delta * 1000);
                 }
 
+                // Sync volumes (ensure muted/faded)
+                syncVolumes();
+
                 // Outro is currently playing
                 const elapsed = (now - outroStartTime) / 1000;
 
@@ -8214,6 +8305,7 @@ function createImageMarker(markerData) {
 
                     // Pause main video when outro finishes
                     video.pause();
+                    syncVolumes(); // Final sync
 
                     // Don't reset main video opacity - keep it hidden
                     // Don't unmute main video - keep it muted
@@ -9394,6 +9486,7 @@ function createImageMarker(markerData) {
                     duration: document.getElementById('outroDuration').value,
                     easing: document.getElementById('outroEasing').value,
                     fadeAudio: document.getElementById('outroFadeAudio').checked,
+                    fadeMode: document.getElementById('outroFadeMode').value,
                     hideLogo: document.getElementById('outroHideLogo').checked,
                     outroVideo: outroVideo.enabled ? {
                         name: outroVideo.name,
@@ -9953,6 +10046,7 @@ function createImageMarker(markerData) {
                     duration: document.getElementById('outroDuration').value,
                     easing: document.getElementById('outroEasing').value,
                     fadeAudio: document.getElementById('outroFadeAudio').checked,
+                    fadeMode: document.getElementById('outroFadeMode').value,
                     hideLogo: document.getElementById('outroHideLogo').checked,
                     outroVideo: outroVideo.enabled ? {
                         name: outroVideo.name,
@@ -10106,8 +10200,7 @@ function createImageMarker(markerData) {
                     if (previewAudio.src !== audioUrl) {
                         previewAudio.src = audioUrl;
                         previewAudio.load();
-                        const vol = settings.audio.volume || 100;
-                        previewAudio.volume = Math.min(1.0, vol / 100);
+                        syncVolumes();
                         previewAudio.muted = false;
                     }
 
@@ -10144,8 +10237,15 @@ function createImageMarker(markerData) {
                 document.getElementById('outroDuration').value = settings.outro.duration || 3;
                 document.getElementById('outroDurationValue').textContent = (settings.outro.duration || 3) + 's';
                 document.getElementById('outroEasing').value = settings.outro.easing || 'ease-out';
-                document.getElementById('outroFadeAudio').checked = settings.outro.fadeAudio || false;
+                document.getElementById('outroFadeAudio').checked = settings.outro.fadeAudio !== false;
+                document.getElementById('outroFadeMode').value = settings.outro.fadeMode || 'after';
                 document.getElementById('outroHideLogo').checked = settings.outro.hideLogo !== undefined ? settings.outro.hideLogo : true;
+
+                // Sync UI visibility
+                document.getElementById('outroFadeModeGroup').style.display = document.getElementById('outroFadeAudio').checked ? 'block' : 'none';
+
+                // Add listener for immediate feedback
+                document.getElementById('outroFadeAudio').addEventListener('change', syncVolumes);
 
                 // Restore outro video if present
                 if (settings.outro.outroVideo && settings.outro.outroVideo.name) {
