@@ -8076,7 +8076,7 @@ function createImageMarker(markerData) {
 
             // If we seeked back away from the end, stop outro and reset completed status
             if (video.currentTime < fadeStart) {
-                if (outroPlaying) {
+                if (outroPlaying || outroCompleted) {
                     outroOverlay.style.opacity = '0';
                     outroOverlay.style.setProperty("display", "none", "important");;
                     outroOverlay.pause();
@@ -8097,13 +8097,13 @@ function createImageMarker(markerData) {
                     if (subtitleCanvas) {
                         subtitleCanvas.style.opacity = '1';
                     }
-
-                    // Show logo again if it was hidden
-                    if (logoOverlay) {
-                        logoOverlay.style.opacity = '1';
-                    }
                 }
                 outroCompleted = false;
+
+                // ALWAYS ensure logo is visible when before the fade region
+                if (logoOverlay) {
+                    logoOverlay.style.opacity = '1';
+                }
 
                 // Ensure all effects are reset when before fade region
                 video.style.transition = 'none';
@@ -8120,6 +8120,11 @@ function createImageMarker(markerData) {
                 // Calculate progress from 0 (at end) to 1 (at fade start)
                 const fadeProgress = (themeEnd - video.currentTime) / outroEffectDuration;
                 const progress = Math.max(0, Math.min(1, fadeProgress));
+
+                // Sync logo visibility during fade
+                if (logoOverlay) {
+                    logoOverlay.style.opacity = hideLogo ? progress.toString() : '1';
+                }
 
                 // Apply audio fade if enabled
                 syncVolumes();
@@ -8179,6 +8184,11 @@ function createImageMarker(markerData) {
                         video.style.setProperty('transform', '', 'important');
                         video.style.setProperty('filter', '', 'important');
                         break;
+                }
+            } else if (!atEnd && !outroPlaying) {
+                // Not in fade region and not in outro - ensure logo is visible
+                if (logoOverlay) {
+                    logoOverlay.style.opacity = '1';
                 }
             }
 
