@@ -3722,7 +3722,7 @@
             // Sync outro video play state
             const outroVideoEl = document.getElementById('outroOverlayVideo');
             if (outroVideoEl && (outroVideoEl.style.opacity === '1' || outroPlaying) && outroVideoEl.paused) {
-                outroVideoEl.play().catch(e => console.warn('Outro play failed:', e));
+                outroVideoEl.play().catch(e => { if (e.name !== 'AbortError') console.warn('Outro play failed:', e); });
             }
         });
         video.addEventListener('pause', () => {
@@ -4224,15 +4224,6 @@
 
                 // Detect RTL
                 this.isRTL = this._isArabic(words);
-
-                if (currentTime === 0 || Math.random() < 0.01) {
-                    console.log('🎨 CANVAS FONT DEBUG:', {
-                        fontFamily,
-                        baseFontWeight,
-                        baseFontSize,
-                        fontString: `${baseFontWeight} ${baseFontSize}px "${fontFamily}"`
-                    });
-                }
 
                 const setWordFont = (wordObj, scaleMultiplier = 1.0) => {
                     const weight = wordObj.bold ? 'bold' : baseFontWeight;
@@ -8277,7 +8268,7 @@ function createImageMarker(markerData) {
 
                 // Play outro if main video is playing
                 if (!video.paused) {
-                    outroOverlay.play().catch(e => console.warn('Outro play failed:', e));
+                    outroOverlay.play().catch(e => { if (e.name !== 'AbortError') console.warn('Outro play failed:', e); });
                 }
 
                 // Hide logo if option is enabled
@@ -8390,7 +8381,7 @@ function createImageMarker(markerData) {
                     // If main video is playing, outro should play
                     // If main video is paused but at end, outro should still play
                     if ((!video.paused || isAtEnd) && outroOverlay.paused) {
-                        outroOverlay.play().catch(e => console.warn('Outro play failed:', e));
+                        outroOverlay.play().catch(e => { if (e.name !== 'AbortError') console.warn('Outro play failed:', e); });
                     } else if (video.paused && !isAtEnd && !outroOverlay.paused) {
                         outroOverlay.pause();
                     }
@@ -9241,7 +9232,7 @@ function createImageMarker(markerData) {
 
                     // Play main video and outro together
                     video.play().then(() => {
-                        outroOverlay.play().catch(e => console.warn('Outro play failed:', e));
+                        outroOverlay.play().catch(e => { if (e.name !== 'AbortError') console.warn('Outro play failed:', e); });
 
                         // Stop after outro duration + 1 second
                         setTimeout(() => {
@@ -10520,7 +10511,6 @@ function createImageMarker(markerData) {
             
             // Add a small delay to ensure elements are in DOM before syncing canvas
             setTimeout(() => {
-                console.log('🔄 Final canvas sync after settings applied');
                 checkImageMarkers();
                 checkBrollMarkers();
                 renderSubtitlesAtCurrentTime();

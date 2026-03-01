@@ -94,6 +94,11 @@ def set_headers(response):
     response.headers['Access-Control-Expose-Headers'] = 'Content-Length, Content-Range'
     return response
 
+@app.route('/favicon.ico')
+def favicon():
+    """Return an empty response for favicon to prevent 404s."""
+    return '', 204
+
 @app.route('/api/font/<name>')
 def serve_font(name):
     """Serve font files from media/fonts."""
