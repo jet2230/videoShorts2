@@ -1240,6 +1240,7 @@
             overflow: hidden;
             border-top-left-radius: 8px;
             border-top-right-radius: 8px;
+            z-index: 10;
         }
 
         .timeline-ruler canvas {
@@ -1625,8 +1626,8 @@
 
         .outro-block {
             position: absolute;
-            top: 0;
-            height: 100%;
+            top: -25px;
+            height: calc(100% + 25px);
             background: repeating-linear-gradient(
                 45deg,
                 rgba(255, 107, 107, 0.2),
@@ -1635,7 +1636,7 @@
                 rgba(255, 107, 107, 0.3) 20px
             );
             border-left: 2px solid #ff6b6b;
-            z-index: 4;
+            z-index: 1000;
             pointer-events: none;
             display: flex;
             align-items: center;
@@ -1643,14 +1644,58 @@
             color: #ff6b6b;
             font-size: 10px;
             font-weight: bold;
-            overflow: hidden;
+            overflow: visible;
             opacity: 0.8;
+            transform: none;
+            padding-top: 25px;
         }
 
         .outro-block::before {
             content: '📤 OUTRO';
             white-space: nowrap;
             padding: 0 5px;
+            display: inline-block;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            transform: rotate(180deg);
+        }
+
+        .outro-effect-block {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            background: repeating-linear-gradient(
+                45deg,
+                rgba(0, 255, 128, 0.15),
+                rgba(0, 255, 128, 0.15) 10px,
+                rgba(0, 255, 128, 0.25) 10px,
+                rgba(0, 255, 128, 0.25) 20px
+            );
+            border-right: 2px solid #00ff80;
+            z-index: 3;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #00ff80;
+            font-size: 9px;
+            font-weight: bold;
+            overflow: hidden;
+            opacity: 0.7;
+            transform: none;
+            padding-right: 5px;
+        }
+
+        .outro-effect-block::before {
+            content: '✨ EFFECT';
+            white-space: nowrap;
+            padding: 0;
+            display: block;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            transform: rotate(180deg);
+            position: absolute;
+            right: 0;
         }
 
         .trim-handle:hover {
@@ -2999,7 +3044,7 @@
 
         <div class="control-group">
             <label>Effect Type</label>
-            <select id="outroEffect">
+            <select id="outroEffect" onchange="updateTimeline(); checkOutroVideo();">
                 <option value="none">None</option>
                 <option value="fade-out">Fade Out</option>
                 <option value="slide-out-left">Slide Out (Left)</option>
@@ -3014,8 +3059,8 @@
         <div class="control-group">
             <label>Duration (seconds)</label>
             <div class="range-wrapper">
-                <input type="range" id="outroDuration" min="0.5" max="3" step="0.1" value="1" oninput="document.getElementById('outroDurationValue').textContent = this.value + 's'">
-                <span class="value" id="outroDurationValue">1s</span>
+                <input type="range" id="outroDuration" min="0.5" max="5" step="0.1" value="3" oninput="document.getElementById('outroDurationValue').textContent = this.value + 's'; updateTimeline(); checkOutroVideo();">
+                <span class="value" id="outroDurationValue">3s</span>
             </div>
         </div>
         <div class="control-group">
@@ -3708,6 +3753,7 @@
                         checkEffectMarkers();
                         checkImageMarkers();
                         checkBrollMarkers();
+                        checkOutroVideo();
                     });
                     
                     requestAnimationFrame(loop);
@@ -4535,6 +4581,8 @@
             const mainDuration = getEffectiveDuration();
             const outroDuration = (outroVideo && outroVideo.enabled) ? outroVideo.duration : 0;
             const displayDuration = mainDuration + outroDuration;
+            const outroEffect = document.getElementById('outroEffect')?.value || 'none';
+            const outroEffectDuration = parseFloat(document.getElementById('outroDuration')?.value) || 1;
 
             renderTimelineRuler();
 
@@ -4557,11 +4605,11 @@
                     outroBlock.className = 'outro-block';
                     timelineTrack.appendChild(outroBlock);
                 }
-                
+
                 // Position it exactly after the main video
                 const outroStartPercent = (mainDuration / displayDuration) * 100;
                 const outroWidthPercent = (outroDuration / displayDuration) * 100;
-                
+
                 outroBlock.style.left = `${outroStartPercent}%`;
                 outroBlock.style.width = `${outroWidthPercent}%`;
                 outroBlock.style.display = 'flex';
@@ -4570,7 +4618,33 @@
                 outroBlock.style.display = 'none';
             }
 
+            // Update outro effect region block
+            if (outroVideo && outroVideo.enabled && outroVideo.duration > 0 && outroEffect !== 'none') {
+                if (!window.outroEffectBlock) {
+                    window.outroEffectBlock = document.createElement('div');
+                    window.outroEffectBlock.className = 'outro-effect-block';
+                    timelineTrack.appendChild(window.outroEffectBlock);
+                }
+
+                // The effect region starts N seconds before the outro (where N is effect duration)
+                const effectEndPercent = ((mainDuration) / displayDuration) * 100;
+                const effectWidthPercent = (outroEffectDuration / displayDuration) * 100;
+                const effectStartPercent = effectEndPercent - effectWidthPercent;
+
+                window.outroEffectBlock.style.left = `${effectStartPercent}%`;
+                window.outroEffectBlock.style.width = `${effectWidthPercent}%`;
+                window.outroEffectBlock.style.display = 'flex';
+                window.outroEffectBlock.title = `✨ ${outroEffect} (${outroEffectDuration}s)`;
+            } else if (window.outroEffectBlock) {
+                window.outroEffectBlock.style.display = 'none';
+            }
+
             updatePlayhead();
+
+            // Update outro effect preview when timeline changes
+            if (video && outroVideo.enabled) {
+                checkOutroVideo();
+            }
         }
 
         // Update position marker
@@ -4627,14 +4701,86 @@
 
             selectedTimelinePosition = percent;
             const themeStartOffset = video.dataset.themeStart ? parseFloat(video.dataset.themeStart) : 0;
-            
+
             if (targetTime <= mainDuration) {
                 video.currentTime = themeStartOffset + targetTime;
                 outroPlaying = false;
                 outroCompleted = false;
-                // Reset main video opacity
-                video.style.transition = '';
-                video.style.opacity = '1';
+
+                // Check if we're in the outro fade region
+                const outroEffect = document.getElementById('outroEffect')?.value || 'none';
+                const outroEffectDuration = parseFloat(document.getElementById('outroDuration')?.value) || 1;
+                const themeEnd = video.dataset.themeEnd ? parseFloat(video.dataset.themeEnd) : video.duration;
+                const fadeStart = themeEnd - outroEffectDuration;
+                const currentTime = themeStartOffset + targetTime;
+
+                // Apply or reset outro effect based on position
+                if (outroVideo.enabled && outroEffect !== 'none' && currentTime >= fadeStart && currentTime < themeEnd) {
+                    // We're in the fade region - apply the effect
+                    const fadeProgress = (themeEnd - currentTime) / outroEffectDuration;
+                    const progress = Math.max(0, Math.min(1, fadeProgress));
+
+                    video.style.transition = 'none';
+
+                    switch (outroEffect) {
+                        case 'fade-out':
+                            video.style.setProperty('opacity', progress.toString(), 'important');
+                            video.style.setProperty('transform', '', 'important');
+                            video.style.setProperty('filter', '', 'important');
+                            break;
+                        case 'slide-out-left':
+                            video.style.setProperty('transform', `translateX(${(1 - progress) * -100}%)`, 'important');
+                            video.style.setProperty('opacity', '1', 'important');
+                            video.style.setProperty('filter', '', 'important');
+                            break;
+                        case 'slide-out-right':
+                            video.style.setProperty('transform', `translateX(${(1 - progress) * 100}%)`, 'important');
+                            video.style.setProperty('opacity', '1', 'important');
+                            video.style.setProperty('filter', '', 'important');
+                            break;
+                        case 'slide-out-top':
+                            video.style.setProperty('transform', `translateY(${(1 - progress) * -100}%)`, 'important');
+                            video.style.setProperty('opacity', '1', 'important');
+                            video.style.setProperty('filter', '', 'important');
+                            break;
+                        case 'slide-out-bottom':
+                            video.style.setProperty('transform', `translateY(${(1 - progress) * 100}%)`, 'important');
+                            video.style.setProperty('opacity', '1', 'important');
+                            video.style.setProperty('filter', '', 'important');
+                            break;
+                        case 'zoom-out':
+                            const scale = 0.5 + (progress * 0.5);
+                            video.style.setProperty('transform', `scale(${scale})`, 'important');
+                            video.style.setProperty('opacity', '1', 'important');
+                            video.style.setProperty('filter', '', 'important');
+                            break;
+                        case 'spin-out':
+                            const rotation = (1 - progress) * 360;
+                            const spinScale = progress;
+                            video.style.setProperty('transform', `rotate(${rotation}deg) scale(${spinScale})`, 'important');
+                            video.style.setProperty('opacity', '1', 'important');
+                            video.style.setProperty('filter', '', 'important');
+                            break;
+                        case 'blur-out':
+                            const blurAmount = (1 - progress) * 20;
+                            video.style.setProperty('filter', `blur(${blurAmount}px)`, 'important');
+                            video.style.setProperty('opacity', '1', 'important');
+                            video.style.setProperty('transform', '', 'important');
+                            break;
+                        default:
+                            video.style.setProperty('opacity', '1', 'important');
+                            video.style.setProperty('transform', '', 'important');
+                            video.style.setProperty('filter', '', 'important');
+                            break;
+                    }
+                } else {
+                    // Reset main video opacity and effects
+                    video.style.transition = '';
+                    video.style.setProperty('opacity', '1', 'important');
+                    video.style.setProperty('transform', '', 'important');
+                    video.style.setProperty('filter', '', 'important');
+                }
+
                 // Unmute main video
                 video.muted = false;
                 // Show subtitles again
@@ -4670,12 +4816,56 @@
                         outroOverlay.style.opacity = '1';
                         outroOverlay.pause();
 
-                        // Apply fade-out effect to main video
+                        // Apply outro effect to main video
                         const outroEffect = document.getElementById('outroEffect')?.value || 'none';
                         const outroEffectDuration = parseFloat(document.getElementById('outroDuration')?.value) || 1;
-                        if (outroEffect === 'fade-out') {
-                            video.style.transition = `opacity ${outroEffectDuration}s ease-out`;
-                            video.style.opacity = '0';
+                        video.style.transition = 'none';
+                        switch (outroEffect) {
+                            case 'fade-out':
+                                video.style.setProperty('opacity', '0', 'important');
+                                video.style.setProperty('transform', '', 'important');
+                                video.style.setProperty('filter', '', 'important');
+                                break;
+                            case 'slide-out-left':
+                                video.style.setProperty('transform', 'translateX(-100%)', 'important');
+                                video.style.setProperty('opacity', '1', 'important');
+                                video.style.setProperty('filter', '', 'important');
+                                break;
+                            case 'slide-out-right':
+                                video.style.setProperty('transform', 'translateX(100%)', 'important');
+                                video.style.setProperty('opacity', '1', 'important');
+                                video.style.setProperty('filter', '', 'important');
+                                break;
+                            case 'slide-out-top':
+                                video.style.setProperty('transform', 'translateY(-100%)', 'important');
+                                video.style.setProperty('opacity', '1', 'important');
+                                video.style.setProperty('filter', '', 'important');
+                                break;
+                            case 'slide-out-bottom':
+                                video.style.setProperty('transform', 'translateY(100%)', 'important');
+                                video.style.setProperty('opacity', '1', 'important');
+                                video.style.setProperty('filter', '', 'important');
+                                break;
+                            case 'zoom-out':
+                                video.style.setProperty('transform', 'scale(0.5)', 'important');
+                                video.style.setProperty('opacity', '1', 'important');
+                                video.style.setProperty('filter', '', 'important');
+                                break;
+                            case 'spin-out':
+                                video.style.setProperty('transform', 'rotate(360deg) scale(0)', 'important');
+                                video.style.setProperty('opacity', '1', 'important');
+                                video.style.setProperty('filter', '', 'important');
+                                break;
+                            case 'blur-out':
+                                video.style.setProperty('filter', 'blur(20px)', 'important');
+                                video.style.setProperty('opacity', '1', 'important');
+                                video.style.setProperty('transform', '', 'important');
+                                break;
+                            default:
+                                video.style.setProperty('opacity', '1', 'important');
+                                video.style.setProperty('transform', '', 'important');
+                                video.style.setProperty('filter', '', 'important');
+                                break;
                         }
 
                         // Mute main video during outro
@@ -7795,9 +7985,11 @@ function createImageMarker(markerData) {
                     outroPlaying = false;
                     outroStartTime = 0;
 
-                    // Reset main video opacity
+                    // Reset main video effects
                     video.style.transition = '';
-                    video.style.opacity = '1';
+                    video.style.removeProperty('opacity');
+                    video.style.removeProperty('transform');
+                    video.style.removeProperty('filter');
 
                     // Unmute main video
                     video.muted = false;
@@ -7814,14 +8006,75 @@ function createImageMarker(markerData) {
                     }
                 }
                 outroCompleted = false;
+
+                // Ensure all effects are reset when before fade region
+                video.style.transition = 'none';
+                video.style.removeProperty('opacity');
+                video.style.removeProperty('transform');
+                video.style.removeProperty('filter');
             }
 
-            // Start fade-out early (before outro overlay appears)
-            if (atFadeStart && !outroPlaying && !outroCompleted) {
-                // Apply fade-out effect to main video
-                if (outroEffect === 'fade-out') {
-                    video.style.transition = `opacity ${outroEffectDuration}s ease-out`;
-                    video.style.opacity = '0';
+            // Apply outro effect during the fade region (works for both playback and scrubbing)
+            if (atFadeStart) {
+                // Calculate progress from 0 (at end) to 1 (at fade start)
+                const fadeProgress = (themeEnd - video.currentTime) / outroEffectDuration;
+                const progress = Math.max(0, Math.min(1, fadeProgress));
+
+                // Disable transitions for instant scrubbing feedback
+                video.style.transition = 'none';
+
+                // Apply effect based on type
+                switch (outroEffect) {
+                    case 'fade-out':
+                        video.style.setProperty('opacity', progress.toString(), 'important');
+                        video.style.setProperty('transform', '', 'important');
+                        video.style.setProperty('filter', '', 'important');
+                        break;
+                    case 'slide-out-left':
+                        video.style.setProperty('transform', `translateX(${(1 - progress) * -100}%)`, 'important');
+                        video.style.setProperty('opacity', '1', 'important');
+                        video.style.setProperty('filter', '', 'important');
+                        break;
+                    case 'slide-out-right':
+                        video.style.setProperty('transform', `translateX(${(1 - progress) * 100}%)`, 'important');
+                        video.style.setProperty('opacity', '1', 'important');
+                        video.style.setProperty('filter', '', 'important');
+                        break;
+                    case 'slide-out-top':
+                        video.style.setProperty('transform', `translateY(${(1 - progress) * -100}%)`, 'important');
+                        video.style.setProperty('opacity', '1', 'important');
+                        video.style.setProperty('filter', '', 'important');
+                        break;
+                    case 'slide-out-bottom':
+                        video.style.setProperty('transform', `translateY(${(1 - progress) * 100}%)`, 'important');
+                        video.style.setProperty('opacity', '1', 'important');
+                        video.style.setProperty('filter', '', 'important');
+                        break;
+                    case 'zoom-out':
+                        const scale = 0.5 + (progress * 0.5); // Goes from 0.5 to 1.0
+                        video.style.setProperty('transform', `scale(${scale})`, 'important');
+                        video.style.setProperty('opacity', '1', 'important');
+                        video.style.setProperty('filter', '', 'important');
+                        break;
+                    case 'spin-out':
+                        const rotation = (1 - progress) * 360; // Goes from 0 to 360 degrees
+                        const spinScale = progress;
+                        video.style.setProperty('transform', `rotate(${rotation}deg) scale(${spinScale})`, 'important');
+                        video.style.setProperty('opacity', '1', 'important');
+                        video.style.setProperty('filter', '', 'important');
+                        break;
+                    case 'blur-out':
+                        const blurAmount = (1 - progress) * 20; // Goes from 0 to 20px blur
+                        video.style.setProperty('filter', `blur(${blurAmount}px)`, 'important');
+                        video.style.setProperty('opacity', '1', 'important');
+                        video.style.setProperty('transform', '', 'important');
+                        break;
+                    case 'none':
+                    default:
+                        video.style.setProperty('opacity', '1', 'important');
+                        video.style.setProperty('transform', '', 'important');
+                        video.style.setProperty('filter', '', 'important');
+                        break;
                 }
             }
 
@@ -7838,8 +8091,63 @@ function createImageMarker(markerData) {
                 // Start outro from beginning with fade-in
                 outroOverlay.currentTime = 0;
                 outroOverlay.style.setProperty('display', 'block', 'important');
-                outroOverlay.style.transition = `opacity ${outroEffectDuration}s ease-in`;
+                outroOverlay.style.transition = 'none';
+
+                // Ensure main video is fully hidden/transformed when outro starts
+                video.style.transition = 'none';
+                switch (outroEffect) {
+                    case 'fade-out':
+                        video.style.setProperty('opacity', '0', 'important');
+                        video.style.setProperty('transform', '', 'important');
+                        video.style.setProperty('filter', '', 'important');
+                        break;
+                    case 'slide-out-left':
+                        video.style.setProperty('transform', 'translateX(-100%)', 'important');
+                        video.style.setProperty('opacity', '1', 'important');
+                        video.style.setProperty('filter', '', 'important');
+                        break;
+                    case 'slide-out-right':
+                        video.style.setProperty('transform', 'translateX(100%)', 'important');
+                        video.style.setProperty('opacity', '1', 'important');
+                        video.style.setProperty('filter', '', 'important');
+                        break;
+                    case 'slide-out-top':
+                        video.style.setProperty('transform', 'translateY(-100%)', 'important');
+                        video.style.setProperty('opacity', '1', 'important');
+                        video.style.setProperty('filter', '', 'important');
+                        break;
+                    case 'slide-out-bottom':
+                        video.style.setProperty('transform', 'translateY(100%)', 'important');
+                        video.style.setProperty('opacity', '1', 'important');
+                        video.style.setProperty('filter', '', 'important');
+                        break;
+                    case 'zoom-out':
+                        video.style.setProperty('transform', 'scale(0.5)', 'important');
+                        video.style.setProperty('opacity', '1', 'important');
+                        video.style.setProperty('filter', '', 'important');
+                        break;
+                    case 'spin-out':
+                        video.style.setProperty('transform', 'rotate(360deg) scale(0)', 'important');
+                        video.style.setProperty('opacity', '1', 'important');
+                        video.style.setProperty('filter', '', 'important');
+                        break;
+                    case 'blur-out':
+                        video.style.setProperty('filter', 'blur(20px)', 'important');
+                        video.style.setProperty('opacity', '1', 'important');
+                        video.style.setProperty('transform', '', 'important');
+                        break;
+                    default:
+                        video.style.setProperty('opacity', '1', 'important');
+                        video.style.setProperty('transform', '', 'important');
+                        video.style.setProperty('filter', '', 'important');
+                        break;
+                }
+
+                // Set initial outro overlay state based on effect type
+                outroOverlay.style.transition = 'none';
                 outroOverlay.style.opacity = '1';
+                outroOverlay.style.transform = '';
+                outroOverlay.style.filter = '';
 
                 // Mute main video during outro
                 video.muted = true;
@@ -7893,6 +8201,70 @@ function createImageMarker(markerData) {
                     // Don't show subtitles - keep them hidden
                     // Don't show logo - keep it hidden
                 } else {
+                    // Apply fade-in to outro overlay during the fade-in period for all effect types
+                    if (elapsed < outroEffectDuration) {
+                        const fadeInProgress = elapsed / outroEffectDuration;
+                        const progress = Math.max(0, Math.min(1, fadeInProgress));
+
+                        outroOverlay.style.transition = 'none';
+
+                        switch (outroEffect) {
+                            case 'fade-out':
+                                outroOverlay.style.opacity = progress.toString();
+                                outroOverlay.style.transform = '';
+                                outroOverlay.style.filter = '';
+                                break;
+                            case 'slide-out-left':
+                                outroOverlay.style.transform = `translateX(${(1 - progress) * 100}%)`;
+                                outroOverlay.style.opacity = '1';
+                                outroOverlay.style.filter = '';
+                                break;
+                            case 'slide-out-right':
+                                outroOverlay.style.transform = `translateX(${(1 - progress) * -100}%)`;
+                                outroOverlay.style.opacity = '1';
+                                outroOverlay.style.filter = '';
+                                break;
+                            case 'slide-out-top':
+                                outroOverlay.style.transform = `translateY(${(1 - progress) * 100}%)`;
+                                outroOverlay.style.opacity = '1';
+                                outroOverlay.style.filter = '';
+                                break;
+                            case 'slide-out-bottom':
+                                outroOverlay.style.transform = `translateY(${(1 - progress) * -100}%)`;
+                                outroOverlay.style.opacity = '1';
+                                outroOverlay.style.filter = '';
+                                break;
+                            case 'zoom-out':
+                                const scale = 0.5 + (progress * 0.5);
+                                outroOverlay.style.transform = `scale(${scale})`;
+                                outroOverlay.style.opacity = '1';
+                                outroOverlay.style.filter = '';
+                                break;
+                            case 'spin-out':
+                                const rotation = (1 - progress) * -360;
+                                const spinScale = progress;
+                                outroOverlay.style.transform = `rotate(${rotation}deg) scale(${spinScale})`;
+                                outroOverlay.style.opacity = '1';
+                                outroOverlay.style.filter = '';
+                                break;
+                            case 'blur-out':
+                                const blurAmount = (1 - progress) * 20;
+                                outroOverlay.style.filter = `blur(${blurAmount}px)`;
+                                outroOverlay.style.opacity = '1';
+                                outroOverlay.style.transform = '';
+                                break;
+                            default:
+                                outroOverlay.style.opacity = '1';
+                                outroOverlay.style.transform = '';
+                                outroOverlay.style.filter = '';
+                                break;
+                        }
+                    } else {
+                        // Fully visible/normal after fade-in period
+                        outroOverlay.style.opacity = '1';
+                        outroOverlay.style.transform = '';
+                        outroOverlay.style.filter = '';
+                    }
                     // Sync play state
                     // If main video is playing, outro should play
                     // If main video is paused but at end, outro should still play
@@ -7910,7 +8282,14 @@ function createImageMarker(markerData) {
 
         function applyVideoEffects() {
             if (!video) return;
-            
+
+            // Check if we're in the outro fade region - if so, don't reset video styles
+            const outroEffect = document.getElementById('outroEffect')?.value || 'none';
+            const outroEffectDuration = parseFloat(document.getElementById('outroDuration')?.value) || 1;
+            const themeEnd = video.dataset.themeEnd ? parseFloat(video.dataset.themeEnd) : video.duration;
+            const fadeStart = themeEnd - outroEffectDuration;
+            const inOutroFadeRegion = outroVideo.enabled && outroEffect !== 'none' && video.currentTime >= fadeStart && video.currentTime <= themeEnd + (outroVideo.duration || 0);
+
             try {
                 // Ensure flash keyframes are generated
                 if (typeof updateFlashIntensityDisplay === 'function') {
@@ -7923,10 +8302,14 @@ function createImageMarker(markerData) {
                 const faceZoomEl = document.getElementById('faceZoomLevel');
                 const faceTrackingZoom = (faceTrackingEnabled && faceZoomEl) ? parseFloat(faceZoomEl.value) : null;
 
-                // Reset video styles to base state
-                video.style.transition = 'none';
-                video.style.transformOrigin = 'center center';
-                video.style.opacity = '1';
+                // Reset video styles to base state (unless in outro fade region)
+                if (!inOutroFadeRegion) {
+                    video.style.transition = '';
+                    video.style.transformOrigin = 'center center';
+                    video.style.removeProperty('opacity');
+                    video.style.removeProperty('transform');
+                    video.style.removeProperty('filter');
+                }
                 video.style.visibility = 'visible';
                 video.style.display = 'block';
                 video.style.zIndex = '1';
@@ -9370,8 +9753,8 @@ function createImageMarker(markerData) {
 
             // Reset outro effects
             document.getElementById('outroEffect').value = 'none';
-            document.getElementById('outroDuration').value = 1;
-            document.getElementById('outroDurationValue').textContent = '1s';
+            document.getElementById('outroDuration').value = 3;
+            document.getElementById('outroDurationValue').textContent = '3s';
             document.getElementById('outroEasing').value = 'ease-out';
 
             // Reset face tracking values
@@ -9739,8 +10122,8 @@ function createImageMarker(markerData) {
             // Apply outro
             if (settings.outro) {
                 document.getElementById('outroEffect').value = settings.outro.effect || 'none';
-                document.getElementById('outroDuration').value = settings.outro.duration || 1;
-                document.getElementById('outroDurationValue').textContent = settings.outro.duration + 's';
+                document.getElementById('outroDuration').value = settings.outro.duration || 3;
+                document.getElementById('outroDurationValue').textContent = (settings.outro.duration || 3) + 's';
                 document.getElementById('outroEasing').value = settings.outro.easing || 'ease-out';
                 document.getElementById('outroFadeAudio').checked = settings.outro.fadeAudio || false;
                 document.getElementById('outroHideLogo').checked = settings.outro.hideLogo !== undefined ? settings.outro.hideLogo : true;
