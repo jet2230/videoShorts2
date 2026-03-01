@@ -1671,7 +1671,7 @@
                 rgba(0, 255, 128, 0.25) 10px,
                 rgba(0, 255, 128, 0.25) 20px
             );
-            border-right: 2px solid #00ff80;
+            border-right: none;
             z-index: 3;
             pointer-events: none;
             display: flex;
@@ -1684,6 +1684,7 @@
             opacity: 0.7;
             transform: none;
             padding-right: 5px;
+            box-sizing: border-box;
         }
 
         .outro-effect-block::before {
@@ -3059,7 +3060,7 @@
         <div class="control-group">
             <label>Duration (seconds)</label>
             <div class="range-wrapper">
-                <input type="range" id="outroDuration" min="0.5" max="5" step="0.1" value="3" oninput="document.getElementById('outroDurationValue').textContent = this.value + 's'; updateTimeline(); checkOutroVideo();">
+                <input type="range" id="outroDuration" min="0" max="5" step="0.1" value="3" oninput="document.getElementById('outroDurationValue').textContent = this.value + 's'; updateTimeline(); checkOutroVideo();">
                 <span class="value" id="outroDurationValue">3s</span>
             </div>
         </div>
@@ -4582,7 +4583,7 @@
             const outroDuration = (outroVideo && outroVideo.enabled) ? outroVideo.duration : 0;
             const displayDuration = mainDuration + outroDuration;
             const outroEffect = document.getElementById('outroEffect')?.value || 'none';
-            const outroEffectDuration = parseFloat(document.getElementById('outroDuration')?.value) || 1;
+            const outroEffectDuration = parseFloat(document.getElementById('outroDuration')?.value ?? 1);
 
             renderTimelineRuler();
 
@@ -4619,22 +4620,40 @@
             }
 
             // Update outro effect region block
-            if (outroVideo && outroVideo.enabled && outroVideo.duration > 0 && outroEffect !== 'none') {
-                if (!window.outroEffectBlock) {
-                    window.outroEffectBlock = document.createElement('div');
-                    window.outroEffectBlock.className = 'outro-effect-block';
-                    timelineTrack.appendChild(window.outroEffectBlock);
+            if (outroVideo && outroVideo.enabled && outroVideo.duration > 0) {
+                const outroEffect = document.getElementById('outroEffect')?.value || 'none';
+
+                // Force fresh read of duration value directly from DOM
+                const outroDurationInput = document.getElementById('outroDuration');
+                const outroEffectDurationRaw = outroDurationInput ? parseFloat(outroDurationInput.value) : 0;
+
+                if (outroEffect !== 'none' && outroEffectDurationRaw > 0) {
+                    if (!window.outroEffectBlock) {
+                        window.outroEffectBlock = document.createElement('div');
+                        window.outroEffectBlock.className = 'outro-effect-block';
+                        timelineTrack.appendChild(window.outroEffectBlock);
+                    }
+
+                    // The effect region starts N seconds before the outro (where N is effect duration)
+                    // Effect should only apply to the theme/main video time, never extend into outro
+                    // Effect ENDS exactly where outro STARTS (end of main video)
+                    // Use mainDuration (the relative duration on timeline) not themeEnd (absolute time)
+                    const effectEndPercent = (mainDuration / displayDuration) * 100;
+
+                    // Calculate effect start time in seconds, then convert to percentage
+                    const effectStartTime = Math.max(0, mainDuration - outroEffectDurationRaw);
+                    const effectStartPercent = (effectStartTime / displayDuration) * 100;
+
+                    // Use left and right positioning instead of width to ensure exact boundary alignment
+                    // The block extends from effectStart to effectEnd (where outro starts)
+                    window.outroEffectBlock.style.left = `${effectStartPercent}%`;
+                    window.outroEffectBlock.style.right = `${100 - effectEndPercent}%`;
+                    window.outroEffectBlock.style.width = '';
+                    window.outroEffectBlock.style.display = 'flex';
+                    window.outroEffectBlock.title = `✨ ${outroEffect} (${outroEffectDurationRaw}s)`;
+                } else {
+                    if (window.outroEffectBlock) window.outroEffectBlock.style.display = 'none';
                 }
-
-                // The effect region starts N seconds before the outro (where N is effect duration)
-                const effectEndPercent = ((mainDuration) / displayDuration) * 100;
-                const effectWidthPercent = (outroEffectDuration / displayDuration) * 100;
-                const effectStartPercent = effectEndPercent - effectWidthPercent;
-
-                window.outroEffectBlock.style.left = `${effectStartPercent}%`;
-                window.outroEffectBlock.style.width = `${effectWidthPercent}%`;
-                window.outroEffectBlock.style.display = 'flex';
-                window.outroEffectBlock.title = `✨ ${outroEffect} (${outroEffectDuration}s)`;
             } else if (window.outroEffectBlock) {
                 window.outroEffectBlock.style.display = 'none';
             }
@@ -4709,7 +4728,7 @@
 
                 // Check if we're in the outro fade region
                 const outroEffect = document.getElementById('outroEffect')?.value || 'none';
-                const outroEffectDuration = parseFloat(document.getElementById('outroDuration')?.value) || 1;
+                const outroEffectDuration = parseFloat(document.getElementById('outroDuration')?.value ?? 1);
                 const themeEnd = video.dataset.themeEnd ? parseFloat(video.dataset.themeEnd) : video.duration;
                 const fadeStart = themeEnd - outroEffectDuration;
                 const currentTime = themeStartOffset + targetTime;
@@ -4818,7 +4837,7 @@
 
                         // Apply outro effect to main video
                         const outroEffect = document.getElementById('outroEffect')?.value || 'none';
-                        const outroEffectDuration = parseFloat(document.getElementById('outroDuration')?.value) || 1;
+                        const outroEffectDuration = parseFloat(document.getElementById('outroDuration')?.value ?? 1);
                         video.style.transition = 'none';
                         switch (outroEffect) {
                             case 'fade-out':
@@ -7969,7 +7988,7 @@ function createImageMarker(markerData) {
             const mainVideoDuration = video.duration;
             const outroDuration = outroVideo.duration;
             const outroEffect = document.getElementById('outroEffect')?.value || 'none';
-            const outroEffectDuration = parseFloat(document.getElementById('outroDuration')?.value) || 1;
+            const outroEffectDuration = parseFloat(document.getElementById('outroDuration')?.value ?? 1);
 
             // Start fade-out early based on effect duration, but only start outro overlay at exact end
             const fadeStart = themeEnd - outroEffectDuration;
@@ -8285,7 +8304,7 @@ function createImageMarker(markerData) {
 
             // Check if we're in the outro fade region - if so, don't reset video styles
             const outroEffect = document.getElementById('outroEffect')?.value || 'none';
-            const outroEffectDuration = parseFloat(document.getElementById('outroDuration')?.value) || 1;
+            const outroEffectDuration = parseFloat(document.getElementById('outroDuration')?.value ?? 1);
             const themeEnd = video.dataset.themeEnd ? parseFloat(video.dataset.themeEnd) : video.duration;
             const fadeStart = themeEnd - outroEffectDuration;
             const inOutroFadeRegion = outroVideo.enabled && outroEffect !== 'none' && video.currentTime >= fadeStart && video.currentTime <= themeEnd + (outroVideo.duration || 0);
