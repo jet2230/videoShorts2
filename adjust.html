@@ -3261,11 +3261,12 @@
             if (handle === 'left') {
                 // Adjust start time
                 let newStart = startSeconds + delta;
-                // Restriction: between buffer start and midpoint-1s
-                newStart = Math.max(bufferStart, Math.min(newStart, midPoint - 1.0));
-                
-                const timeOffset = newStart - startSeconds;
-                
+                // Restriction: between buffer start and end-1s
+                // Normal themes also restricted by midpoint
+                const maxStart = themeData.is_custom ? (endSeconds - 1.0) : (midPoint - 1.0);
+                newStart = Math.max(bufferStart, Math.min(newStart, maxStart));
+
+                const timeOffset = newStart - startSeconds;                
                 // Shift subtitle formatting timestamps if start time changed
                 if (Object.keys(allCueFormatting).length > 0 && timeOffset !== 0) {
                     for (const [seqKey, formatting] of Object.entries(allCueFormatting)) {
@@ -3290,8 +3291,10 @@
             } else if (handle === 'right') {
                 // Adjust end time
                 let newEnd = endSeconds + delta;
-                // Restriction: between midpoint+1s and current buffer end
-                newEnd = Math.max(midPoint + 1.0, Math.min(newEnd, bufferEnd));
+                // Restriction: between start+1s and current buffer end
+                // Normal themes also restricted by midpoint
+                const minEnd = themeData.is_custom ? (startSeconds + 1.0) : (midPoint + 1.0);
+                newEnd = Math.max(minEnd, Math.min(newEnd, bufferEnd));
                 endSeconds = newEnd;
             }
 
@@ -4238,6 +4241,7 @@
                     let migratedCount = 0;
 
                     for (const [oldKey, formatting] of Object.entries(allCueFormatting)) {
+                        if (!formatting) continue; // Skip null entries
                         const timestamp = extractTimestamp(oldKey);
 
                         // Find matching cue by timestamp and text
@@ -4443,6 +4447,13 @@
         // Load theme details
         async function loadTheme() {
             try {
+                // Ensure adjust file exists before loading settings
+                try {
+                    await fetch(`/api/ensure-adjust-file/${folderNumber}/${themeNumber}`, { method: 'POST' });
+                } catch (err) {
+                    console.warn('Failed to ensure adjust file exists:', err);
+                }
+
                 const response = await fetch(`/api/folder/${folderNumber}/themes`);
                 if (!response.ok) throw new Error('Failed to load theme');
 
@@ -5107,8 +5118,8 @@
                 // Since midpoint-marker is now inside buffer-range, calculate position relative to buffer
                 const midPointPercent = ((midPoint - bufferStart) / bufferedDuration) * 100;
                 midPointMarker.style.left = `${midPointPercent}%`;
-                // Show only if within buffer range
-                midPointMarker.style.display = (midPoint >= bufferStart && midPoint <= bufferEnd) ? 'block' : 'none';
+                // Show only if within buffer range AND not a custom theme
+                midPointMarker.style.display = (midPoint >= bufferStart && midPoint <= bufferEnd && !themeData.is_custom) ? 'block' : 'none';
             }
 
             // Update info display
@@ -5263,7 +5274,7 @@
 
                 if (isDragging === 'left') {
                     let newStart = dragStartValue + deltaTime;
-                    
+
                     // Snapping for left handle
                     if (snappingEnabled) {
                         const pixelsPerSecond = timelineTrack.offsetWidth / timeScale;
@@ -5276,8 +5287,10 @@
                         newStart = Math.round(newStart / snapInterval) * snapInterval;
                     }
 
-                    // Restriction: between current buffer start and midpoint-1s
-                    newStart = Math.max(bufferStart, Math.min(newStart, midPoint - 1.0));
+                    // Restriction: between current buffer start and end-1s
+                    // Normal themes also restricted by midpoint
+                    const maxStart = themeData.is_custom ? (endSeconds - 1.0) : (midPoint - 1.0);
+                    newStart = Math.max(bufferStart, Math.min(newStart, maxStart));
                     startSeconds = newStart;
                 } else if (isDragging === 'right') {
                     let newEnd = dragStartValue + deltaTime;
@@ -5294,11 +5307,12 @@
                         newEnd = Math.round(newEnd / snapInterval) * snapInterval;
                     }
 
-                    // Restriction: between midpoint+1s and current buffer end
-                    newEnd = Math.max(midPoint + 1.0, Math.min(newEnd, bufferEnd));
+                    // Restriction: between start+1s and current buffer end
+                    // Normal themes also restricted by midpoint
+                    const minEnd = themeData.is_custom ? (startSeconds + 1.0) : (midPoint + 1.0);
+                    newEnd = Math.max(minEnd, Math.min(newEnd, bufferEnd));
                     endSeconds = newEnd;
                 }
-
                 updateUI();
             });
 
@@ -5454,8 +5468,10 @@
                         const bufferStart = Math.max(0, originalStartSeconds - bufferLeftSeconds);
 
                         // Move theme start earlier by the extension amount
-                        // Restriction: between buffer start and midpoint-1s
-                        const newStartSeconds = Math.max(bufferStart, Math.min(originalStartSeconds - extensionSeconds, midPoint - 1.0));
+                        // Restriction: between buffer start and end-1s
+                        // Normal themes also restricted by midpoint
+                        const maxStart = themeData.is_custom ? (endSeconds - 1.0) : (midPoint - 1.0);
+                        const newStartSeconds = Math.max(bufferStart, Math.min(originalStartSeconds - extensionSeconds, maxStart));
 
                         // Handle formatting timestamp shift when theme start changes
                         const timeOffset = newStartSeconds - startSeconds;
@@ -5507,8 +5523,10 @@
                         const bufferEnd = Math.min(fullVideoDuration, originalEndSeconds + bufferRightSeconds);
 
                         // Move theme end later by the extension amount
-                        // Restriction: between midpoint+1s and current buffer end
-                        const newEndSeconds = Math.min(bufferEnd, Math.max(originalEndSeconds + extensionSeconds, midPoint + 1.0));
+                        // Restriction: between start+1s and current buffer end
+                        // Normal themes also restricted by midpoint
+                        const minEnd = themeData.is_custom ? (startSeconds + 1.0) : (midPoint + 1.0);
+                        const newEndSeconds = Math.min(bufferEnd, Math.max(originalEndSeconds + extensionSeconds, minEnd));
 
                         endSeconds = newEndSeconds;
 
@@ -5703,6 +5721,7 @@
 
             // Jump to theme end
             jumpEndBtn.addEventListener('click', () => {
+                originalVideo.pause();
                 originalVideo.currentTime = endSeconds;
             });
 
@@ -5739,12 +5758,16 @@
             document.getElementById('set-start-btn').addEventListener('click', () => {
                 const currentTime = originalVideo.currentTime;
                 const midPoint = (originalStartSeconds + originalEndSeconds) / 2;
-                
-                if (currentTime >= midPoint) {
+
+                if (!themeData.is_custom && currentTime >= midPoint) {
                     showNotification(`theme start time must be before the mid point ${formatTime(midPoint)}`, 'error');
                     return;
                 }
-                
+
+                if (themeData.is_custom && currentTime >= endSeconds - 0.5) {
+                    showNotification(`theme start time must be before the theme end`, 'error');
+                    return;
+                }                
                 startSeconds = currentTime;
                 updateUI();
                 updatePreviewVideo();
@@ -5758,12 +5781,16 @@
             document.getElementById('set-end-btn').addEventListener('click', () => {
                 const currentTime = originalVideo.currentTime;
                 const midPoint = (originalStartSeconds + originalEndSeconds) / 2;
-                
-                if (currentTime <= midPoint) {
+
+                if (!themeData.is_custom && currentTime <= midPoint) {
                     showNotification(`theme end time must be after the theme mid point ${formatTime(midPoint)}`, 'error');
                     return;
                 }
-                
+
+                if (themeData.is_custom && currentTime <= startSeconds + 0.5) {
+                    showNotification(`theme end time must be after the theme start`, 'error');
+                    return;
+                }                
                 endSeconds = currentTime;
                 updateUI();
                 updatePreviewVideo();
@@ -6516,9 +6543,9 @@
         async function exportCanvasKaraokeVideo(quality = 'standard') {
             // Normalize quality if called from event listener
             if (typeof quality !== 'string') quality = 'standard';
-            
-            console.log('🎬 exportCanvasKaraokeVideo triggered with quality:', quality);
-            if (!folderNumber || !themeNumber) {
+
+            previewVideo.pause(); // Stop video playback immediately
+            console.log('🎬 exportCanvasKaraokeVideo triggered with quality:', quality);            if (!folderNumber || !themeNumber) {
                 console.error('❌ Missing folder or theme info', {folderNumber, themeNumber});
                 showToast('Missing folder or theme info', 'error');
                 return;

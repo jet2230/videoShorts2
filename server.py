@@ -114,6 +114,19 @@ def serve_font(name):
             
     return "Font not found", 404
 
+# Utility functions for background tasks
+def to_float(val, default=0.0):
+    try:
+        if val is None or str(val).strip() == "": return default
+        return float(val)
+    except: return default
+
+def to_int(val, default=0):
+    try:
+        if val is None or str(val).strip() == "": return default
+        return int(float(val))
+    except: return default
+
 # Global state
 creator = YouTubeShortsCreator()
 settings = load_settings()
@@ -618,10 +631,9 @@ def get_themes(folder_number: str):
         return jsonify({'error': 'Folder not found'}), 404
 
     themes_file = folder / 'themes.md'
-    if not themes_file.exists():
-        return jsonify({'error': 'No themes file found'}), 404
-
-    themes = creator.parse_themes_file(themes_file)
+    themes = []
+    if themes_file.exists():
+        themes = creator.parse_themes_file(themes_file)
 
     # Check for existing shorts
     shorts_dir = folder / 'shorts'
@@ -731,6 +743,94 @@ def get_themes(folder_number: str):
     })
 
 
+@app.route('/api/add-theme', methods=['POST'])
+def add_theme():
+    """Add a new custom theme to themes.md."""
+    try:
+        data = request.json
+        folder_number = data.get('folder')
+        title = data.get('title', 'Custom Theme')
+
+        if not folder_number:
+            return jsonify({'error': 'Folder is required'}), 400
+
+        folder = creator.get_video_folder_by_number(folder_number)
+        if not folder:
+            return jsonify({'error': 'Folder not found'}), 404
+
+        themes_file = folder / 'themes.md'
+        if not themes_file.exists():
+            # Create a basic themes.md if it doesn't exist
+            with open(themes_file, 'w', encoding='utf-8') as f:
+                f.write("# Video Themes\n\n")
+
+        themes = creator.parse_themes_file(themes_file)
+        next_num = 1
+        if themes:
+            next_num = max(int(t.get('number', 0)) for t in themes) + 1
+
+        # Default time range: 0 to 10 seconds
+        new_theme_md = f"\n### Theme {next_num}: {title}\n"
+        new_theme_md += f"**Time Range:** 00:00:00 - 00:00:10\n"
+        new_theme_md += f"**Type:** custom\n"
+        new_theme_md += f"**Description:** User added custom theme.\n"
+
+        with open(themes_file, 'a', encoding='utf-8') as f:
+            f.write(new_theme_md)
+
+        # Also create initial adjust.md file with all defaults immediately
+        shorts_dir = folder / 'shorts'
+        shorts_dir.mkdir(exist_ok=True)
+        adjust_file = shorts_dir / f'theme_{next_num:03d}_adjust.md'
+        
+        # Default styling values
+        default_settings = {
+            'is_custom': True,
+            'subtitle_position': 'bottom',
+            'subtitle_h_align': 'center',
+            'subtitle_v_align': 'bottom',
+            'subtitle_bold': False,
+            'fontSize': 80,
+            'primaryColor': '#ffffff',
+            'bgColor': '#000000',
+            'bgOpacity': 0.5,
+            'fontName': 'Avenir Black',
+            'title_font_size': 67,
+            'title_bg_type': 'gradient',
+            'title_text_color': '#00ff9d',
+            'title_font_weight': 800,
+            'title_outline_width': 0,
+            'title_outline_color': '#000000',
+            'title_all_caps': True,
+            'show_title': False,
+            'title_top': 150
+        }
+        
+        write_theme_adjust_settings(
+            adjust_file, 
+            next_num, 
+            title, 
+            "00:00:00 - 00:00:10 (0m 10s)", 
+            folder.name, 
+            default_settings
+        )
+
+        return jsonify({
+            'success': True,
+            'theme': {
+                'number': next_num,
+                'title': title,
+                'start': '00:00:00',
+                'end': '00:00:10',
+                'is_custom': True
+            }
+        })
+    except Exception as e:
+        import traceback
+        app_logger.error(f"Error adding custom theme: {traceback.format_exc()}")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/update-theme', methods=['POST'])
 def update_theme():
     """Update theme details in themes.md file."""
@@ -764,11 +864,13 @@ def update_theme():
 
     # Find and update the theme
     theme_found = False
+    is_custom = False
     for theme in themes:
         if theme['number'] == theme_number:
             theme['title'] = new_title
             theme['start'] = new_start
             theme['end'] = new_end
+            is_custom = theme.get('is_custom', False)
             theme_found = True
             break
 
@@ -792,6 +894,8 @@ def update_theme():
 
     # Preserve existing styling if it exists
     existing_settings = get_theme_adjust_settings(folder, theme_number)
+    if is_custom:
+        existing_settings['is_custom'] = True
 
     # Write adjust file with all fields including position and styling
     write_theme_adjust_settings(adjust_file, theme_number, new_title, f"{new_start} - {new_end} ({duration_str})", folder.name, existing_settings)
@@ -1590,30 +1694,49 @@ def ensure_adjust_file(folder_number: str, theme_number: str):
 
     adjust_file = shorts_dir / f'theme_{int(theme_number):03d}_adjust.md'
 
-    # If adjust file doesn't exist, create it with default values
-    if not adjust_file.exists():
+    # If adjust file doesn't exist or is very small/incomplete, create it with default values
+    is_incomplete = False
+    if adjust_file.exists():
+        with open(adjust_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+            if len(content) < 100 or "**Folder:**" not in content or "**Time Range:**" not in content:
+                is_incomplete = True
+
+    if not adjust_file.exists() or is_incomplete:
         # Get theme info from themes.md
         themes_file = folder / 'themes.md'
         title = f"Theme {theme_number}"
         time_range = ""
+        is_custom_theme = False
 
         if themes_file.exists():
             with open(themes_file, 'r', encoding='utf-8') as f:
                 content = f.read()
-                # Find the theme in the file (format: ### Theme 1: Title Name)
-                theme_pattern = rf'###\s*Theme\s+{re.escape(theme_number)}:\s*(.+?)(?:\n|$)'
-                match = re.search(theme_pattern, content)
-                if match:
-                    title = match.group(1).strip()
+                # Find the theme block first
+                theme_block_pattern = rf'###\s*Theme\s+{re.escape(theme_number)}:.*?(?=### Theme|\*\*Why this works:\*\*|$)'
+                block_match = re.search(theme_block_pattern, content, re.DOTALL)
+                if block_match:
+                    block = block_match.group(0)
+                    
+                    # Extract title
+                    title_match = re.search(rf'###\s*Theme\s+{re.escape(theme_number)}:\s*(.+?)(?:\n|$)', block)
+                    if title_match:
+                        title = title_match.group(1).strip()
 
-                # Try to find time range in the theme content
-                time_pattern = rf'###\s*Theme\s+{re.escape(theme_number)}:.*?\n+.*?\n\*\*Time Range:\*\*\s*(.+?)(?:\n|$)'
-                time_match = re.search(time_pattern, content)
-                if time_match:
-                    time_range = time_match.group(1).strip()
+                    # Extract time range
+                    time_match = re.search(r'\*\*Time Range:\*\*\s*(.+?)(?:\n|$)', block)
+                    if time_match:
+                        time_range = time_match.group(1).strip()
+                    
+                    # Extract custom type
+                    if '**Type:** custom' in block:
+                        is_custom_theme = True
+                    else:
+                        is_custom_theme = False
 
         # Write default adjust file with all default styling values
         default_settings = {
+            'is_custom': is_custom_theme,
             'subtitle_position': 'bottom',
             'subtitle_h_align': 'center',
             'subtitle_v_align': 'bottom',
@@ -1909,125 +2032,129 @@ def save_subtitle_restructure():
 @app.route('/api/save-global-position', methods=['POST'])
 def save_global_position():
     """Save global subtitle position for a theme to the adjust.md file."""
-
-    data = request.json
-    folder_number = data.get('folder')
-    theme_number = data.get('theme')
-    position = data.get('position', 'bottom')
-    # Custom position data (optional)
-    custom_left = data.get('left')
-    custom_top = data.get('top')
-    h_align = data.get('h_align', 'center')
-    v_align = data.get('v_align', 'middle')
-    
-    # Additional styling fields
-    font_size = data.get('fontSize')
-    subtitle_bold = data.get('subtitleBold')
-    primary_color = data.get('primaryColor')
-    bg_color = data.get('bgColor')
-    bg_opacity = data.get('bgOpacity')
-    font_name = data.get('fontName')
-    
-    # Title styling fields
-    title_font_size = data.get('titleFontSize')
-    title_bg_type = data.get('titleBgType')
-    title_text_color = data.get('titleTextColor')
-    title_font_weight = data.get('titleFontWeight')
-    title_outline_width = data.get('titleOutlineWidth')
-    title_outline_color = data.get('titleOutlineColor')
-    title_all_caps = data.get('titleAllCaps')
-    title_top = data.get('titleTop')
-    show_title = data.get('showTitle')
-
-    if not all([folder_number, theme_number]):
-        return jsonify({'error': 'Missing required fields'}), 400
-
-    # Find the folder
-    base_dir = Path(settings.get('video', 'output_dir'))
-    folder = None
-    for f in base_dir.iterdir():
-        if f.is_dir() and f.name.startswith(f"{folder_number}_"):
-            folder = f
-            break
-
-    if not folder:
-        return jsonify({'error': 'Folder not found'}), 404
-
-    # Path to adjust.md file
-    adjust_file = folder / 'shorts' / f'theme_{int(theme_number):03d}_adjust.md'
-    shorts_dir = folder / 'shorts'
-    shorts_dir.mkdir(exist_ok=True)
-
-    # Read existing content or create new
-    existing_title = None
-    existing_time_range = None
-    existing_folder = None
-    
-    # Preserve existing styling if not provided
-    existing_settings = get_theme_adjust_settings(folder, theme_number)
-    
-    # Update settings with new values
-    if position: existing_settings['subtitle_position'] = position
-    if custom_left is not None: existing_settings['subtitle_left'] = custom_left
-    if custom_top is not None: existing_settings['subtitle_top'] = custom_top
-    if h_align: existing_settings['subtitle_h_align'] = h_align
-    if v_align: existing_settings['subtitle_v_align'] = v_align
-    
-    if font_size is not None: existing_settings['fontSize'] = font_size
-    if subtitle_bold is not None: existing_settings['subtitle_bold'] = subtitle_bold
-    if primary_color is not None: existing_settings['primaryColor'] = primary_color
-    if bg_color is not None: existing_settings['bgColor'] = bg_color
-    if bg_opacity is not None: existing_settings['bgOpacity'] = bg_opacity
-    if font_name is not None: existing_settings['fontName'] = font_name
-    
-    # Update title styling fields
-    if title_font_size is not None: existing_settings['title_font_size'] = title_font_size
-    if title_bg_type is not None: existing_settings['title_bg_type'] = title_bg_type
-    if title_text_color is not None: existing_settings['title_text_color'] = title_text_color
-    if title_font_weight is not None: existing_settings['title_font_weight'] = title_font_weight
-    if title_outline_width is not None: existing_settings['title_outline_width'] = title_outline_width
-    if title_outline_color is not None: existing_settings['title_outline_color'] = title_outline_color
-    if title_all_caps is not None: existing_settings['title_all_caps'] = title_all_caps
-    if title_top is not None: existing_settings['title_top'] = title_top
-    if show_title is not None: existing_settings['show_title'] = show_title
-
-    # Use existing title/time range if not in existing_settings
-    title = existing_settings.get('title')
-    time_range = existing_settings.get('time_range')
-    
-    if not title or not time_range:
-        # No existing file or missing fields, fetch theme data from themes.md
-        themes_file = folder / 'themes.md'
-        if themes_file.exists():
-            themes = creator.parse_themes_file(themes_file)
-            for theme in themes:
-                if theme['number'] == int(theme_number):
-                    if not title: title = theme.get('title', 'Theme Title')
-                    if not time_range:
-                        # Calculate duration
-                        start_secs = creator.parse_timestamp_to_seconds(theme['start'])
-                        end_secs = creator.parse_timestamp_to_seconds(theme['end'])
-                        duration_secs = end_secs - start_secs
-                        minutes = int(duration_secs // 60)
-                        seconds = int(duration_secs % 60)
-                        duration_str = f"{minutes}m {seconds}s"
-                        time_range = f"{theme['start']} - {theme['end']} ({duration_str})"
-                    break
+    try:
+        data = request.json
+        folder_number = data.get('folder')
+        theme_number = data.get('theme')
+        position = data.get('position', 'bottom')
+        # Custom position data (optional)
+        custom_left = data.get('left')
+        custom_top = data.get('top')
+        h_align = data.get('h_align', 'center')
+        v_align = data.get('v_align', 'middle')
         
-        # Set defaults if still not found
-        if not title: title = "Theme Title"
-        if not time_range: time_range = "--:--:-- - --:--:--"
+        # Additional styling fields
+        font_size = data.get('fontSize')
+        subtitle_bold = data.get('subtitleBold')
+        primary_color = data.get('primaryColor')
+        bg_color = data.get('bgColor')
+        bg_opacity = data.get('bgOpacity')
+        font_name = data.get('fontName')
+        
+        # Title styling fields
+        title_font_size = data.get('titleFontSize')
+        title_bg_type = data.get('titleBgType')
+        title_text_color = data.get('titleTextColor')
+        title_font_weight = data.get('titleFontWeight')
+        title_outline_width = data.get('titleOutlineWidth')
+        title_outline_color = data.get('titleOutlineColor')
+        title_all_caps = data.get('titleAllCaps')
+        title_top = data.get('titleTop')
+        show_title = data.get('showTitle')
 
-    # Rebuild file with updated position and styling
-    write_theme_adjust_settings(adjust_file, theme_number, title, time_range, folder.name, existing_settings)
+        if not all([folder_number, theme_number]):
+            return jsonify({'error': 'Missing required fields'}), 400
 
-    print(f"[DEBUG] Saved global position: folder={folder_number}, theme={theme_number}, position={position}, custom={custom_left}")
+        # Find the folder
+        base_dir = Path(settings.get('video', 'output_dir'))
+        folder = None
+        for f in base_dir.iterdir():
+            if f.is_dir() and f.name.startswith(f"{folder_number}_"):
+                folder = f
+                break
 
-    return jsonify({
-        'success': True,
-        'message': f'Saved global position for theme {theme_number}',
-        'position': position
-    })
+        if not folder:
+            return jsonify({'error': 'Folder not found'}), 404
+
+        # Path to adjust.md file
+        adjust_file = folder / 'shorts' / f'theme_{int(theme_number):03d}_adjust.md'
+        shorts_dir = folder / 'shorts'
+        shorts_dir.mkdir(exist_ok=True)
+
+        # Read existing content or create new
+        existing_title = None
+        existing_time_range = None
+        existing_folder = None
+        
+        # Preserve existing styling if not provided
+        existing_settings = get_theme_adjust_settings(folder, theme_number)
+        
+        # Update settings with new values
+        if position: existing_settings['subtitle_position'] = position
+        if custom_left is not None: existing_settings['subtitle_left'] = custom_left
+        if custom_top is not None: existing_settings['subtitle_top'] = custom_top
+        if h_align: existing_settings['subtitle_h_align'] = h_align
+        if v_align: existing_settings['subtitle_v_align'] = v_align
+        
+        if font_size is not None: existing_settings['fontSize'] = font_size
+        if subtitle_bold is not None: existing_settings['subtitle_bold'] = subtitle_bold
+        if primary_color is not None: existing_settings['primaryColor'] = primary_color
+        if bg_color is not None: existing_settings['bgColor'] = bg_color
+        if bg_opacity is not None: existing_settings['bgOpacity'] = bg_opacity
+        if font_name is not None: existing_settings['fontName'] = font_name
+        
+        # Update title styling fields
+        if title_font_size is not None: existing_settings['title_font_size'] = title_font_size
+        if title_bg_type is not None: existing_settings['title_bg_type'] = title_bg_type
+        if title_text_color is not None: existing_settings['title_text_color'] = title_text_color
+        if title_font_weight is not None: existing_settings['title_font_weight'] = title_font_weight
+        if title_outline_width is not None: existing_settings['title_outline_width'] = title_outline_width
+        if title_outline_color is not None: existing_settings['title_outline_color'] = title_outline_color
+        if title_all_caps is not None: existing_settings['title_all_caps'] = title_all_caps
+        if title_top is not None: existing_settings['title_top'] = title_top
+        if show_title is not None: existing_settings['show_title'] = show_title
+
+        # Use existing title/time range if not in existing_settings
+        title = existing_settings.get('title')
+        time_range = existing_settings.get('time_range')
+        
+        if not title or not time_range:
+            # No existing file or missing fields, fetch theme data from themes.md
+            themes_file = folder / 'themes.md'
+            if themes_file.exists():
+                themes = creator.parse_themes_file(themes_file)
+                for theme in themes:
+                    if theme['number'] == int(theme_number):
+                        if not title: title = theme.get('title', 'Theme Title')
+                        if not time_range:
+                            # Calculate duration
+                            start_secs = creator.parse_timestamp_to_seconds(theme['start'])
+                            end_secs = creator.parse_timestamp_to_seconds(theme['end'])
+                            duration_secs = end_secs - start_secs
+                            minutes = int(duration_secs // 60)
+                            seconds = int(duration_secs % 60)
+                            duration_str = f"{minutes}m {seconds}s"
+                            time_range = f"{theme['start']} - {theme['end']} ({duration_str})"
+                        break
+            
+            # Set defaults if still not found
+            if not title: title = "Theme Title"
+            if not time_range: time_range = "--:--:-- - --:--:--"
+
+        # Rebuild file with updated position and styling
+        write_theme_adjust_settings(adjust_file, theme_number, title, time_range, folder.name, existing_settings)
+
+        print(f"[DEBUG] Saved global position: folder={folder_number}, theme={theme_number}, position={position}, custom={custom_left}")
+
+        return jsonify({
+            'success': True,
+            'message': f'Saved global position for theme {theme_number}',
+            'position': position
+        })
+    except Exception as e:
+        import traceback
+        app_logger.error(f"Error in save_global_position: {traceback.format_exc()}")
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/get-global-position', methods=['GET'])
@@ -3430,7 +3557,8 @@ def process_video_edit():
     # Generate output path
     # Sanitize filename to avoid issues with special characters like | or pipes
     clean_stem = "".join([c if c.isalnum() or c in (' ', '_', '-') else '_' for c in input_video.stem])
-    output_filename = f"edited_{clean_stem.strip()}_{quality_preset}.mp4"
+    theme_suffix = f"_theme_{int(t_num):03d}" if t_num else ""
+    output_filename = f"edited_{clean_stem.strip()}{theme_suffix}_{quality_preset}.mp4"
     output_video = output_dir / output_filename
 
     with task_lock:
@@ -3600,10 +3728,14 @@ def run_edit_task(edit_id: str, input_video: str, output_video: str, edit_settin
                     edit_settings.setdefault('subtitles', {})['title'] = adjust_settings['title']
 
             # Use relative theme SRT because Step 1 created a 0-based clip
-            srt_path = str(folder_path / 'shorts' / f'theme_{int(t_num):03d}.srt')
-            if not os.path.exists(srt_path):
-                matches = list((folder_path / 'shorts').glob(f"theme_{int(t_num):03d}_*.srt"))
-                if matches: srt_path = str(matches[0])
+            # PRIORITIZE srt_path passed from process_video_edit (which already found the best match)
+            srt_path = edit_settings.get('subtitles', {}).get('srt_path')
+            
+            if not srt_path or not os.path.exists(srt_path):
+                srt_path = str(folder_path / 'shorts' / f'theme_{int(t_num):03d}.srt')
+                if not os.path.exists(srt_path):
+                    matches = list((folder_path / 'shorts').glob(f"theme_{int(t_num):03d}_*.srt"))
+                    if matches: srt_path = str(matches[0])
             
             word_timestamps_file = next(folder_path.glob('*_word_timestamps.json'), None)
             
@@ -4274,6 +4406,10 @@ def get_theme_adjust_settings(folder_path, theme_number):
         tac_match = re.search(r'\*\*title_all_caps:\*\*\s*(true|false)', content)
         if tac_match: settings_dict['title_all_caps'] = tac_match.group(1) == 'true'
 
+        type_match = re.search(r'\*\*Type:\*\*\s*custom', content)
+        if type_match:
+            settings_dict['is_custom'] = True
+
         st_match = re.search(r'\*\*show_title:\*\*\s*(true|false)', content)
         if st_match: settings_dict['show_title'] = st_match.group(1) == 'true'
             
@@ -4307,7 +4443,10 @@ def write_theme_adjust_settings(adjust_file, theme_number, title, time_range, fo
             f.write(f"**Title:** {title}\n\n")
         if time_range:
             f.write(f"**Time Range:** {time_range}\n")
-            
+
+        if settings_dict.get('is_custom'):
+            f.write(f"**Type:** custom\n")
+
         # Write position - either preset or custom with coordinates
         position = settings_dict.get('subtitle_position', 'bottom')
         f.write(f"**subtitle_position:** {position}\n")
@@ -5128,7 +5267,7 @@ def export_canvas_karaoke():
 def download_video(folder, theme, type):
     """Download exported video."""
     try:
-        folder = get_video_folder_by_number(folder)
+        folder = creator.get_video_folder_by_number(folder)
         if not folder:
             return jsonify({'error': 'Folder not found'}), 404
 

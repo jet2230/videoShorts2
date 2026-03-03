@@ -425,6 +425,19 @@
             transform: scale(1.1);
         }
 
+        #add-custom-theme-btn {
+            background: rgba(100, 149, 237, 0.2) !important;
+            border: 1px solid rgba(100, 149, 237, 0.5) !important;
+            color: #6495ED !important;
+            transition: all 0.2s ease;
+        }
+
+        #add-custom-theme-btn:hover {
+            background: rgba(100, 149, 237, 0.4) !important;
+            border-color: #6495ED !important;
+            transform: translateY(-1px);
+        }
+
         #folder-stats {
             display: flex;
             align-items: center;
@@ -2419,7 +2432,36 @@
                     <div class="stat-label">Themes</div>
                 </div>
                 <button class="retranscribe-folder-btn" data-retranscribe-folder="${selectedFolder}" data-folder-number="${selectedFolder}" title="Re-transcribe video">🔄</button>
+                <button id="add-custom-theme-btn" class="btn btn-secondary" style="height: 28px; padding: 0 12px; font-size: 12px; margin-left: 8px;">Add Custom Theme</button>
             `;
+
+            // Attach click handler to the add custom theme button
+            document.getElementById('add-custom-theme-btn')?.addEventListener('click', async () => {
+                const title = prompt('Enter a title for the custom theme:');
+                if (!title) return;
+
+                try {
+                    const response = await fetch('/api/add-theme', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            folder: selectedFolder,
+                            title: title
+                        })
+                    });
+
+                    if (response.ok) {
+                        showNotification('Custom theme added successfully', 'success');
+                        selectFolder(selectedFolder); // Refresh themes
+                    } else {
+                        const error = await response.json();
+                        showNotification('Error: ' + error.error, 'error');
+                    }
+                } catch (error) {
+                    console.error('Failed to add custom theme:', error);
+                    showNotification('Failed to add custom theme', 'error');
+                }
+            });
 
             // Attach click handler to the re-transcribe button
             const retranscribeBtn = document.getElementById('folder-stats')?.querySelector('.retranscribe-folder-btn');
@@ -2438,7 +2480,7 @@
                     <input type="checkbox" class="theme-checkbox" data-theme="${theme.number}">
                     <div class="theme-content">
                         <div class="theme-header">
-                            <span class="theme-number">Theme ${theme.number}
+                            <span class="theme-number">Theme ${theme.number} ${theme.is_custom ? '<span style="color: #6495ED; font-size: 10px; margin-left: 4px; background: rgba(100, 149, 237, 0.1); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(100, 149, 237, 0.3);">CUSTOM</span>' : ''}
                                 <button class="theme-adjust-btn" data-theme-number="${theme.number}" data-folder="${selectedFolder}">Adjust</button>
                                 <button class="theme-finalcut-btn" data-theme-number="${theme.number}" data-folder="${selectedFolder}">Final Cut</button>
                                 ${theme.short_created ? `<button class="theme-play-btn" data-video-path="${theme.short_info.path}">Play</button>` : ''}

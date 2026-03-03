@@ -33,7 +33,7 @@ class SubtitleEffects:
 
     def __init__(self, settings: Dict):
         self.settings = settings
-        self.effect_type = settings.get('effect_type', 'standard') # 'standard', 'pop', 'slide', 'typewriter', etc.
+        self.effect_type = settings.get('effect_type', 'none') # 'none', 'standard', 'pop', 'slide', 'typewriter', etc.
         self.audio_levels = settings.get('audio_levels', None) # Optional volume data
         
         def to_float(val, default):
@@ -83,7 +83,10 @@ class SubtitleEffects:
             if 0 <= progress <= 1:
                 is_active = True
         
-        if is_active:
+        # Only apply highlight color if an effect is active
+        show_highlight = is_active and self.effect_type != 'none'
+        
+        if show_highlight:
             res['color'] = highlight_color
         else:
             # Respect word's own color (rich text) or global primary

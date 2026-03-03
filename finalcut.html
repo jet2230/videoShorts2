@@ -627,7 +627,7 @@
             width: 100%;
             height: 100%;
             pointer-events: none;
-            z-index: 5 !important;
+            z-index: auto !important;
         }
 
         .video-wrapper video {
@@ -1028,6 +1028,22 @@
             transform: translate(0, 0) scale(1) !important;
         }
 
+
+        .logo-container {
+            border: 2px solid transparent !important;
+            background: transparent !important;
+            transition: all 0.2s ease;
+        }
+        .logo-container.selected {
+            border: 2px solid #00ccff !important;
+            background: rgba(0, 0, 0, 0.3) !important;
+        }
+        .logo-container .image-resize-handle {
+            display: none !important;
+        }
+        .logo-container.selected .image-resize-handle {
+            display: block !important;
+        }
 
         .timeline-container {
             display: flex;
@@ -2060,16 +2076,16 @@
                 <!-- Flat Layering: Main Video at Bottom -->
                 <video id="mainVideo" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; cursor: pointer; background: #000;" onclick="togglePlay()" playsinline preload="auto"></video>
                 
-                <!-- Overlays (z-index 10+) -->
+                <!-- Overlays: Shared Stacking Context (Base 10+) -->
                 <video id="brollOverlayVideo" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10 !important; object-fit: cover; opacity: 0; display: none !important; transition: opacity 0.3s ease;" muted></video>
-                <video id="outroOverlayVideo" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 13 !important; object-fit: contain; opacity: 0; display: none !important; transition: opacity 0.3s ease;" onplay="this.muted=false"></video>
+                <video id="outroOverlayVideo" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 50 !important; object-fit: contain; opacity: 0; display: none !important; transition: opacity 0.3s ease;" onplay="this.muted=false"></video>
                 <canvas id="outlineCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 11 !important; display: none !important;"></canvas>
-                <div id="imageOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20 !important; display: block !important;"></div>
-                <div id="logoOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 21 !important; display: block !important;"></div>
-                <canvas id="subtitleCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 15 !important;"></canvas>
+                <div id="imageOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: auto !important; display: block !important;"></div>
+                <div id="logoOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: auto !important; display: block !important;"></div>
                 
-                <!-- Draggable Title -->
-                <div id="title-overlay" class="title-overlay hidden" style="z-index: 16 !important;" contenteditable="true">
+                <!-- Fixed Top Overlays (100+) -->
+                <canvas id="subtitleCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 100 !important;"></canvas>
+                <div id="title-overlay" class="title-overlay hidden" style="z-index: 101 !important;" contenteditable="true">
                     <span class="title-text"></span>
                     <div class="resize-handle"></div>
                     <div class="style-handle"></div>
@@ -2077,7 +2093,9 @@
 
                 <!-- Custom Video Controls -->
                 <div class="video-controls-overlay" id="customControls" style="z-index: 100;">
+                    <button class="control-btn" onclick="jumpToTime('start')" title="Jump to Start (Home)">⏮</button>
                     <button class="control-btn" id="playPauseBtn" onclick="togglePlay()">▶</button>
+                    <button class="control-btn" onclick="jumpToTime('end')" title="Jump to End (End)">⏭</button>
                 </div>
 
                 <!-- Time Display above seekbar -->
@@ -2094,14 +2112,12 @@
             </div>
             <div class="timeline">
                 <div class="timeline-header">
-                    <div style="display: flex; gap: 4px; align-items: center;">
-                        <button class="frame-btn" onclick="stepFrame(-1)" title="Back 1 frame (Left Arrow)">◀</button>
-                        <button class="frame-btn" onclick="stepFrame(1)" title="Forward 1 frame (Right Arrow)">▶</button>
-                    </div>
-                    <div class="timer-display">
+                    <div class="timer-display" style="display: flex; align-items: center; gap: 8px;">
+                        <button class="frame-btn" onclick="stepFrame(-1)" title="Back 1 frame (Left Arrow)" style="margin-right: 4px;">◀</button>
                         <span id="currentTime">00:00</span>
                         <span> / </span>
                         <span id="timelineDuration">00:00</span>
+                        <button class="frame-btn" onclick="stepFrame(1)" title="Forward 1 frame (Right Arrow)" style="margin-left: 4px;">▶</button>
                     </div>
                     <div style="display: flex; gap: 8px; margin-left: auto; align-items: center; margin-top: -38px;">
                         <div class="checkbox-item" style="padding: 4px 10px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); margin-bottom: 0; display: flex; align-items: center; gap: 5px;">
@@ -3078,7 +3094,7 @@
         <div class="control-group">
             <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
                 <span>Fade Out Audio</span>
-                <input type="checkbox" id="outroFadeAudio" style="width: auto;" checked onchange="document.getElementById('outroFadeModeGroup').style.display = this.checked ? 'block' : 'none'; syncVolumes();">
+                <input type="checkbox" id="outroFadeAudio" style="width: auto;" onchange="document.getElementById('outroFadeModeGroup').style.display = this.checked ? 'block' : 'none'; syncVolumes();">
             </label>
             <div style="font-size: 10px; color: #888; margin-top: 4px;">Fade out audio during outro</div>
         </div>
@@ -3112,6 +3128,7 @@
         const themeNumber = urlParams.get('theme');
 
         const video = document.getElementById('mainVideo');
+        if (video) video.autoplay = false;
         const timelineTrack = document.getElementById('timelineTrack');
         const trimRegion = document.getElementById('trimRegion');
         const trimStart = document.getElementById('trimStart');
@@ -3239,6 +3256,7 @@
         let effectMarkersData = []; // Stores effect markers data for export/save
         let isResetting = false; // Flag to prevent re-showing indicator during reset
         let isPrimingVideo = false; // Flag to track video priming state
+        let isAutoLoading = true; // Flag to prevent playback during startup
 
         // Canvas-based subtitle rendering variables
         let allThemeCues = [];
@@ -3256,6 +3274,8 @@
         let videoTitle = '';
         let themeStart = '';
         let themeEnd = '';
+        let initialThemeStart = 0;
+        let initialThemeEnd = 0;
         let adjustedTitle = '';
         let actualVideoPath = ''; // Full path to source video
 
@@ -3301,6 +3321,8 @@
                 // Store theme boundaries BEFORE loading
                 video.dataset.themeStart = themeStartSeconds;
                 video.dataset.themeEnd = themeEndSeconds;
+                initialThemeStart = themeStartSeconds;
+                initialThemeEnd = themeEndSeconds;
 
                 // Load the video without Media Fragment API for better reliability
                 const pathParts = actualVideoPath.split('/');
@@ -3343,7 +3365,6 @@
                         
                         video.addEventListener('loadedmetadata', () => {
                             video.currentTime = currentTime;
-                            if (!video.paused) video.play().catch(() => {});
                             showNotification('Video recovered', 'success');
                         }, { once: true });
                     }, 1000);
@@ -3435,7 +3456,15 @@
             syncVolumes(); // Add volume synchronization during playback
 
             // Constrain playback to theme boundaries
-            // REMOVED: Allow full video playback without auto-pausing at theme end
+            const mainDuration = getEffectiveDuration();
+            const outroDuration = (outroVideo && outroVideo.enabled) ? outroVideo.duration : 0;
+            const displayDuration = mainDuration + outroDuration;
+
+            if (!outroPlaying && !outroCompleted && effectiveTime >= mainDuration) {
+                video.pause();
+                video.currentTime = (video.dataset.themeEnd ? parseFloat(video.dataset.themeEnd) : video.duration);
+                updatePlayhead();
+            }
 
             // Render subtitles on canvas
             renderSubtitlesAtCurrentTime();
@@ -3461,7 +3490,13 @@
 
         // Toggle play/pause
         function togglePlay() {
-            // Prevent playing if outro has completed - user must seek first
+            // User interaction clears auto-loading flag
+            if (isAutoLoading) {
+                isAutoLoading = false;
+                console.log('👆 User interaction: Clearing auto-load flag');
+            }
+
+            // Prevent playing if outro completed
             if (outroCompleted) {
                 return;
             }
@@ -3622,7 +3657,8 @@
             const origBaseVol = parseFloat(document.getElementById('originalAudioVolume')?.value || 100) / 100;
             
             const fadeAudioEl = document.getElementById('outroFadeAudio');
-            const fadeAudio = fadeAudioEl ? fadeAudioEl.checked : true;
+            const outroEffect = document.getElementById('outroEffect')?.value || 'none';
+            const fadeAudio = (fadeAudioEl ? fadeAudioEl.checked : true) && (outroVideo.enabled || outroEffect !== 'none');
             const fadeMode = document.getElementById('outroFadeMode')?.value || 'after';
             
             // 1. Main Video Volume (always fades out leading to mainDuration)
@@ -3681,6 +3717,10 @@
 
         // Sync CSS animations with video play/pause
         video.addEventListener('play', () => {
+            if (isAutoLoading) {
+                video.pause();
+                return;
+            }
             // Clear priming flag - user has started actual playback
             isPrimingVideo = false;
             const btn = document.getElementById('playPauseBtn');
@@ -3818,6 +3858,38 @@
             // Note: ResizeObserver will handle calling updateTimeline() and drawWaveform()
         }
 
+        function jumpToTime(target) {
+            const themeStart = video.dataset.themeStart ? parseFloat(video.dataset.themeStart) : 0;
+            const themeEnd = video.dataset.themeEnd ? parseFloat(video.dataset.themeEnd) : video.duration;
+            
+            if (target === 'start') {
+                video.currentTime = themeStart;
+                outroPlaying = false;
+                outroCompleted = false;
+            } else if (target === 'end') {
+                video.pause();
+                video.currentTime = themeEnd;
+                // If outro is enabled, mark it as completed so it doesn't auto-start
+                if (outroVideo && outroVideo.enabled) {
+                    outroCompleted = true;
+                    outroPlaying = false;
+                    // Hide main video if there's an outro effect (consistent with natural end)
+                    const outroEffect = document.getElementById('outroEffect')?.value || 'none';
+                    if (outroEffect !== 'none') {
+                        video.style.opacity = '0';
+                    }
+                }
+            }
+            
+            // Force UI updates
+            updatePlayhead();
+            checkEffectMarkers();
+            checkImageMarkers();
+            checkBrollMarkers();
+            renderSubtitlesAtCurrentTime();
+            syncVolumes();
+        }
+
         // Keyboard controls for Fluid Timeline manipulation
         const activeKeys = new Set();
         let seekLoopRunning = false;
@@ -3862,6 +3934,12 @@
             if (e.code === 'Space') {
                 e.preventDefault();
                 togglePlay();
+            } else if (e.code === 'Home') {
+                e.preventDefault();
+                jumpToTime('start');
+            } else if (e.code === 'End') {
+                e.preventDefault();
+                jumpToTime('end');
             } else if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
                 e.preventDefault();
                 
@@ -4078,7 +4156,10 @@
                 const effectType = this.settings.effect_type || 'none';
                 const duration = wordEnd - wordStart;
                 const progress = duration > 0 ? (currentTime - wordStart) / duration : 0;
-                const isActive = (progress >= 0 && progress <= 1) || isHighlighted;
+                
+                // Only consider it highlighted for styling if effect is not 'none'
+                const actuallyHighlighted = isHighlighted && effectType !== 'none';
+                const isActive = (progress >= 0 && progress <= 1) || actuallyHighlighted;
 
                 const mods = {
                     scale: 1.0,
@@ -4086,11 +4167,12 @@
                     offsetY: 0,
                     opacity: 1.0,
                     text: wordObj.text,
-                    color: isHighlighted ? (this.settings.textColor || '#ffff00') : (wordObj.color || this.settings.primaryColor || '#ffffff'),
+                    color: actuallyHighlighted ? (this.settings.textColor || '#ffff00') : (wordObj.color || this.settings.primaryColor || '#ffffff'),
                     glowBlur: this.settings.glowBlur || 0,
                     sizeMultiplier: wordObj.sizeMultiplier || 1.0,
                     emoji: null,
-                    customShadow: false
+                    customShadow: false,
+                    actuallyHighlighted: actuallyHighlighted
                 };
 
                 // Apply individual effects
@@ -4370,7 +4452,7 @@
 
                             // Text & Glow
                             ctx.fillStyle = mods.color;
-                            if (isHighlighted && mods.glowBlur > 0) {
+                            if (mods.actuallyHighlighted && mods.glowBlur > 0) {
                                 ctx.shadowColor = this.settings.glowColor || mods.color;
                                 ctx.shadowBlur = mods.glowBlur * scale;
                             } else ctx.shadowBlur = 0;
@@ -4921,7 +5003,7 @@
                     outroStartTime = Date.now() - (elapsedInOutro * 1000);
                     outroCompleted = false;
 
-                    // Show and seek the outro overlay (no auto-play)
+                    // Show and seek the outro overlay (ONLY play if main video was already playing)
                     const outroOverlay = document.getElementById('outroOverlayVideo');
                     if (outroOverlay) {
                         // Load outro if not loaded
@@ -4931,10 +5013,14 @@
                         outroOverlay.currentTime = elapsedInOutro;
                         outroOverlay.style.setProperty('display', 'block', 'important');
                         outroOverlay.style.opacity = '1';
-                        outroOverlay.pause();
 
-                        // Apply outro effect to main video
-                        const outroEffect = document.getElementById('outroEffect')?.value || 'none';
+                        if (!video.paused) {
+                            outroOverlay.play().catch(e => { if (e.name !== 'AbortError') console.warn('Outro play failed:', e); });
+                        } else {
+                            outroOverlay.pause();
+                        }
+
+                        // Apply outro effect to main video                        const outroEffect = document.getElementById('outroEffect')?.value || 'none';
                         const outroEffectDuration = parseFloat(document.getElementById('outroDuration')?.value ?? 1);
                         video.style.transition = 'none';
                         
@@ -7199,13 +7285,16 @@ function createImageMarker(markerData) {
                 
                 const container = document.createElement('div');
                 container.id = 'logoOverlayContainer';
+                container.className = 'logo-container';
                 
                 let widthStyle = `${activeLogo.scale * 40}%`;
                 if (activeLogo.stretchWidth) {
                     widthStyle = '100%';
                 }
 
-                container.style.cssText = `position:absolute;left:${activeLogo.posX}%;top:${activeLogo.posY}%;transform:translate(-50%,-50%);width:${widthStyle};z-index:50;border:2px solid #00ccff;background:rgba(0,0,0,0.2);min-width:50px;min-height:50px;pointer-events:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#00ccff;font-size:12px;text-align:center;overflow:visible;`;
+                // Use base 10 + layer for consistency with images and b-roll
+                const zIndex = 10 + (activeLogo.layer || 0);
+                container.style.cssText = `position:absolute;left:${activeLogo.posX}%;top:${activeLogo.posY}%;transform:translate(-50%,-50%);width:${widthStyle};z-index:${zIndex};min-width:50px;min-height:50px;pointer-events:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#00ccff;font-size:12px;text-align:center;overflow:visible;`;
                 
                 const infoText = document.createElement('div');
                 infoText.innerHTML = `<b>${activeLogo.name}</b><br>Loading...`;
@@ -7300,6 +7389,10 @@ function createImageMarker(markerData) {
                 };
 
                 container.onmousedown = (e) => {
+                    // Mark as selected
+                    document.querySelectorAll('.logo-container, .image-overlay-container').forEach(el => el.classList.remove('selected'));
+                    container.classList.add('selected');
+
                     if (e.target === handle || e.target.classList.contains('image-resize-handle')) { 
                         isResizing = true; 
                         startScale = activeLogo.scale; 
@@ -7313,10 +7406,9 @@ function createImageMarker(markerData) {
                     document.addEventListener('mousemove', onMove);
                     document.addEventListener('mouseup', onUp);
                     
-                    e.preventDefault(); 
+                    e.preventDefault();
                     e.stopPropagation();
                 };
-
             } else {
                 overlay.innerHTML = '';
                 overlay.dataset.activeLogoId = '';
@@ -7813,7 +7905,7 @@ function createImageMarker(markerData) {
                     container = document.createElement('div');
                     container.id = `overlayContainer_${activeMarker.id}`;
                     container.className = 'image-overlay-container';
-                    // Base z-index 10, plus layer (offset)
+                    // Base z-index 30, plus layer (offset)
                     const zIndex = 10 + (activeMarker.layer || 0);
                     container.style.cssText = `position:absolute;left:${activeMarker.posX}%;top:${activeMarker.posY}%;transform:translate(-50%,-50%);width:${activeMarker.scale * 40}%;z-index:${zIndex};border:none;background:rgba(0,0,0,0.2);min-width:50px;min-height:50px;pointer-events:auto;display:flex !important; opacity: 1 !important; visibility: visible !important; flex-direction:column;align-items:center;justify-content:center;color:#00ff9d;font-size:12px;text-align:center;overflow:visible;`;
                     
@@ -7957,13 +8049,16 @@ function createImageMarker(markerData) {
                     requestAnimationFrame(() => {
                         brollVideo.classList.add('active');
                         brollVideo.style.opacity = '1';
-                        brollVideo.play().catch(e => console.warn('Broll play failed:', e));
+                        if (!video.paused) {
+                            brollVideo.play().catch(e => { if (e.name !== 'AbortError') console.warn('Broll play failed:', e); });
+                        }
                     });
                 } else if (!brollVideo.classList.contains('active')) {
                     // Force active if it was removed by cleanup but we're still on the same marker
                     brollVideo.classList.add('active');
                     brollVideo.style.opacity = '1';
-                    if (!video.paused) brollVideo.play().catch(e => console.warn('Broll play failed:', e));
+                    brollVideo.style.setProperty('display', 'block', 'important');
+                    if (!video.paused) brollVideo.play().catch(e => { if (e.name !== 'AbortError') console.warn('Broll play failed:', e); });
                 }
 
                 // Calculate where we are in the broll segment relative to combined duration
@@ -7972,14 +8067,41 @@ function createImageMarker(markerData) {
 
                 // Increased sync precision for fluid seeking
                 const brollDuration = brollVideo.duration || segmentDuration || 1;
-                if (!isNaN(brollDuration) && Math.abs(brollVideo.currentTime - timeInSegment) > 0.01) {
-                    brollVideo.currentTime = timeInSegment % brollDuration;
+                const isAtBrollEnd = timeInSegment >= brollDuration;
+
+                // Check if we need to force sync. 
+                // During playback, we allow a larger drift (0.3s) to avoid jerkiness.
+                // During seeking or pause, we want tight sync (0.01s).
+                const driftThreshold = (video.paused || video.seeking) ? 0.01 : 0.3;
+                const needsSync = Math.abs(brollVideo.currentTime - timeInSegment) > driftThreshold;
+
+                if (!isNaN(brollDuration) && needsSync) {
+                    if (!isAtBrollEnd) {
+                        brollVideo.currentTime = timeInSegment;
+                    } else if (brollVideo.currentTime !== brollDuration) {
+                        brollVideo.currentTime = brollDuration;
+                    }
                 }
 
-                if (!video.paused && brollVideo.paused) {
-                    brollVideo.play().catch(e => console.warn('Broll play failed:', e));
-                } else if (video.paused && !brollVideo.paused) {
-                    brollVideo.pause();
+                if (isAtBrollEnd) {
+                    // Hide b-roll IMMEDIATELY if it's finished to show main video underneath
+                    // The main video is already playing, so an instant reveal is smoother than a slow fade-out
+                    brollVideo.classList.remove('active');
+                    brollVideo.style.opacity = '0';
+                    brollVideo.style.setProperty('display', 'none', 'important');
+                    if (!brollVideo.paused) brollVideo.pause();
+                } else {
+                    // Show b-roll if it's still playing
+                    if (!brollVideo.classList.contains('active')) {
+                        brollVideo.classList.add('active');
+                        brollVideo.style.opacity = '1';
+                        brollVideo.style.setProperty('display', 'block', 'important');
+                    }
+                    if (!video.paused && brollVideo.paused) {
+                        brollVideo.play().catch(e => { if (e.name !== 'AbortError') console.warn('Broll play failed:', e); });
+                    } else if (video.paused && !brollVideo.paused) {
+                        brollVideo.pause();
+                    }
                 }
 
                 // Draw outline if selected
@@ -7995,6 +8117,7 @@ function createImageMarker(markerData) {
                 if (brollVideo.dataset.activeMarkerId) {
                     // Trigger slide out/fade out
                     brollVideo.classList.remove('active');
+                    brollVideo.style.opacity = '0';
                     
                     // Capture current time to check in timeout
                     const captureTime = Date.now();
@@ -8004,7 +8127,7 @@ function createImageMarker(markerData) {
                     setTimeout(() => {
                         // Re-check if any broll should be active now
                         const nowTime = getEffectiveTime();
-                        const nowPercent = nowTime / displayDuration;
+                        const nowPercent = nowTime / (getEffectiveDuration() + ((outroVideo && outroVideo.enabled) ? outroVideo.duration : 0));
                         const isAnyActive = brollMarkers.some(m => nowPercent >= m.start && nowPercent <= m.end);
                         
                         // Only clear if no new marker became active and this is still the relevant cleanup call
@@ -8014,10 +8137,11 @@ function createImageMarker(markerData) {
                             brollVideo.removeAttribute('src');
                             brollVideo.load();
                             brollVideo.className = '';
-                            brollVideo.style.opacity = '0';
-                            brollVideo.style.setProperty("display", "none", "important");;
+                            brollVideo.style.setProperty('display', 'none', 'important');
                         }
-                    }, 400); // Match CSS transition duration
+                    }, 400); // Wait for transition duration
+
+                    if (!brollVideo.paused) brollVideo.pause();
                 }
             }
         }
@@ -8266,9 +8390,11 @@ function createImageMarker(markerData) {
                     subtitleCanvas.style.opacity = '0';
                 }
 
-                // Play outro if main video is playing
+                // Play outro ONLY if main video was already playing
                 if (!video.paused) {
                     outroOverlay.play().catch(e => { if (e.name !== 'AbortError') console.warn('Outro play failed:', e); });
+                } else {
+                    outroOverlay.pause();
                 }
 
                 // Hide logo if option is enabled
@@ -8394,6 +8520,12 @@ function createImageMarker(markerData) {
 
         function applyVideoEffects() {
             if (!video) return;
+            
+            // CRITICAL: First update which effects should be active based on current time
+            // This ensures activeEffects Set is correctly populated before we check it below
+            if (typeof checkEffectMarkers === 'function') {
+                checkEffectMarkers();
+            }
 
             // Check if we're in the outro fade region - if so, don't reset video styles
             const outroEffect = document.getElementById('outroEffect')?.value || 'none';
@@ -8418,9 +8550,9 @@ function createImageMarker(markerData) {
                 if (!inOutroFadeRegion) {
                     video.style.transition = '';
                     video.style.transformOrigin = 'center center';
-                    video.style.removeProperty('opacity');
-                    video.style.removeProperty('transform');
-                    video.style.removeProperty('filter');
+                    video.style.opacity = '';
+                    video.style.transform = '';
+                    video.style.filter = '';
                 }
                 video.style.visibility = 'visible';
                 video.style.display = 'block';
@@ -9427,6 +9559,7 @@ function createImageMarker(markerData) {
         };
 
         function applyChanges(quality = 'standard') {
+            video.pause(); // Stop video playback immediately
             // Normalize quality if called from event listener or missing
             if (typeof quality !== 'string') quality = 'standard';
             if (isExporting) {
@@ -9466,6 +9599,7 @@ function createImageMarker(markerData) {
                 speed: document.getElementById('playbackSpeed').value,
                 reverse: document.getElementById('effectReverse').checked,
                 subtitles: {
+                    ...getCurrentSubtitleSettings(),
                     offset: document.getElementById('subtitleOffset').value,
                     style: document.getElementById('subtitleStyle').value,
                     reburn: document.getElementById('reburnSubtitles').checked,
@@ -9847,8 +9981,11 @@ function createImageMarker(markerData) {
             // Set flag to prevent toggleFaceTrackingOptions from re-showing indicator
             isResetting = true;
 
-            document.getElementById('startTime').value = '00:00:00';
-            document.getElementById('endTime').value = formatTime(video.duration);
+            document.getElementById('startTime').value = formatTimeSeconds(initialThemeStart);
+            document.getElementById('endTime').value = formatTimeSeconds(initialThemeEnd);
+            video.dataset.themeStart = initialThemeStart;
+            video.dataset.themeEnd = initialThemeEnd;
+            
             document.getElementById('subtitleOffset').value = 0;
             document.getElementById('subtitleOffsetValue').textContent = '0s';
             document.getElementById('subtitleStyle').value = 'default';
@@ -9930,6 +10067,11 @@ function createImageMarker(markerData) {
                 scale: 0.5,
                 stretchWidth: false
             };
+            const logoOverlay = document.getElementById('logoOverlay');
+            if (logoOverlay) {
+                logoOverlay.innerHTML = '';
+                logoOverlay.dataset.activeLogoId = '';
+            }
             document.getElementById('audioFilename').textContent = '';
             document.querySelector('#panel-audio .file-upload').classList.remove('has-file');
             audioTrack.style.display = 'none';
@@ -9988,7 +10130,25 @@ function createImageMarker(markerData) {
 
             // Reset timeline
             updateTimeline();
-            video.currentTime = 0;
+            
+            // Reset Outro settings
+            document.getElementById('outroEffect').value = 'none';
+            document.getElementById('outroFadeAudio').checked = false;
+            document.getElementById('outroFadeModeGroup').style.display = 'none';
+            
+            // Clear outro clip if present
+            if (outroVideo && outroVideo.enabled) {
+                removeOutroVideo();
+            } else {
+                // Still call this to reset tracking variables even if no video
+                removeOutroVideo();
+            }
+
+            // Sync volumes to clear any fade
+            syncVolumes();
+
+            // Seek to theme start time, not 0
+            jumpToTime('start');
 
             // Clear flag after reset is complete
             setTimeout(() => {
@@ -10027,6 +10187,7 @@ function createImageMarker(markerData) {
                 speed: document.getElementById('playbackSpeed').value,
                 reverse: document.getElementById('effectReverse').checked,
                 subtitles: {
+                    ...getCurrentSubtitleSettings(),
                     offset: document.getElementById('subtitleOffset').value,
                     style: document.getElementById('subtitleStyle').value,
                     reburn: document.getElementById('reburnSubtitles').checked,
@@ -10562,7 +10723,7 @@ function createImageMarker(markerData) {
 
         // Refresh the presets list
         function refreshPresetsList() {
-            const key = `videoEditor_${videoPath}`;
+            const key = `videoEditor_${actualVideoPath}_theme_${themeNumber}`;
             const saved = localStorage.getItem(key);
             const presetsList = document.getElementById('presetsList');
             const savePresetsList = document.getElementById('savePresetsList');
@@ -10691,7 +10852,7 @@ function createImageMarker(markerData) {
                 return;
             }
 
-            const key = `videoEditor_${videoPath}`;
+            const key = `videoEditor_${actualVideoPath}_theme_${themeNumber}`;
 
             // Get existing presets or create new object
             let presets = {};
@@ -10796,7 +10957,7 @@ function createImageMarker(markerData) {
             // Auto-load last preset if enabled
             if (autoloadEnabled) {
                 setTimeout(() => {
-                    const key = `videoEditor_${videoPath}`;
+                    const key = `videoEditor_${actualVideoPath}_theme_${themeNumber}`;
                     try {
                         const existing = localStorage.getItem(key);
                         if (existing) {
@@ -10823,8 +10984,21 @@ function createImageMarker(markerData) {
                         }
                     } catch (e) {
                         console.error('Auto-load failed:', e);
+                    } finally {
+                        // Ensure auto-loading flag is cleared even on error
+                        setTimeout(() => {
+                            if (isAutoLoading) {
+                                isAutoLoading = false;
+                                console.log('✅ Initialization complete, playback enabled');
+                            }
+                        }, 500);
                     }
-                }, 1500); // Wait for theme/video to initialize
+                }, 800); // Wait for theme/video to initialize
+            } else {
+                // If auto-load disabled, clear flag sooner
+                setTimeout(() => {
+                    isAutoLoading = false;
+                }, 500);
             }
         });
 
@@ -10840,6 +11014,11 @@ function createImageMarker(markerData) {
 
         // Close presets boxes when clicking outside
         document.addEventListener('mousedown', (e) => {
+            // Deselect overlays when clicking on empty video wrapper
+            if (e.target.id === 'mainVideo' || e.target.classList.contains('video-wrapper')) {
+                document.querySelectorAll('.logo-container, .image-overlay-container').forEach(el => el.classList.remove('selected'));
+            }
+
             const saveBox = document.getElementById('savePresetBox');
             const loadBox = document.getElementById('loadPresetsBox');
             const saveBtn = document.getElementById('saveBtn');

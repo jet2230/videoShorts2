@@ -6360,8 +6360,8 @@
         };
 
         function applyChanges(quality = 'standard') {
+            video.pause(); // Stop video playback immediately
             // Normalize quality if called from event listener or missing
-            if (typeof quality !== 'string') quality = 'standard';
             if (isExporting) {
                 // Cancel the export
                 cancelExport();

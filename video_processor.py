@@ -260,8 +260,7 @@ class VideoProcessor:
 
             if br_path and br_path.exists():
                 log(f"DEBUG_VP: Found B-roll {i} '{marker['name']}' at {br_path} (Absolute: {br_path.absolute()})")
-                # Stream loop for B-roll files
-                cmd.extend(['-stream_loop', '-1', '-i', str(br_path.absolute())])
+                cmd.extend(['-i', str(br_path.absolute())])
 
                 # Resolve timing: prefer start_time (seconds), fall back to start (percentage)
                 s = marker.get('start_time')

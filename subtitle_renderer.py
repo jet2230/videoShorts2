@@ -22,6 +22,19 @@ from subtitle_effects import SubtitleEffects
 
 logger = logging.getLogger(__name__)
 
+# Utility functions
+def to_float(val, default=0.0):
+    try:
+        if val is None or str(val).strip() == "": return default
+        return float(val)
+    except: return default
+
+def to_int(val, default=0):
+    try:
+        if val is None or str(val).strip() == "": return default
+        return int(float(val))
+    except: return default
+
 
 class UniversalSubtitleRenderer:
     """Universal renderer for all subtitle styles (standard and karaoke)."""
@@ -62,19 +75,6 @@ class UniversalSubtitleRenderer:
         # To make "Size 80" in the browser match "Size 80" in PIL, we use 72/96 = 0.75.
         self.pixel_to_pt = 0.75
         
-        # Robustly convert numerical settings
-        def to_int(val, default):
-            try: 
-                if val is None or str(val).strip() == "": return default
-                return int(float(val))
-            except: return default
-            
-        def to_float(val, default):
-            try: 
-                if val is None or str(val).strip() == "": return default
-                return float(val)
-            except: return default
-            
         def get_val(keys, default):
             if isinstance(keys, str): keys = [keys]
             for k in keys:
@@ -110,7 +110,7 @@ class UniversalSubtitleRenderer:
         
         # Force Normal/Karaoke mode if any highlight effect is chosen
         self.mode = settings.get('mode', 'standard')
-        if self.mode == 'standard' and (self.effects.effect_type != 'none' or settings.get('textColor')):
+        if self.mode == 'standard' and self.effects.effect_type != 'none':
             self.mode = 'normal'
         
         self.font_weight = settings.get('font_weight')
@@ -123,6 +123,7 @@ class UniversalSubtitleRenderer:
         self.subtitle_top = to_int(get_val('subtitle_top', None), 1600)
         self.subtitle_h_align = get_val(['subtitle_h_align', 'horizontal_align'], 'center')
         self.subtitle_v_align = get_val(['subtitle_v_align', 'vertical_align'], 'bottom')
+        self.subtitle_offset = to_float(get_val('offset', 0), 0)
         
         self._subtitle_word_cache = {}
         self._overlay_layer = None
@@ -674,17 +675,17 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
     # Determine the reference time for SRT lookup
     # If the SRT is relative, it's relative to theme_meta_start (the original theme bounds)
     srt_ref_start = settings.get('theme_meta_start', start_time)
+    subtitle_offset = to_float(settings.get('offset', 0), 0)
     
     for f_idx in range(total_f):
         ret, frame = renderer.cap.read()
         if not ret: break
         
         rel_t = f_idx / 30.0
-        # If we are using a trimmed clip, the video starts at 0, 
-        # but the subtitles/words are still absolute.
-        abs_t = start_time + rel_t
-        
         # Determine lookup time for finding the CORRECT subtitle segment.
+        # In the UI, currentCue is found using currentTime.
+        # But adjustedTime = currentTime - offsetSeconds is used for word highlighting.
+        
         if is_rel:
             # If the video is already trimmed (Pass 2), the current video frame rel_t
             # corresponds directly to the timestamps in the relative SRT.
@@ -693,38 +694,43 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
             else:
                 # If we are rendering against the full video (Pass 1 or absolute mode),
                 # we anchor the relative SRT to srt_ref_start.
-                lookup_t = abs_t - srt_ref_start
+                lookup_t = (start_time + rel_t) - srt_ref_start
         else:
             # Absolute SRTs match the original video timestamps.
-            lookup_t = abs_t
+            lookup_t = start_time + rel_t
+            
+        # Apply offset to the time used for word lookup
+        # In the UI, adjustedTime = currentTime - offsetSeconds
+        adjusted_abs_t = (start_time + rel_t) - subtitle_offset
         
         # Ensure we don't look for negative times
-        lookup_t = max(-100.0, lookup_t) # Allow some look-back for buffer but mostly positive
+        lookup_t = max(0.0, lookup_t) 
         
         # Best Match Search with a small look-back buffer (0.5s)
         matched = None
         for s in subtitles_by_start:
-            if (s['start'] - 0.5) <= lookup_t <= s['end']:
+            if (s['start'] - 0.05) <= lookup_t <= (s['end'] + 0.05):
                 matched = s
-            elif s['start'] > lookup_t + 0.5: break
+                break
+            elif s['start'] > lookup_t + 0.1: break
         
         txt, s_s, s_e = "", 0, 0
         if matched:
             txt = matched['text']
             # Map segment times back to absolute for the renderer to match absolute word JSON
             if is_rel:
-                # If segment is 0.0 to 5.0 and start_time is 600.0, 
-                # absolute range is 600.0 to 605.0.
-                s_s = matched['start'] + (srt_ref_start if not is_already_trimmed else start_time)
-                s_e = matched['end'] + (srt_ref_start if not is_already_trimmed else start_time)
+                # srt_ref_start is the absolute time where theme 00:00:00 is.
+                base = srt_ref_start if not is_already_trimmed else start_time
+                s_s = matched['start'] + base
+                s_e = matched['end'] + base
             else:
                 s_s = matched['start']
                 s_e = matched['end']
 
         # CRITICAL: render_frame and get_words_at_time_for_subtitle use current_time 
         # to find the highlight word. Since words_by_time is ALWAYS absolute,
-        # we MUST pass abs_t.
-        raw = renderer.render_frame(frame, abs_t, txt, s_s, s_e)
+        # we MUST pass adjusted_abs_t (which has the user offset applied).
+        raw = renderer.render_frame(frame, adjusted_abs_t, txt, s_s, s_e)
         try: proc.stdin.write(raw)
         except: break
         

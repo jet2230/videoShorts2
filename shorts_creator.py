@@ -1145,18 +1145,20 @@ Video Path: {video_info['video_path']}
                     theme_num = int(match.group(1))
                     title = match.group(2)
 
-                    # Look for time range in next few lines
+                    # Look for time range and type in next few lines
                     i += 1
                     time_range = None
-                    while i < len(lines) and not lines[i].startswith('**Why this works:**'):
+                    is_custom = False
+                    while i < len(lines) and not (lines[i].startswith('### Theme') or lines[i].startswith('**Why this works:**')):
                         if '**Time Range:**' in lines[i]:
-                            time_match = re.search(r'(\d{2}:\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}:\d{2})', lines[i])
+                            time_match = re.search(r'(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)\s*-\s*(\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?)', lines[i])
                             if time_match:
                                 time_range = {
                                     'start': time_match.group(1),
                                     'end': time_match.group(2)
                                 }
-                                break
+                        if '**Type:** custom' in lines[i]:
+                            is_custom = True
                         i += 1
 
                     if time_range:
@@ -1164,8 +1166,10 @@ Video Path: {video_info['video_path']}
                             'number': theme_num,
                             'title': title,
                             'start': time_range['start'],
-                            'end': time_range['end']
+                            'end': time_range['end'],
+                            'is_custom': is_custom
                         })
+                    continue # Already incremented i in inner loop
             i += 1
 
         return themes
