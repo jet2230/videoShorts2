@@ -3106,6 +3106,14 @@
 
         <div class="control-group">
             <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
+                <span>Fade Out Video</span>
+                <input type="checkbox" id="outroFadeVideo" style="width: auto;" onchange="checkOutroVideo();">
+            </label>
+            <div style="font-size: 10px; color: #888; margin-top: 4px;">Instantly hide main video when outro starts</div>
+        </div>
+
+        <div class="control-group">
+            <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
                 <span>Fade Out Audio</span>
                 <input type="checkbox" id="outroFadeAudio" style="width: auto;" onchange="document.getElementById('outroFadeModeGroup').style.display = this.checked ? 'block' : 'none'; syncVolumes();">
             </label>
@@ -8326,6 +8334,8 @@ function createImageMarker(markerData) {
             const fadeStart = themeEnd - outroEffectDuration;
             const atFadeStart = video.currentTime >= fadeStart && video.currentTime < themeEnd;
             const atEnd = video.currentTime >= themeEnd;
+            
+            const fadeVideo = document.getElementById('outroFadeVideo')?.checked ?? false;
 
             // Get overlay elements
             const outroOverlayVid = document.getElementById('outroOverlayVideo');
@@ -8488,6 +8498,11 @@ function createImageMarker(markerData) {
                 if (otherOverlay) {
                     otherOverlay.style.setProperty('display', 'none', 'important');
                     otherOverlay.style.opacity = '0';
+                }
+
+                // If Fade Out Video is enabled, instantly hide the main video
+                if (fadeVideo) {
+                    video.style.opacity = '0';
                 }
 
                 // Ensure main video is fully hidden/transformed when outro starts
@@ -8670,6 +8685,7 @@ function createImageMarker(markerData) {
                         currentOverlay.style.transform = '';
                         currentOverlay.style.filter = '';
                     }
+                    
                     // Sync play state
                     // ONLY play outro if it is a video and main video is also playing
                     if (outroVideo.type === 'video') {
@@ -8678,6 +8694,16 @@ function createImageMarker(markerData) {
                         } else if (video.paused && !currentOverlay.paused) {
                             currentOverlay.pause();
                         }
+                    }
+
+                    // If Fade Out Video is enabled, ensure main video stays hidden
+                    if (fadeVideo) {
+                        video.style.setProperty('opacity', '0', 'important');
+                    }
+
+                    // Sync logo visibility in case toggle changed during playback
+                    if (logoOverlay) {
+                        logoOverlay.style.opacity = hideLogo ? '0' : '1';
                     }
                     
                     // Keep checking while playing
@@ -9799,6 +9825,7 @@ function createImageMarker(markerData) {
                     effect: document.getElementById('outroEffect').value,
                     duration: document.getElementById('outroDuration').value,
                     easing: document.getElementById('outroEasing').value,
+                    fadeVideo: document.getElementById('outroFadeVideo').checked,
                     fadeAudio: document.getElementById('outroFadeAudio').checked,
                     fadeMode: document.getElementById('outroFadeMode').value,
                     hideLogo: document.getElementById('outroHideLogo').checked,
@@ -10386,6 +10413,7 @@ function createImageMarker(markerData) {
                     effect: document.getElementById('outroEffect').value,
                     duration: document.getElementById('outroDuration').value,
                     easing: document.getElementById('outroEasing').value,
+                    fadeVideo: document.getElementById('outroFadeVideo').checked,
                     fadeAudio: document.getElementById('outroFadeAudio').checked,
                     fadeMode: document.getElementById('outroFadeMode').value,
                     hideLogo: document.getElementById('outroHideLogo').checked,
@@ -10578,7 +10606,9 @@ function createImageMarker(markerData) {
                 document.getElementById('outroDuration').value = settings.outro.duration || 3;
                 document.getElementById('outroDurationValue').textContent = (settings.outro.duration || 3) + 's';
                 document.getElementById('outroEasing').value = settings.outro.easing || 'ease-out';
-                document.getElementById('outroFadeAudio').checked = settings.outro.fadeAudio !== false;
+                document.getElementById('outroFadeVideo').checked = settings.outro.fadeVideo || false;
+                document.getElementById('outroFadeAudio').checked = settings.outro.fadeAudio || false;
+                document.getElementById('outroFadeModeGroup').style.display = (settings.outro.fadeAudio || false) ? 'block' : 'none';
                 document.getElementById('outroFadeMode').value = settings.outro.fadeMode || 'after';
                 document.getElementById('outroHideLogo').checked = settings.outro.hideLogo !== undefined ? settings.outro.hideLogo : true;
 
