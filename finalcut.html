@@ -1943,7 +1943,6 @@
         .audio-library-item:hover {
             background: rgba(255, 255, 255, 0.15);
             border-color: rgba(255, 255, 255, 0.3);
-            transform: translateX(5px);
             color: #fff;
         }
 
@@ -8596,11 +8595,10 @@ function createImageMarker(markerData) {
                         outroOverlay.style.filter = '';
                     }
                     // Sync play state
-                    // If main video is playing, outro should play
-                    // If main video is paused but at end, outro should still play
-                    if ((!video.paused || isAtEnd) && outroOverlay.paused) {
+                    // ONLY play outro if main video is also playing
+                    if (!video.paused && outroOverlay.paused) {
                         outroOverlay.play().catch(e => { if (e.name !== 'AbortError') console.warn('Outro play failed:', e); });
-                    } else if (video.paused && !isAtEnd && !outroOverlay.paused) {
+                    } else if (video.paused && !outroOverlay.paused) {
                         outroOverlay.pause();
                     }
                     
