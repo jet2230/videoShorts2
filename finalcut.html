@@ -2080,6 +2080,7 @@
                 <!-- Overlays: Shared Stacking Context (Base 10+) -->
                 <video id="brollOverlayVideo" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10 !important; object-fit: cover; opacity: 0; display: none !important; transition: opacity 0.3s ease;" muted></video>
                 <video id="outroOverlayVideo" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 50 !important; object-fit: contain; opacity: 0; display: none !important; transition: opacity 0.3s ease;" onplay="this.muted=false"></video>
+                <img id="outroOverlayImage" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 50 !important; object-fit: contain; opacity: 0; display: none !important; transition: opacity 0.3s ease;">
                 <canvas id="outlineCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 11 !important; display: none !important;"></canvas>
                 <div id="imageOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: auto !important; display: block !important;"></div>
                 <div id="logoOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: auto !important; display: block !important;"></div>
@@ -3221,7 +3222,8 @@
             file: null,
             name: '',
             path: '',
-            duration: 0
+            duration: 0,
+            type: 'video' // 'video' or 'image'
         };
         let outroPlaying = false; // Track if we're currently playing the outro
         let outroStartTime = 0; // Track when the outro started playing
@@ -5947,6 +5949,7 @@
             outroVideo.name = file.name;
             outroVideo.path = file.path;
             outroVideo.duration = file.duration || 5;
+            outroVideo.type = file.type || 'video';
 
             // Update UI
             document.getElementById('outroVideoText').textContent = file.name;
@@ -5955,11 +5958,26 @@
             document.getElementById('outroVideoInfo').style.display = 'block';
             document.getElementById('removeOutroVideo').style.display = 'block';
 
-            // Setup preview video
-            const outroOverlay = document.getElementById('outroOverlayVideo');
-            if (outroOverlay) {
-                outroOverlay.src = `/media/${file.path}`;
-                outroOverlay.load();
+            // Setup preview media
+            const outroOverlayVid = document.getElementById('outroOverlayVideo');
+            const outroOverlayImg = document.getElementById('outroOverlayImage');
+            
+            if (outroVideo.type === 'video') {
+                if (outroOverlayVid) {
+                    outroOverlayVid.src = `/media/${file.path}`;
+                    outroOverlayVid.load();
+                    outroOverlayVid.style.display = 'none'; // Keep hidden until playing
+                }
+                if (outroOverlayImg) outroOverlayImg.style.display = 'none';
+            } else {
+                if (outroOverlayImg) {
+                    outroOverlayImg.src = `/media/${file.path}`;
+                    outroOverlayImg.style.display = 'none'; // Keep hidden until playing
+                }
+                if (outroOverlayVid) {
+                    outroOverlayVid.style.display = 'none';
+                    outroOverlayVid.src = '';
+                }
             }
 
             showNotification(`Selected outro: ${file.name}`, 'success');
@@ -7221,13 +7239,9 @@ function createImageMarker(markerData) {
         async function handleOutroVideoUpload(input) {
             if (input.files && input.files[0]) {
                 const file = input.files[0];
+                const isImage = file.type.startsWith('image/');
 
-                // Get video duration
-                const tempVideo = document.createElement('video');
-                tempVideo.preload = 'metadata';
-
-                tempVideo.onloadedmetadata = async function() {
-                    const duration = tempVideo.duration;
+                const processUpload = async (duration) => {
                     const formData = new FormData();
                     formData.append('file', file);
 
@@ -7246,11 +7260,12 @@ function createImageMarker(markerData) {
                             outroVideo.name = result.filename;
                             outroVideo.path = result.filename;
                             outroVideo.duration = duration;
+                            outroVideo.type = isImage ? 'image' : 'video';
 
                             // Update UI
                             document.getElementById('outroVideoText').textContent = file.name;
                             document.getElementById('outroVideoInfo').style.display = 'block';
-                            document.getElementById('outroVideoName').textContent = `📁 ${file.name}`;
+                            document.getElementById('outroVideoName').textContent = `${isImage ? '🖼️' : '📁'} ${file.name}`;
                             document.getElementById('outroVideoDuration').textContent = `⏱️ ${formatTimeSeconds(duration)}`;
                             document.getElementById('removeOutroVideo').style.display = 'block';
 
@@ -7260,26 +7275,50 @@ function createImageMarker(markerData) {
                             document.getElementById('endTime').value = formatTimeSeconds(newEndTime);
                             updateTimeline();
 
-                            // Preload outro video element for preview
-                            const outroOverlay = document.getElementById('outroOverlayVideo');
-                            if (outroOverlay) {
-                                outroOverlay.src = '/media/' + encodeURIComponent(result.filename);
-                                outroOverlay.style.setProperty("display", "none", "important");;
+                            // Preload media element for preview
+                            const outroOverlayVid = document.getElementById('outroOverlayVideo');
+                            const outroOverlayImg = document.getElementById('outroOverlayImage');
+                            
+                            if (isImage) {
+                                if (outroOverlayImg) outroOverlayImg.src = '/media/' + encodeURIComponent(result.filename);
+                                if (outroOverlayVid) {
+                                    outroOverlayVid.src = '';
+                                    outroOverlayVid.style.display = 'none';
+                                }
+                            } else {
+                                if (outroOverlayVid) {
+                                    outroOverlayVid.src = '/media/' + encodeURIComponent(result.filename);
+                                    outroOverlayVid.style.display = 'none';
+                                }
+                                if (outroOverlayImg) {
+                                    outroOverlayImg.src = '';
+                                    outroOverlayImg.style.display = 'none';
+                                }
                             }
 
                             showNotification(`${file.name} added - Duration extended by ${duration.toFixed(1)}s`, 'success');
                         }
                     } catch (error) {
-                        console.error('Outro video upload error:', error);
+                        console.error('Outro upload error:', error);
                         showNotification(`Error uploading ${file.name}`, 'error');
                     }
                 };
 
-                tempVideo.onerror = function() {
-                    showNotification('Error loading video file', 'error');
-                };
-
-                tempVideo.src = URL.createObjectURL(file);
+                if (isImage) {
+                    // Default 5s for images
+                    await processUpload(5.0);
+                } else {
+                    // Get video duration
+                    const tempVideo = document.createElement('video');
+                    tempVideo.preload = 'metadata';
+                    tempVideo.onloadedmetadata = function() {
+                        processUpload(tempVideo.duration);
+                    };
+                    tempVideo.onerror = function() {
+                        processUpload(5.0); // Fallback
+                    };
+                    tempVideo.src = URL.createObjectURL(file);
+                }
             }
         }
 
@@ -7305,13 +7344,19 @@ function createImageMarker(markerData) {
             document.getElementById('outroVideoInfo').style.display = 'none';
             document.getElementById('removeOutroVideo').style.display = 'none';
 
-            // Clear outro overlay element
-            const outroOverlay = document.getElementById('outroOverlayVideo');
-            if (outroOverlay) {
-                outroOverlay.src = '';
-                outroOverlay.style.opacity = '0';
-                outroOverlay.style.setProperty("display", "none", "important");;
-                outroOverlay.pause();
+            // Clear outro overlay elements
+            const outroOverlayVid = document.getElementById('outroOverlayVideo');
+            const outroOverlayImg = document.getElementById('outroOverlayImage');
+            if (outroOverlayVid) {
+                outroOverlayVid.src = '';
+                outroOverlayVid.style.opacity = '0';
+                outroOverlayVid.style.setProperty("display", "none", "important");
+                outroOverlayVid.pause();
+            }
+            if (outroOverlayImg) {
+                outroOverlayImg.src = '';
+                outroOverlayImg.style.opacity = '0';
+                outroOverlayImg.style.setProperty("display", "none", "important");
             }
 
             // Show logo again if it was hidden
@@ -8277,17 +8322,29 @@ function createImageMarker(markerData) {
             const outroEffect = document.getElementById('outroEffect')?.value || 'none';
             const outroEffectDuration = parseFloat(document.getElementById('outroDuration')?.value ?? 1);
 
-            // Start fade-out early based on effect duration, but only start outro overlay at exact end
+            // Start fading out early based on effect duration, but only start outro overlay at exact end
             const fadeStart = themeEnd - outroEffectDuration;
             const atFadeStart = video.currentTime >= fadeStart && video.currentTime < themeEnd;
             const atEnd = video.currentTime >= themeEnd;
 
+            // Get overlay elements
+            const outroOverlayVid = document.getElementById('outroOverlayVideo');
+            const outroOverlayImg = document.getElementById('outroOverlayImage');
+            const currentOverlay = outroVideo.type === 'image' ? outroOverlayImg : outroOverlayVid;
+            const otherOverlay = outroVideo.type === 'image' ? outroOverlayVid : outroOverlayImg;
+
             // If we seeked back away from the end, stop outro and reset completed status
             if (video.currentTime < fadeStart) {
                 if (outroPlaying || outroCompleted) {
-                    outroOverlay.style.opacity = '0';
-                    outroOverlay.style.setProperty("display", "none", "important");;
-                    outroOverlay.pause();
+                    if (outroOverlayVid) {
+                        outroOverlayVid.style.opacity = '0';
+                        outroOverlayVid.style.setProperty("display", "none", "important");
+                        outroOverlayVid.pause();
+                    }
+                    if (outroOverlayImg) {
+                        outroOverlayImg.style.opacity = '0';
+                        outroOverlayImg.style.setProperty("display", "none", "important");
+                    }
                     outroPlaying = false;
                     outroStartTime = 0;
 
@@ -8398,6 +8455,16 @@ function createImageMarker(markerData) {
                 if (logoOverlay) {
                     logoOverlay.style.opacity = '1';
                 }
+                
+                // CRITICAL: Ensure outro overlays are hidden when not in use
+                if (outroOverlayVid) {
+                    outroOverlayVid.style.opacity = '0';
+                    outroOverlayVid.style.setProperty("display", "none", "important");
+                }
+                if (outroOverlayImg) {
+                    outroOverlayImg.style.opacity = '0';
+                    outroOverlayImg.style.setProperty("display", "none", "important");
+                }
             }
 
             if (atEnd && !outroPlaying && !outroCompleted) {
@@ -8405,15 +8472,23 @@ function createImageMarker(markerData) {
                 outroPlaying = true;
                 outroStartTime = now;
 
-                // Load outro if not loaded
-                if (!outroOverlay.src || !outroOverlay.src.includes(encodeURIComponent(outroVideo.path))) {
-                    outroOverlay.src = '/media/' + encodeURIComponent(outroVideo.path);
+                // Load source if not loaded
+                if (!currentOverlay.src || !currentOverlay.src.includes(encodeURIComponent(outroVideo.path))) {
+                    currentOverlay.src = '/media/' + encodeURIComponent(outroVideo.path);
                 }
 
-                // Start outro from beginning with fade-in
-                outroOverlay.currentTime = 0;
-                outroOverlay.style.setProperty('display', 'block', 'important');
-                outroOverlay.style.transition = 'none';
+                // Start from beginning
+                if (outroVideo.type === 'video') {
+                    currentOverlay.currentTime = 0;
+                }
+                currentOverlay.style.setProperty('display', 'block', 'important');
+                currentOverlay.style.transition = 'none';
+                
+                // Hide other type
+                if (otherOverlay) {
+                    otherOverlay.style.setProperty('display', 'none', 'important');
+                    otherOverlay.style.opacity = '0';
+                }
 
                 // Ensure main video is fully hidden/transformed when outro starts
                 video.style.transition = 'none';
@@ -8466,10 +8541,10 @@ function createImageMarker(markerData) {
                 }
 
                 // Set initial outro overlay state based on effect type
-                outroOverlay.style.transition = 'none';
-                outroOverlay.style.opacity = '1';
-                outroOverlay.style.transform = '';
-                outroOverlay.style.filter = '';
+                currentOverlay.style.transition = 'none';
+                currentOverlay.style.opacity = '1';
+                currentOverlay.style.transform = '';
+                currentOverlay.style.filter = '';
 
                 // Mute main video during outro
                 video.muted = true;
@@ -8483,11 +8558,13 @@ function createImageMarker(markerData) {
                     subtitleCanvas.style.opacity = '0';
                 }
 
-                // Play outro ONLY if main video was already playing
-                if (!video.paused) {
-                    outroOverlay.play().catch(e => { if (e.name !== 'AbortError') console.warn('Outro play failed:', e); });
-                } else {
-                    outroOverlay.pause();
+                // Play outro ONLY if it is a video and main video was already playing
+                if (outroVideo.type === 'video') {
+                    if (!video.paused) {
+                        currentOverlay.play().catch(e => { if (e.name !== 'AbortError') console.warn('Outro play failed:', e); });
+                    } else {
+                        currentOverlay.pause();
+                    }
                 }
 
                 // Hide logo if option is enabled
@@ -8517,7 +8594,9 @@ function createImageMarker(markerData) {
 
                 if (elapsed >= outroDuration) {
                     // Outro finished - keep last frame visible
-                    outroOverlay.pause();
+                    if (outroVideo.type === 'video') {
+                        currentOverlay.pause();
+                    }
                     // Keep outro overlay visible - don't hide it
                     outroPlaying = false;
                     outroStartTime = 0;
@@ -8526,82 +8605,79 @@ function createImageMarker(markerData) {
                     // Pause main video when outro finishes
                     video.pause();
                     syncVolumes(); // Final sync
-
-                    // Don't reset main video opacity - keep it hidden
-                    // Don't unmute main video - keep it muted
-                    // Don't show subtitles - keep them hidden
-                    // Don't show logo - keep it hidden
                 } else {
                     // Apply fade-in to outro overlay during the fade-in period for all effect types
                     if (elapsed < outroEffectDuration) {
                         const fadeInProgress = elapsed / outroEffectDuration;
                         const progress = Math.max(0, Math.min(1, fadeInProgress));
 
-                        outroOverlay.style.transition = 'none';
+                        currentOverlay.style.transition = 'none';
 
                         switch (outroEffect) {
                             case 'fade-out':
-                                outroOverlay.style.opacity = progress.toString();
-                                outroOverlay.style.transform = '';
-                                outroOverlay.style.filter = '';
+                                currentOverlay.style.opacity = progress.toString();
+                                currentOverlay.style.transform = '';
+                                currentOverlay.style.filter = '';
                                 break;
                             case 'slide-out-left':
-                                outroOverlay.style.transform = `translateX(${(1 - progress) * 100}%)`;
-                                outroOverlay.style.opacity = '1';
-                                outroOverlay.style.filter = '';
+                                currentOverlay.style.transform = `translateX(${(1 - progress) * 100}%)`;
+                                currentOverlay.style.opacity = '1';
+                                currentOverlay.style.filter = '';
                                 break;
                             case 'slide-out-right':
-                                outroOverlay.style.transform = `translateX(${(1 - progress) * -100}%)`;
-                                outroOverlay.style.opacity = '1';
-                                outroOverlay.style.filter = '';
+                                currentOverlay.style.transform = `translateX(${(1 - progress) * -100}%)`;
+                                currentOverlay.style.opacity = '1';
+                                currentOverlay.style.filter = '';
                                 break;
                             case 'slide-out-top':
-                                outroOverlay.style.transform = `translateY(${(1 - progress) * 100}%)`;
-                                outroOverlay.style.opacity = '1';
-                                outroOverlay.style.filter = '';
+                                currentOverlay.style.transform = `translateY(${(1 - progress) * 100}%)`;
+                                currentOverlay.style.opacity = '1';
+                                currentOverlay.style.filter = '';
                                 break;
                             case 'slide-out-bottom':
-                                outroOverlay.style.transform = `translateY(${(1 - progress) * -100}%)`;
-                                outroOverlay.style.opacity = '1';
-                                outroOverlay.style.filter = '';
+                                currentOverlay.style.transform = `translateY(${(1 - progress) * -100}%)`;
+                                currentOverlay.style.opacity = '1';
+                                currentOverlay.style.filter = '';
                                 break;
                             case 'zoom-out':
                                 const scale = 0.5 + (progress * 0.5);
-                                outroOverlay.style.transform = `scale(${scale})`;
-                                outroOverlay.style.opacity = '1';
-                                outroOverlay.style.filter = '';
+                                currentOverlay.style.transform = `scale(${scale})`;
+                                currentOverlay.style.opacity = '1';
+                                currentOverlay.style.filter = '';
                                 break;
                             case 'spin-out':
                                 const rotation = (1 - progress) * -360;
                                 const spinScale = progress;
-                                outroOverlay.style.transform = `rotate(${rotation}deg) scale(${spinScale})`;
-                                outroOverlay.style.opacity = '1';
-                                outroOverlay.style.filter = '';
+                                currentOverlay.style.transform = `rotate(${rotation}deg) scale(${spinScale})`;
+                                currentOverlay.style.opacity = '1';
+                                currentOverlay.style.filter = '';
                                 break;
                             case 'blur-out':
                                 const blurAmount = (1 - progress) * 20;
-                                outroOverlay.style.filter = `blur(${blurAmount}px)`;
-                                outroOverlay.style.opacity = '1';
-                                outroOverlay.style.transform = '';
+                                currentOverlay.style.filter = `blur(${blurAmount}px)`;
+                                currentOverlay.style.opacity = '1';
+                                currentOverlay.style.transform = '';
                                 break;
                             default:
-                                outroOverlay.style.opacity = '1';
-                                outroOverlay.style.transform = '';
-                                outroOverlay.style.filter = '';
+                                currentOverlay.style.opacity = '1';
+                                currentOverlay.style.transform = '';
+                                currentOverlay.style.filter = '';
                                 break;
                         }
                     } else {
                         // Fully visible/normal after fade-in period
-                        outroOverlay.style.opacity = '1';
-                        outroOverlay.style.transform = '';
-                        outroOverlay.style.filter = '';
+                        currentOverlay.style.opacity = '1';
+                        currentOverlay.style.transform = '';
+                        currentOverlay.style.filter = '';
                     }
                     // Sync play state
-                    // ONLY play outro if main video is also playing
-                    if (!video.paused && outroOverlay.paused) {
-                        outroOverlay.play().catch(e => { if (e.name !== 'AbortError') console.warn('Outro play failed:', e); });
-                    } else if (video.paused && !outroOverlay.paused) {
-                        outroOverlay.pause();
+                    // ONLY play outro if it is a video and main video is also playing
+                    if (outroVideo.type === 'video') {
+                        if (!video.paused && currentOverlay.paused) {
+                            currentOverlay.play().catch(e => { if (e.name !== 'AbortError') console.warn('Outro play failed:', e); });
+                        } else if (video.paused && !currentOverlay.paused) {
+                            currentOverlay.pause();
+                        }
                     }
                     
                     // Keep checking while playing
@@ -9434,38 +9510,49 @@ function createImageMarker(markerData) {
             const duration = parseFloat(document.getElementById(type + 'Duration').value);
 
             if (type === 'outro') {
-                // For outro: preview the actual outro video
+                // For outro: preview the actual outro video/image
                 if (!outroVideo.enabled || !outroVideo.path) {
-                    showNotification('No outro video to preview', 'error');
+                    showNotification('No outro to preview', 'error');
                     return;
                 }
 
-                showNotification('Previewing outro video...', 'info');
+                showNotification(`Previewing ${outroVideo.type} outro...`, 'info');
 
                 // Seek near end of theme (not full video)
                 const themeEnd = video.dataset.themeEnd ? parseFloat(video.dataset.themeEnd) : video.duration;
-                video.currentTime = Math.max(0, themeEnd - outroVideo.duration - 2);
+                // Start preview 2 seconds before theme ends
+                video.currentTime = Math.max(0, themeEnd - 2);
 
-                // Show and play outro overlay
-                const outroOverlay = document.getElementById('outroOverlayVideo');
-                if (outroOverlay) {
-                    outroOverlay.src = '/media/' + encodeURIComponent(outroVideo.path);
-                    outroOverlay.style.setProperty('display', 'block', 'important');
-                    outroOverlay.style.opacity = '1';
-                    outroOverlay.currentTime = 0;
+                // Get overlay elements
+                const outroOverlayVid = document.getElementById('outroOverlayVideo');
+                const outroOverlayImg = document.getElementById('outroOverlayImage');
+                const currentOverlay = outroVideo.type === 'image' ? outroOverlayImg : outroOverlayVid;
+                const otherOverlay = outroVideo.type === 'image' ? outroOverlayVid : outroOverlayImg;
 
-                    // Play main video and outro together
+                if (currentOverlay) {
+                    // Load source if not loaded
+                    if (!currentOverlay.src || !currentOverlay.src.includes(encodeURIComponent(outroVideo.path))) {
+                        currentOverlay.src = '/media/' + encodeURIComponent(outroVideo.path);
+                    }
+                    
+                    // Hide the other overlay type
+                    if (otherOverlay) {
+                        otherOverlay.style.setProperty('display', 'none', 'important');
+                        otherOverlay.style.opacity = '0';
+                    }
+
+                    // Reset state
+                    currentOverlay.style.setProperty('display', 'block', 'important');
+                    currentOverlay.style.opacity = '1';
+                    if (outroVideo.type === 'video') currentOverlay.currentTime = 0;
+
+                    // Play main video
                     video.play().then(() => {
-                        outroOverlay.play().catch(e => { if (e.name !== 'AbortError') console.warn('Outro play failed:', e); });
-
-                        // Stop after outro duration + 1 second
-                        setTimeout(() => {
-                            video.pause();
-                            outroOverlay.pause();
-                            outroOverlay.style.setProperty('display', 'none', 'important');
-                            outroOverlay.style.opacity = '0';
-                            showNotification('Outro preview complete!', 'success');
-                        }, (outroVideo.duration + 1) * 1000);
+                        // Outro logic will be handled by checkOutroVideo via the timeupdate/requestAnimationFrame loop
+                        // But we need to ensure we don't automatically stop too soon
+                        
+                        // We'll let it play naturally until the user stops or it completes
+                        showNotification('Outro preview started', 'success');
                     }).catch(error => {
                         console.error('Playback error:', error);
                         showNotification('Could not play preview', 'error');
