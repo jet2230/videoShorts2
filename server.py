@@ -3202,6 +3202,52 @@ def get_image_library():
 
     image_files.sort(key=lambda x: x['name'].lower())
     return jsonify(image_files)
+@app.route('/api/outro-library')
+def get_outro_library():
+    """Returns a list of video and image files available in media/outro."""
+    outro_dir = Path('media/outro')
+    if not outro_dir.exists():
+        outro_dir.mkdir(parents=True, exist_ok=True)
+        return jsonify([])
+
+    files = []
+    # Video extensions
+    video_exts = ['*.mp4', '*.mkv', '*.webm', '*.mov', '*.avi']
+    # Image extensions
+    image_exts = ['*.png', '*.jpg', '*.jpeg', '*.webp', '*.svg']
+    
+    for ext in video_exts:
+        for f in outro_dir.glob(ext):
+            duration = 5.0
+            try:
+                import subprocess
+                cmd = [
+                    'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+                    '-of', 'default=noprint_wrappers=1:nokey=1', str(f)
+                ]
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode == 0:
+                    duration = float(result.stdout.strip())
+            except: pass
+            
+            files.append({
+                'name': f.name,
+                'path': f'outro/{f.name}',
+                'type': 'video',
+                'duration': duration
+            })
+
+    for ext in image_exts:
+        for f in outro_dir.glob(ext):
+            files.append({
+                'name': f.name,
+                'path': f'outro/{f.name}',
+                'type': 'image'
+            })
+
+    files.sort(key=lambda x: x['name'].lower())
+    return jsonify(files)
+
 @app.route('/api/broll-library')
 def get_broll_library():
     """Returns a list of video files available in media/video."""

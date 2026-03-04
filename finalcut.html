@@ -3050,6 +3050,17 @@
                 <div class="icon">🎬</div>
                 <div class="text" id="outroVideoText">Add Outro Clip</div>
             </div>
+            
+            <div style="margin-top: 15px; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 15px;">
+                <label style="display: block; font-size: 11px; color: #aaa; margin-bottom: 8px; text-transform: uppercase;">Outro Library</label>
+                <div style="margin-bottom: 8px;">
+                    <input type="text" id="outroSearch" placeholder="Search outros..." style="width: 100%; padding: 6px 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: #fff; font-size: 11px;" oninput="filterOutroLibrary(this.value)">
+                </div>
+                <div id="outroLibrary" style="max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 4px;">
+                    <div style="padding: 15px; text-align: center; color: #666; font-size: 11px;">Loading library...</div>
+                </div>
+            </div>
+
             <div id="outroVideoInfo" style="display: none; margin-top: 8px; font-size: 11px; color: #aaa;">
                 <div id="outroVideoName"></div>
                 <div id="outroVideoDuration"></div>
@@ -3267,6 +3278,7 @@
         let audioLibraryFiles = []; // Store fetched audio library files
         let imageLibraryFiles = []; // Store fetched image library files
         let brollLibraryFiles = []; // Store fetched b-roll library files
+        let outroLibraryFiles = []; // Store fetched outro library files
         let currentlyActiveImages = new Map(); // Track active image markers in DOM: markerId -> element
 
         // Load video
@@ -5420,6 +5432,8 @@
                 loadBrollLibrary();
             } else if (panelName === 'logo') {
                 loadLogoLibrary();
+            } else if (panelName === 'outro') {
+                loadOutroLibrary();
             }
         }
 
@@ -5872,6 +5886,84 @@
             createImageMarker(markerData);
             showNotification(`Image "${file.name}" added to timeline`, 'success');
             checkImageMarkers();
+        }
+
+        // Load outro library from server
+        async function loadOutroLibrary() {
+            const container = document.getElementById('outroLibrary');
+            if (!container) return;
+
+            const searchInput = document.getElementById('outroSearch');
+            if (searchInput) searchInput.value = '';
+
+            try {
+                const response = await fetch('/api/outro-library');
+                if (response.ok) {
+                    outroLibraryFiles = await response.json();
+                    renderOutroLibrary(outroLibraryFiles);
+                } else {
+                    container.innerHTML = '<div style="padding: 15px; text-align: center; color: #ff6b6b; font-size: 11px;">Error loading library</div>';
+                }
+            } catch (error) {
+                console.error('Failed to load outro library:', error);
+                container.innerHTML = '<div style="padding: 15px; text-align: center; color: #ff6b6b; font-size: 11px;">Error loading library</div>';
+            }
+        }
+
+        // Render outro library list
+        function renderOutroLibrary(files) {
+            const container = document.getElementById('outroLibrary');
+            if (!container) return;
+
+            if (files.length === 0) {
+                container.innerHTML = '<div style="padding: 15px; text-align: center; color: #666; font-size: 11px;">No outro files found</div>';
+                return;
+            }
+
+            container.innerHTML = '';
+            files.forEach(file => {
+                const item = document.createElement('div');
+                item.className = 'audio-library-item'; // Reuse style
+                const icon = file.type === 'video' ? '🎬' : '🖼️';
+                item.innerHTML = `<span>${icon} ${file.name}</span>`;
+                item.onclick = () => selectOutroFromLibrary(file);
+                container.appendChild(item);
+            });
+        }
+
+        // Filter outro library
+        function filterOutroLibrary(query) {
+            if (!outroLibraryFiles) return;
+            const term = query.toLowerCase();
+            const filtered = outroLibraryFiles.filter(f => f.name.toLowerCase().includes(term));
+            renderOutroLibrary(filtered);
+        }
+
+        // Select outro from library
+        function selectOutroFromLibrary(file) {
+            outroVideo.enabled = true;
+            outroVideo.file = null; // Clear local file if using library
+            outroVideo.name = file.name;
+            outroVideo.path = file.path;
+            outroVideo.duration = file.duration || 5;
+
+            // Update UI
+            document.getElementById('outroVideoText').textContent = file.name;
+            document.getElementById('outroVideoName').textContent = `Name: ${file.name}`;
+            document.getElementById('outroVideoDuration').textContent = `Duration: ${outroVideo.duration.toFixed(1)}s`;
+            document.getElementById('outroVideoInfo').style.display = 'block';
+            document.getElementById('removeOutroVideo').style.display = 'block';
+
+            // Setup preview video
+            const outroOverlay = document.getElementById('outroOverlayVideo');
+            if (outroOverlay) {
+                outroOverlay.src = `/media/${file.path}`;
+                outroOverlay.load();
+            }
+
+            showNotification(`Selected outro: ${file.name}`, 'success');
+            updateTimeline();
+            syncVolumes();
         }
 
         // Load B-roll library from server
