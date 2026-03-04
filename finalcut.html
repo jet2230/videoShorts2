@@ -1229,7 +1229,8 @@
             min-height: 125px;
             background: #1a1a1a;
             border-radius: 8px;
-            overflow: visible;
+            overflow-x: clip; /* Prevent playhead from triggering scrollbar at 100% */
+            overflow-y: visible;
             cursor: pointer;
             width: 100%;
             min-width: 100%;
@@ -1346,6 +1347,7 @@
             pointer-events: none;
             z-index: 100;
             box-shadow: 0 0 10px rgba(255,255,255,0.8);
+            box-sizing: border-box;
         }
 
         .timeline-hover-line {
