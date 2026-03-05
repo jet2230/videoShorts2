@@ -629,6 +629,10 @@ class VideoProcessor:
 
             # Add Outro Effect (Fade out, Slide out, etc)
             outro_type = outro_settings.get('effect', 'none')
+            # If "Hide Video" is checked with "Fade Smooth" in UI, treat it as a fade-out even if no explicit effect
+            if outro_type == 'none' and outro_settings.get('fadeVideo') and outro_settings.get('fadeVideoSmooth'):
+                outro_type = 'fade-out'
+
             if outro_type != 'none' and end_time:
                 main_dur = to_sec(end_time) - to_sec(start_time)
                 outro_dur = float(outro_settings.get('duration', 1.0))

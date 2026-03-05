@@ -3947,7 +3947,7 @@
 
             // Sync outro video play state
             const outroVideoEl = document.getElementById('outroOverlayVideo');
-            if (outroVideoEl && outroVideoEl.src && (outroVideoEl.style.opacity === '1' || outroPlaying) && outroVideoEl.paused) {
+            if (outroVideoEl && outroVideo.type === 'video' && outroVideoEl.src && (outroVideoEl.style.opacity === '1' || outroPlaying) && outroVideoEl.paused) {
                 outroVideoEl.play().catch(e => { if (e.name !== 'AbortError') console.warn('Outro play failed:', e); });
             }
         });
@@ -5202,8 +5202,8 @@
 
                     if (currentOverlay) {
                         // Load source if not loaded
-                        if (!currentOverlay.src || !currentOverlay.src.includes(encodeURIComponent(outroVideo.path))) {
-                            currentOverlay.src = '/media/' + encodeURIComponent(outroVideo.path);
+                        if (outroVideo.path && (!currentOverlay.src || !currentOverlay.src.includes(outroVideo.path.split('/').map(p => encodeURIComponent(p)).join('/')))) {
+                            currentOverlay.src = '/media/' + outroVideo.path.split('/').map(p => encodeURIComponent(p)).join('/');
                         }
                         
                         if (outroVideo.type === 'video') {
@@ -6156,14 +6156,14 @@
             
             if (outroVideo.type === 'video') {
                 if (outroOverlayVid) {
-                    outroOverlayVid.src = `/media/${file.path}`;
+                    outroOverlayVid.src = `/media/${file.path.split('/').map(p => encodeURIComponent(p)).join('/')}`;
                     outroOverlayVid.load();
                     outroOverlayVid.style.display = 'none'; // Keep hidden until playing
                 }
                 if (outroOverlayImg) outroOverlayImg.style.display = 'none';
             } else {
                 if (outroOverlayImg) {
-                    outroOverlayImg.src = `/media/${file.path}`;
+                    outroOverlayImg.src = `/media/${file.path.split('/').map(p => encodeURIComponent(p)).join('/')}`;
                     outroOverlayImg.style.display = 'none'; // Keep hidden until playing
                 }
                 if (outroOverlayVid) {
@@ -8668,8 +8668,8 @@ function createImageMarker(markerData) {
                 outroStartTime = now;
 
                 // Load source if not loaded
-                if (!currentOverlay.src || !currentOverlay.src.includes(encodeURIComponent(outroVideo.path))) {
-                    currentOverlay.src = '/media/' + encodeURIComponent(outroVideo.path);
+                if (outroVideo.path && (!currentOverlay.src || !currentOverlay.src.includes(outroVideo.path.split('/').map(p => encodeURIComponent(p)).join('/')))) {
+                    currentOverlay.src = '/media/' + outroVideo.path.split('/').map(p => encodeURIComponent(p)).join('/');
                 }
 
                 // Start from beginning
@@ -8872,7 +8872,7 @@ function createImageMarker(markerData) {
                     
                     // Sync play state
                     // ONLY play outro if it is a video and main video is also playing
-                    if (outroVideo.type === 'video') {
+                    if (outroVideo.type === 'video' && currentOverlay.src) {
                         if (!video.paused && currentOverlay.paused) {
                             currentOverlay.play().catch(e => { if (e.name !== 'AbortError') console.warn('Outro play failed:', e); });
                         } else if (video.paused && !currentOverlay.paused) {
@@ -9862,8 +9862,8 @@ function createImageMarker(markerData) {
 
                 if (currentOverlay) {
                     // Load source if not loaded
-                    if (!currentOverlay.src || !currentOverlay.src.includes(encodeURIComponent(outroVideo.path))) {
-                        currentOverlay.src = '/media/' + encodeURIComponent(outroVideo.path);
+                    if (outroVideo.path && (!currentOverlay.src || !currentOverlay.src.includes(outroVideo.path.split('/').map(p => encodeURIComponent(p)).join('/')))) {
+                        currentOverlay.src = '/media/' + outroVideo.path.split('/').map(p => encodeURIComponent(p)).join('/');
                     }
                     
                     // Hide the other overlay type
@@ -10138,7 +10138,8 @@ function createImageMarker(markerData) {
                     outroVideo: outroVideo.enabled ? {
                         name: outroVideo.name,
                         path: outroVideo.path,
-                        duration: outroVideo.duration
+                        duration: outroVideo.duration,
+                        type: outroVideo.type || (outroVideo.name.match(/\.(png|jpg|jpeg|webp|svg)$/i) ? 'image' : 'video')
                     } : null
                 },
                 effects: {
@@ -10751,7 +10752,8 @@ function createImageMarker(markerData) {
                     outroVideo: outroVideo.enabled ? {
                         name: outroVideo.name,
                         path: outroVideo.path,
-                        duration: outroVideo.duration
+                        duration: outroVideo.duration,
+                        type: outroVideo.type || (outroVideo.name.match(/\.(png|jpg|jpeg|webp|svg)$/i) ? 'image' : 'video')
                     } : null
                 },
                 effects: {
@@ -10959,11 +10961,12 @@ function createImageMarker(markerData) {
                     outroVideo.name = settings.outro.outroVideo.name;
                     outroVideo.path = settings.outro.outroVideo.path;
                     outroVideo.duration = settings.outro.outroVideo.duration;
+                    outroVideo.type = settings.outro.outroVideo.type || (outroVideo.name.match(/\.(png|jpg|jpeg|webp|svg)$/i) ? 'image' : 'video');
 
                     // Update UI
                     document.getElementById('outroVideoText').textContent = settings.outro.outroVideo.name;
                     document.getElementById('outroVideoInfo').style.display = 'block';
-                    document.getElementById('outroVideoName').textContent = `📁 ${settings.outro.outroVideo.name}`;
+                    document.getElementById('outroVideoName').textContent = `${outroVideo.type === 'image' ? '🖼️' : '📁'} ${settings.outro.outroVideo.name}`;
                     document.getElementById('outroVideoDuration').textContent = `⏱️ ${formatTimeSeconds(settings.outro.outroVideo.duration)}`;
                     document.getElementById('removeOutroVideo').style.display = 'block';
                 }

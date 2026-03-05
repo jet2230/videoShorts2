@@ -3754,11 +3754,19 @@ def run_edit_task(edit_id: str, input_video: str, output_video: str, edit_settin
             log_message(f"  - B-roll {i}: {br.get('name')} at {br.get('start_time')}s to {br.get('end_time')}s")
 
         # Calculate display_duration for marker time mapping (main + outro)
-        # This is CRITICAL for mapping relative % to absolute seconds in VideoProcessor
-        main_dur = actual_end - actual_start
-        outro_conf = edit_settings.get('outro', {})
-        outro_dur = float(outro_conf.get('duration', 0)) if outro_conf.get('effect') != 'none' else 0
-        edit_settings['display_duration'] = main_dur + outro_dur
+        # We trust the client-provided display_duration as it accounts for extended outro clips.
+        if 'display_duration' in edit_settings:
+            display_duration = float(edit_settings['display_duration'])
+        else:
+            main_dur = actual_end - actual_start
+            outro_conf = edit_settings.get('outro', {})
+            # If the end time was already extended by the client, this might be redundant but safe
+            outro_video_data = outro_conf.get('outroVideo')
+            outro_video_dur = float(outro_video_data.get('duration', 0)) if (outro_video_data and outro_video_data.get('path')) else 0
+            display_duration = main_dur + outro_video_dur
+        
+        edit_settings['display_duration'] = display_duration
+        log_message(f"DEBUG: Final display_duration for marker mapping: {display_duration}")
         
         processor = VideoProcessor(input_video)
         intermediate_video = processor.apply_effects(output_video, edit_settings, cancel_flag=lambda: edit_processes.get(edit_id, {}).get('cancelled', False), log_callback=log_message)
@@ -3879,6 +3887,15 @@ def run_edit_task(edit_id: str, input_video: str, output_video: str, edit_settin
                     # This ensures the concat demuxer works reliably.
                     temp_outro = os.path.join(str(GLOBAL_TEMP_DIR), f"outro_ready_{edit_id}.mp4")
                     
+                    # Get actual duration first so it's available for filters
+                    dur_cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', str(outro_path)]
+                    outro_dur_raw = subprocess.run(dur_cmd, capture_output=True).stdout.strip()
+                    try:
+                        # If image, ffprobe duration is empty, fall back to setting or default
+                        actual_dur = float(outro_dur_raw) if outro_dur_raw else float(outro_video_data.get('duration', 3.0))
+                    except (ValueError, TypeError):
+                        actual_dur = 3.0
+
                     # Robust check for audio in the outro clip
                     check_outro_audio_cmd = ['ffprobe', '-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index', '-of', 'csv=p=0', str(outro_path)]
                     outro_has_audio = subprocess.run(check_outro_audio_cmd, capture_output=True).stdout.strip() != b""
@@ -3890,31 +3907,35 @@ def run_edit_task(edit_id: str, input_video: str, output_video: str, edit_settin
                         # Add silent audio source if outro has none
                         trans_cmd.extend(['-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo'])
                     
+                    # Check if it's an image to use -loop 1
+                    is_image = outro_video_data.get('type') == 'image' or str(outro_path).lower().endswith(('.png', '.jpg', '.jpeg', '.webp', '.svg'))
+                    if is_image:
+                        trans_cmd.extend(['-loop', '1'])
+                    
                     trans_cmd.extend(['-i', str(outro_path.absolute())])
                     
-                    # Common video filters
-                    vf = 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(iw-ow)/2:(ih-oh)/2'
+                    # Unified filter complex to handle:
+                    # - Transparency (PNG) by overlaying on a black background
+                    # - "Fit" (contain) scaling strategy
+                    # - Smooth video fade-in transition
+                    v_in_idx = 1 if not outro_has_audio else 0
+                    fc = f"color=c=black:s=1080x1920:d={actual_dur}[bg];" \
+                         f"[{v_in_idx}:v]format=rgba,scale=1080:1920:force_original_aspect_ratio=decrease[scaled];" \
+                         f"[bg][scaled]overlay=(W-w)/2:(H-h)/2"
                     
-                    # Get actual duration for fade and trimming
-                    dur_cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', str(outro_path)]
-                    outro_dur_raw = subprocess.run(dur_cmd, capture_output=True).stdout.strip()
-                    try:
-                        actual_dur = float(outro_dur_raw) if outro_dur_raw else float(outro_video_data.get('duration', 3))
-                    except (ValueError, TypeError):
-                        actual_dur = 3.0
+                    if outro_conf.get('fadeVideoSmooth'):
+                        # Fade in over 1 second (or 1/3 of duration if very short)
+                        fade_dur = min(1.0, actual_dur / 3.0)
+                        fc += f",fade=t=in:st=0:d={fade_dur}"
+                    
+                    trans_cmd.extend(['-filter_complex', f"{fc}[v]", '-map', '[v]', '-map', '0:a'])
+                    trans_cmd.extend(['-t', str(actual_dur)])
 
-                    if not outro_has_audio:
-                        # Map silence (input 0) and video (input 1)
-                        trans_cmd.extend(['-filter_complex', f'[1:v]{vf}[v]', '-map', '[v]', '-map', '0:a'])
-                        # Ensure we don't generate infinite silence
-                        trans_cmd.extend(['-t', str(actual_dur)])
-                    else:
-                        trans_cmd.extend(['-vf', vf])
-                        # Add audio fade if requested and has audio
-                        if outro_conf.get('fadeAudio'):
-                            # Start fade 1 second before actual end
-                            fade_st = max(0, actual_dur - 1)
-                            trans_cmd.extend(['-af', f'afade=t=out:st={fade_st}:d=1'])
+                    # Add audio fade if requested
+                    if outro_conf.get('fadeAudio'):
+                        # Start fade 1 second before actual end
+                        fade_st = max(0, actual_dur - 1)
+                        trans_cmd.extend(['-af', f'afade=t=out:st={fade_st}:d=1'])
                     
                     trans_cmd.extend([
                         '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', str(edit_settings.get('export_crf', 22)),
