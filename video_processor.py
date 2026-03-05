@@ -397,22 +397,40 @@ class VideoProcessor:
             elif etype == 'zoom':
                 vf_filters.append(f"zoompan=z='if({enable},1.2,1)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:enable='{enable}'")
             elif etype == 'pulse':
-                # Expanding centered rectangle to simulate pulse (thicker for 1080p)
-                vf_filters.append(f"drawbox=x=(iw-iw*0.5)/2:y=(ih-ih*0.3)/2:w=iw*0.5:h=ih*0.3:t='10+40*(1-mod(t,2)/2)':c=0x00ccff@'0.8*(1-mod(t,2)/2)':enable='{enable}'")
+                # Expanding centered rings to simulate pulse (matched to canvas)
+                for delay in [0, 0.6, 1.2]:
+                    # Using expressions for expansion and fade
+                    t_pulse = f"mod(t+{delay},2)/2"
+                    w = f"iw*(0.2+1.5*{t_pulse})"
+                    h = f"ih*(0.1+1.5*{t_pulse})"
+                    alpha = f"0.8*(1-{t_pulse})"
+                    vf_filters.append(f"drawbox=x='(iw-w)/2':y='(ih-h)/2':w='{w}':h='{h}':t='2+10*(1-{t_pulse})':c=#00ccff@'{alpha}':enable='{enable}'")
             elif etype == 'neonBorder':
-                # Layered boxes for thick neon glow
-                vf_filters.append(f"drawbox=w=iw:h=ih:t=40:c=0x00ff9d@0.2:enable='{enable}'")
-                vf_filters.append(f"drawbox=w=iw:h=ih:t=20:c=0x00ff9d@0.4:enable='{enable}'")
-                vf_filters.append(f"drawbox=w=iw:h=ih:t=8:c=0x00ff9d@0.9:enable='{enable}'")
-                # Tracing highlight animation (moves around the border)
-                vf_filters.append(f"drawbox=x='iw*mod(t,4)':y=0:w=300:h=12:c=white@0.8:enable='{enable}*between(mod(t,4),0,1)'")
-                vf_filters.append(f"drawbox=x=iw-12:y='ih*mod(t-1,4)':w=12:h=300:c=white@0.8:enable='{enable}*between(mod(t,4),1,2)'")
-                vf_filters.append(f"drawbox=x='iw-300-iw*mod(t-2,4)':y=ih-12:w=300:h=12:c=white@0.8:enable='{enable}*between(mod(t,4),2,3)'")
-                vf_filters.append(f"drawbox=x=0:y='ih-300-ih*mod(t-3,4)':w=12:h=300:c=white@0.8:enable='{enable}*between(mod(t,4),3,4)'")
+                # 1. Base glowing border (static faint glow)
+                vf_filters.append(f"drawbox=w=iw:h=ih:t=12:c=#00ff9d@0.15:enable='{enable}'")
+                vf_filters.append(f"drawbox=w=iw:h=ih:t=4:c=#00ff9d@0.5:enable='{enable}'")
+                
+                # 2. Moving Traces (4 segments following each other)
+                for seg in range(4):
+                    seg_enable = f"{enable}*between(mod(t,4),{seg},{seg+1})"
+                    t_rel = f"(mod(t,4)-{seg})"
+                    
+                    # Each trace has a core and a glow
+                    for layer, (size, color, alpha) in enumerate([(40, "#00ff9d", 0.1), (20, "#00ff9d", 0.3), (6, "#ffffff", 0.8)]):
+                        if seg == 0: # Top: Left to Right
+                            x, y, w, h = f"iw*{t_rel}-300", 0, 600, size
+                        elif seg == 1: # Right: Top to Bottom
+                            x, y, w, h = f"iw-{size}", f"ih*{t_rel}-300", size, 600
+                        elif seg == 2: # Bottom: Right to Left
+                            x, y, w, h = f"iw-600-iw*{t_rel}+300", f"ih-{size}", 600, size
+                        else: # Left: Bottom to Top
+                            x, y, w, h = 0, f"ih-600-ih*{t_rel}+300", size, 600
+                            
+                        vf_filters.append(f"drawbox=x='{x}':y='{y}':w='{w}':h='{h}':t=fill:c={color}@{alpha}:enable='{seg_enable}'")
             elif etype == 'vectorGrid':
-                # Moving grid (thicker and glowing)
-                vf_filters.append(f"drawgrid=w=60:h=60:t=4:c=0x00ff9d@0.2:x='40*t/20':y='40*t/20':enable='{enable}'")
-                vf_filters.append(f"drawgrid=w=60:h=60:t=2:c=0x00ff9d@0.6:x='40*t/20':y='40*t/20':enable='{enable}'")
+                # Moving glowing grid
+                vf_filters.append(f"drawgrid=w=60:h=60:t=4:c=#00ff9d@0.15:x='mod(40*t/20,60)':y='mod(40*t/20,60)':enable='{enable}'")
+                vf_filters.append(f"drawgrid=w=60:h=60:t=2:c=#00ff9d@0.5:x='mod(40*t/20,60)':y='mod(40*t/20,60)':enable='{enable}'")
 
         # 1.5 Global Animations & Styles
         style = settings.get('style', 'none')
@@ -465,21 +483,27 @@ class VideoProcessor:
         if animations.get('progressBar'):
             vf_filters.append(f"drawbox=y=ih-10:w='iw*t/{self.total_frames/self.fps}':h=10:t=fill:c=0x00ff9d")
         if animations.get('pulse'):
-            vf_filters.append(f"drawbox=x=(iw-iw*0.5)/2:y=(ih-ih*0.3)/2:w=iw*0.5:h=ih*0.3:t='10+40*(1-mod(t,2)/2)':c=0x00ccff@'0.8*(1-mod(t,2)/2)':enable='1'")
+            for delay in [0, 0.6, 1.2]:
+                t_pulse = f"mod(t+{delay},2)/2"
+                w = f"iw*(0.2+1.5*{t_pulse})"
+                h = f"ih*(0.1+1.5*{t_pulse})"
+                alpha = f"0.8*(1-{t_pulse})"
+                vf_filters.append(f"drawbox=x='(iw-w)/2':y='(ih-h)/2':w='{w}':h='{h}':t='2+10*(1-{t_pulse})':c=#00ccff@'{alpha}':enable='1'")
         if animations.get('neonBorder'):
-            # Layered boxes for thick neon glow
-            vf_filters.append(f"drawbox=w=iw:h=ih:t=40:c=0x00ff9d@0.2:enable='1'")
-            vf_filters.append(f"drawbox=w=iw:h=ih:t=20:c=0x00ff9d@0.4:enable='1'")
-            vf_filters.append(f"drawbox=w=iw:h=ih:t=8:c=0x00ff9d@0.9:enable='1'")
-            # Tracing highlight animation (moves around the border)
-            vf_filters.append(f"drawbox=x='iw*mod(t,4)':y=0:w=300:h=12:c=white@0.8:enable='between(mod(t,4),0,1)'")
-            vf_filters.append(f"drawbox=x=iw-12:y='ih*mod(t-1,4)':w=12:h=300:c=white@0.8:enable='between(mod(t,4),1,2)'")
-            vf_filters.append(f"drawbox=x='iw-300-iw*mod(t-2,4)':y=ih-12:w=300:h=12:c=white@0.8:enable='between(mod(t,4),2,3)'")
-            vf_filters.append(f"drawbox=x=0:y='ih-300-ih*mod(t-3,4)':w=12:h=300:c=white@0.8:enable='between(mod(t,4),3,4)'")
+            vf_filters.append(f"drawbox=w=iw:h=ih:t=12:c=#00ff9d@0.15:enable='1'")
+            vf_filters.append(f"drawbox=w=iw:h=ih:t=4:c=#00ff9d@0.5:enable='1'")
+            for seg in range(4):
+                seg_enable = f"between(mod(t,4),{seg},{seg+1})"
+                t_rel = f"(mod(t,4)-{seg})"
+                for layer, (size, color, alpha) in enumerate([(40, "#00ff9d", 0.1), (20, "#00ff9d", 0.3), (6, "#ffffff", 0.8)]):
+                    if seg == 0: x, y, w, h = f"iw*{t_rel}-300", 0, 600, size
+                    elif seg == 1: x, y, w, h = f"iw-{size}", f"ih*{t_rel}-300", size, 600
+                    elif seg == 2: x, y, w, h = f"iw-600-iw*{t_rel}+300", f"ih-{size}", 600, size
+                    else: x, y, w, h = 0, f"ih-600-ih*{t_rel}+300", size, 600
+                    vf_filters.append(f"drawbox=x='{x}':y='{y}':w='{w}':h='{h}':t=fill:c={color}@{alpha}:enable='{seg_enable}'")
         if animations.get('vectorGrid'):
-            # Moving grid (thicker and glowing)
-            vf_filters.append(f"drawgrid=w=60:h=60:t=4:c=0x00ff9d@0.2:x='40*t/20':y='40*t/20':enable='1'")
-            vf_filters.append(f"drawgrid=w=60:h=60:t=2:c=0x00ff9d@0.6:x='40*t/20':y='40*t/20':enable='1'")
+            vf_filters.append(f"drawgrid=w=60:h=60:t=4:c=#00ff9d@0.15:x='mod(40*t/20,60)':y='mod(40*t/20,60)':enable='1'")
+            vf_filters.append(f"drawgrid=w=60:h=60:t=2:c=#00ff9d@0.5:x='mod(40*t/20,60)':y='mod(40*t/20,60)':enable='1'")
         if animations.get('particles'):
             vf_filters.append(f"drawgrid=w=50:h=50:t=1:c=white@0.2:x='500*t/20':y='1000*t/20':enable='1'")
 
