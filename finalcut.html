@@ -998,9 +998,12 @@
             background-image: radial-gradient(circle, #fff 1px, transparent 1px);
             background-size: 50px 50px;
             animation: particle-drift 20s linear infinite !important;
-            animation-play-state: paused;
+            animation-play-state: paused !important;
             opacity: 0.2;
             z-index: 90;
+        }
+        .playing .particles-overlay {
+            animation-play-state: running !important;
         }
         @keyframes particle-drift {
             from { background-position: 0 0; }
@@ -1028,6 +1031,83 @@
             transform: translate(0, 0) scale(1) !important;
         }
 
+
+        /* Neon Border Trace Animation */
+        .neon-border-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 95;
+        }
+        .neon-border-rect {
+            fill: none;
+            stroke: #00ff9d;
+            stroke-width: 4;
+            stroke-dasharray: 100%;
+            stroke-dashoffset: 100%;
+            animation: neon-trace 4s linear infinite !important;
+            animation-play-state: paused !important;
+            filter: drop-shadow(0 0 8px #00ff9d);
+        }
+        .playing .neon-border-rect {
+            animation-play-state: running !important;
+        }
+        @keyframes neon-trace {
+            0% { stroke-dashoffset: 200%; }
+            100% { stroke-dashoffset: 0%; }
+        }
+
+        /* Pulse Ring Animation */
+        .pulse-ring-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+            z-index: 92;
+        }
+        .pulse-circle {
+            fill: none;
+            stroke: #00ccff;
+            stroke-width: 2;
+            opacity: 0;
+            animation: vector-pulse 2s ease-out infinite !important;
+            animation-play-state: paused !important;
+        }
+        .playing .pulse-circle {
+            animation-play-state: running !important;
+        }
+        @keyframes vector-pulse {
+            0% { transform: scale(0.5); opacity: 0.8; stroke-width: 5; }
+            100% { transform: scale(2.5); opacity: 0; stroke-width: 1; }
+        }
+
+        /* Vector Grid Animation */
+        .vector-grid-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 85;
+            opacity: 0.6; /* Increased base opacity */
+            overflow: hidden;
+        }
+        .vector-grid-svg {
+            width: 200%;
+            height: 200%;
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            animation: grid-svg-drift 20s linear infinite !important;
+            animation-play-state: paused !important;
+        }
+        .playing .vector-grid-svg {
+            animation-play-state: running !important;
+        }
+        @keyframes grid-svg-drift {
+            from { transform: translate(0, 0); }
+            to { transform: translate(40px, 40px); }
+        }
 
         .logo-container {
             border: 2px solid transparent !important;
@@ -2261,6 +2341,55 @@
         <button class="close-panel" onclick="closePanel('effects')">×</button>
         <h3><span class="icon">✨</span> Effects</h3>
         <div class="checkbox-group" style="overflow-y: auto; max-height: 500px; padding-right: 5px;">
+            <!-- Vector Visuals -->
+            <label style="display: block; font-size: 11px; color: #00ff9d; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid rgba(0,255,157,0.2); padding-bottom: 5px;">Vector Visuals</label>
+            
+            <div class="effect-item-wrapper">
+                <label class="checkbox-item effect-with-preview">
+                    <input type="checkbox" id="effectPulse" data-effect="pulse" onchange="toggleEffectPreview(this, 'pulse')">
+                    <span>Audio Pulse Ring</span>
+                    <button class="effect-preview-btn" onclick="previewVideoEffect('pulse')" style="display: none;">👁️</button>
+                </label>
+                <div class="effect-duration-options" id="durationPulse" style="display: none;">
+                    <select class="duration-select" onchange="updateEffectDuration('pulse', this.value)">
+                        <option value="5">5 seconds</option>
+                        <option value="10">10 seconds</option>
+                        <option value="all">Full Video</option>
+                        <option value="custom">Custom...</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="effect-item-wrapper">
+                <label class="checkbox-item effect-with-preview">
+                    <input type="checkbox" id="effectNeonBorder" data-effect="neonBorder" onchange="toggleEffectPreview(this, 'neonBorder')">
+                    <span>Neon Border Trace</span>
+                    <button class="effect-preview-btn" onclick="previewVideoEffect('neonBorder')" style="display: none;">👁️</button>
+                </label>
+                <div class="effect-duration-options" id="durationNeonBorder" style="display: none;">
+                    <select class="duration-select" onchange="updateEffectDuration('neonBorder', this.value)">
+                        <option value="all">Full Video</option>
+                        <option value="30">30 seconds</option>
+                        <option value="custom">Custom...</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="effect-item-wrapper" style="margin-bottom: 15px;">
+                <label class="checkbox-item effect-with-preview">
+                    <input type="checkbox" id="effectVectorGrid" data-effect="vectorGrid" onchange="toggleEffectPreview(this, 'vectorGrid')">
+                    <span>Moving Vector Grid</span>
+                    <button class="effect-preview-btn" onclick="previewVideoEffect('vectorGrid')" style="display: none;">👁️</button>
+                </label>
+                <div class="effect-duration-options" id="durationVectorGrid" style="display: none;">
+                    <select class="duration-select" onchange="updateEffectDuration('vectorGrid', this.value)">
+                        <option value="all">Full Video</option>
+                        <option value="custom">Custom...</option>
+                    </select>
+                </div>
+            </div>
+
+            <label style="display: block; font-size: 11px; color: #aaa; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;">Standard Filters</label>
             <div class="effect-item-wrapper">
                 <label class="checkbox-item effect-with-preview" title="Make sure placement on timeline is chosen for this effect">
                     <input type="checkbox" id="effectMirror" data-effect="mirror" onchange="toggleEffectPreview(this, 'mirror')">
@@ -2777,6 +2906,26 @@
                 <input type="checkbox" id="animHeartbeat" onchange="toggleAnimation('heartbeat')">
                 <span>💓 Heartbeat Vignette</span>
             </label>
+
+            <!-- Vector Animations Section -->
+            <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">
+                <label style="display: block; font-size: 11px; color: #aaa; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;">Vector Visuals</label>
+                
+                <label class="checkbox-item" id="anim-pulse" style="margin-top: 5px;">
+                    <input type="checkbox" id="animPulse" onchange="toggleAnimation('pulse')">
+                    <span>⭕ Audio Pulse Ring</span>
+                </label>
+
+                <label class="checkbox-item" id="anim-neonBorder" style="margin-top: 10px;">
+                    <input type="checkbox" id="animNeonBorder" onchange="toggleAnimation('neonBorder')">
+                    <span>🌈 Neon Border Trace</span>
+                </label>
+
+                <label class="checkbox-item" id="anim-vectorGrid" style="margin-top: 10px;">
+                    <input type="checkbox" id="animVectorGrid" onchange="toggleAnimation('vectorGrid')">
+                    <span>📐 Moving Vector Grid</span>
+                </label>
+            </div>
         </div>
         <p style="font-size: 11px; color: #888; margin-top: 10px;">
             * Animations are applied globally throughout the video.
@@ -3256,7 +3405,10 @@
             tiltShift: false,
             particles: false,
             scanlines: false,
-            heartbeat: false
+            heartbeat: false,
+            pulse: false,
+            neonBorder: false,
+            vectorGrid: false
         };
         let animationToggles = {
             cameraGlare: true,
@@ -3268,7 +3420,10 @@
             tiltShift: true,
             particles: true,
             scanlines: true,
-            heartbeat: true
+            heartbeat: true,
+            pulse: true,
+            neonBorder: true,
+            vectorGrid: true
         };
         let currentPanel = null;
         let currentVideoStyle = 'none';
@@ -8832,6 +8987,12 @@ function createImageMarker(markerData) {
                 if (progBar) progBar.remove();
                 const particles = document.getElementById('global-particles');
                 if (particles) particles.remove();
+                const pulse = document.getElementById('global-pulse');
+                if (pulse) pulse.remove();
+                const neonBorder = document.getElementById('global-neon-border');
+                if (neonBorder) neonBorder.remove();
+                const vectorGrid = document.getElementById('global-vector-grid');
+                if (vectorGrid) vectorGrid.remove();
                 
                 // Apply global animations to video
                 if (activeAnimations.cameraGlare && animationToggles.cameraGlare !== false) video.classList.add('glare-animation');
@@ -8862,6 +9023,52 @@ function createImageMarker(markerData) {
                     if (wrapper) wrapper.appendChild(overlay);
                 }
 
+                if (activeAnimations.pulse && animationToggles.pulse !== false) {
+                    const overlay = document.createElement('div');
+                    overlay.id = 'global-pulse';
+                    overlay.className = 'pulse-ring-overlay';
+                    overlay.innerHTML = `
+                        <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+                            <circle class="pulse-circle" cx="50" cy="50" r="20" />
+                            <circle class="pulse-circle" cx="50" cy="50" r="20" style="animation-delay: 0.6s !important;" />
+                            <circle class="pulse-circle" cx="50" cy="50" r="20" style="animation-delay: 1.2s !important;" />
+                        </svg>
+                    `;
+                    const wrapper = document.querySelector('.video-wrapper');
+                    if (wrapper) wrapper.appendChild(overlay);
+                }
+
+                if (activeAnimations.neonBorder && animationToggles.neonBorder !== false) {
+                    const overlay = document.createElement('div');
+                    overlay.id = 'global-neon-border';
+                    overlay.className = 'neon-border-overlay';
+                    overlay.innerHTML = `
+                        <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+                            <rect class="neon-border-rect" x="1" y="1" width="98" height="98" rx="2" />
+                        </svg>
+                    `;
+                    const wrapper = document.querySelector('.video-wrapper');
+                    if (wrapper) wrapper.appendChild(overlay);
+                }
+
+                if (activeAnimations.vectorGrid && animationToggles.vectorGrid !== false) {
+                    const overlay = document.createElement('div');
+                    overlay.id = 'global-vector-grid';
+                    overlay.className = 'vector-grid-overlay';
+                    overlay.innerHTML = `
+                        <svg class="vector-grid-svg" width="100%" height="100%">
+                            <defs>
+                                <pattern id="gridPattern" width="60" height="60" patternUnits="userSpaceOnUse">
+                                    <path d="M 60 0 L 0 0 0 60" fill="none" stroke="rgba(0, 255, 157, 0.8)" stroke-width="2"/>
+                                </pattern>
+                            </defs>
+                            <rect width="100%" height="100%" fill="url(#gridPattern)" />
+                        </svg>
+                    `;
+                    const wrapper = document.querySelector('.video-wrapper');
+                    if (wrapper) wrapper.appendChild(overlay);
+                }
+
                 // Apply each active timeline effect
                 for (const effectType of activeEffects) {
                     switch (effectType) {
@@ -8882,6 +9089,52 @@ function createImageMarker(markerData) {
                         case 'vibrance': filters.push('saturate(1.8) contrast(1.1)'); break;
                         case 'shake': video.classList.add('shake-animation'); break;
                         case 'pixelate': filters.push('blur(4px) contrast(2) brightness(1.1)'); break;
+                        case 'pulse': {
+                            const overlay = document.createElement('div');
+                            overlay.id = 'global-pulse';
+                            overlay.className = 'pulse-ring-overlay';
+                            overlay.innerHTML = `
+                                <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+                                    <circle class="pulse-circle" cx="50" cy="50" r="20" />
+                                    <circle class="pulse-circle" cx="50" cy="50" r="20" style="animation-delay: 0.6s !important;" />
+                                    <circle class="pulse-circle" cx="50" cy="50" r="20" style="animation-delay: 1.2s !important;" />
+                                </svg>
+                            `;
+                            const wrapper = document.querySelector('.video-wrapper');
+                            if (wrapper) wrapper.appendChild(overlay);
+                            break;
+                        }
+                        case 'neonBorder': {
+                            const overlay = document.createElement('div');
+                            overlay.id = 'global-neon-border';
+                            overlay.className = 'neon-border-overlay';
+                            overlay.innerHTML = `
+                                <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+                                    <rect class="neon-border-rect" x="1" y="1" width="98" height="98" rx="2" />
+                                </svg>
+                            `;
+                            const wrapper = document.querySelector('.video-wrapper');
+                            if (wrapper) wrapper.appendChild(overlay);
+                            break;
+                        }
+                        case 'vectorGrid': {
+                            const overlay = document.createElement('div');
+                            overlay.id = 'global-vector-grid';
+                            overlay.className = 'vector-grid-overlay';
+                            overlay.innerHTML = `
+                                <svg class="vector-grid-svg" width="100%" height="100%">
+                                    <defs>
+                                        <pattern id="gridPatternTimeline" width="60" height="60" patternUnits="userSpaceOnUse">
+                                            <path d="M 60 0 L 0 0 0 60" fill="none" stroke="rgba(0, 255, 157, 0.8)" stroke-width="2"/>
+                                        </pattern>
+                                    </defs>
+                                    <rect width="100%" height="100%" fill="url(#gridPatternTimeline)" />
+                                </svg>
+                            `;
+                            const wrapper = document.querySelector('.video-wrapper');
+                            if (wrapper) wrapper.appendChild(overlay);
+                            break;
+                        }
                     }
                 }
 
@@ -9295,7 +9548,10 @@ function createImageMarker(markerData) {
                 tiltShift: '🌪️ Tilt-Shift (Blur)',
                 particles: '🎆 Subtle Particles',
                 scanlines: '📺 TV Scanlines',
-                heartbeat: '💓 Heartbeat Vignette'
+                heartbeat: '💓 Heartbeat Vignette',
+                pulse: '⭕ Audio Pulse Ring',
+                neonBorder: '🌈 Neon Border Trace',
+                vectorGrid: '📐 Moving Vector Grid'
             };
 
             // Add a toggle for each active animation
@@ -9507,6 +9763,18 @@ function createImageMarker(markerData) {
                         break;
                     case 'fastmo':
                         video.playbackRate = 2.0;
+                        break;
+                    case 'pulse':
+                    case 'neonBorder':
+                    case 'vectorGrid':
+                        // These are global animations, temporarily activate
+                        activeAnimations[effectType] = true;
+                        applyVideoEffects();
+                        // Mark for auto-cleanup after preview
+                        setTimeout(() => {
+                            activeAnimations[effectType] = false;
+                            applyVideoEffects();
+                        }, previewTime);
                         break;
                 }
 
@@ -9887,6 +10155,9 @@ function createImageMarker(markerData) {
                     vibrance: document.getElementById('effectVibrance').checked,
                     shake: document.getElementById('effectShake').checked,
                     pixelate: document.getElementById('effectPixelate').checked,
+                    pulse: document.getElementById('effectPulse').checked,
+                    neonBorder: document.getElementById('effectNeonBorder').checked,
+                    vectorGrid: document.getElementById('effectVectorGrid').checked,
                     faceTracking: document.getElementById('faceTracking').checked,
                     faceZoomLevel: document.getElementById('faceZoomLevel').value,
                     faceSmoothing: document.getElementById('faceSmoothing').value
@@ -10343,15 +10614,36 @@ function createImageMarker(markerData) {
             }
 
             // Reset animations
-            activeAnimations = { 
+            activeAnimations = {
                 cameraGlare: false,
-                outline: false
+                outline: false,
+                vhs: false,
+                kenBurns: false,
+                audioBorder: false,
+                progressBar: false,
+                tiltShift: false,
+                particles: false,
+                scanlines: false,
+                heartbeat: false,
+                pulse: false,
+                neonBorder: false,
+                vectorGrid: false
             };
-            animationToggles = { 
+            animationToggles = {
                 cameraGlare: true,
-                outline: true
-            };
-            document.querySelectorAll('[id^="anim"]').forEach(el => {
+                outline: true,
+                vhs: true,
+                kenBurns: true,
+                audioBorder: true,
+                progressBar: true,
+                tiltShift: true,
+                particles: true,
+                scanlines: true,
+                heartbeat: true,
+                pulse: true,
+                neonBorder: true,
+                vectorGrid: true
+            };            document.querySelectorAll('[id^="anim"]').forEach(el => {
                 if (el.type === 'checkbox') el.checked = false;
                 if (el.classList.contains('checkbox-item')) el.classList.remove('active');
             });
@@ -10476,6 +10768,9 @@ function createImageMarker(markerData) {
                     vibrance: document.getElementById('effectVibrance').checked,
                     shake: document.getElementById('effectShake').checked,
                     pixelate: document.getElementById('effectPixelate').checked,
+                    pulse: document.getElementById('effectPulse').checked,
+                    neonBorder: document.getElementById('effectNeonBorder').checked,
+                    vectorGrid: document.getElementById('effectVectorGrid').checked,
                     faceTracking: document.getElementById('faceTracking').checked,
                     faceZoomLevel: document.getElementById('faceZoomLevel').value,
                     faceSmoothing: document.getElementById('faceSmoothing').value
@@ -10689,6 +10984,9 @@ function createImageMarker(markerData) {
                 document.getElementById('effectVibrance').checked = settings.effects.vibrance || false;
                 document.getElementById('effectShake').checked = settings.effects.shake || false;
                 document.getElementById('effectPixelate').checked = settings.effects.pixelate || false;
+                document.getElementById('effectPulse').checked = settings.effects.pulse || false;
+                document.getElementById('effectNeonBorder').checked = settings.effects.neonBorder || false;
+                document.getElementById('effectVectorGrid').checked = settings.effects.vectorGrid || false;
                 document.getElementById('faceTracking').checked = settings.effects.faceTracking || false;
                 document.getElementById('faceZoomLevel').value = settings.effects.faceZoomLevel || 1.5;
                 document.getElementById('faceZoomValue').textContent = (settings.effects.faceZoomLevel || 1.5) + 'x';
