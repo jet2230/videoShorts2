@@ -397,15 +397,22 @@ class VideoProcessor:
             elif etype == 'zoom':
                 vf_filters.append(f"zoompan=z='if({enable},1.2,1)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:enable='{enable}'")
             elif etype == 'pulse':
-                # Expanding centered rectangle to simulate pulse
-                vf_filters.append(f"drawbox=x=(iw-iw*0.5)/2:y=(ih-ih*0.3)/2:w=iw*0.5:h=ih*0.3:t='2+8*(1-mod(t,2)/2)':c=0x00ccff@'0.8*(1-mod(t,2)/2)':enable='{enable}'")
+                # Expanding centered rectangle to simulate pulse (thicker for 1080p)
+                vf_filters.append(f"drawbox=x=(iw-iw*0.5)/2:y=(ih-ih*0.3)/2:w=iw*0.5:h=ih*0.3:t='10+40*(1-mod(t,2)/2)':c=0x00ccff@'0.8*(1-mod(t,2)/2)':enable='{enable}'")
             elif etype == 'neonBorder':
-                # Layered boxes for glow
-                vf_filters.append(f"drawbox=w=iw:h=ih:t=4:c=0x00ff9d@0.8:enable='{enable}'")
-                vf_filters.append(f"drawbox=w=iw-4:h=ih-4:x=2:y=2:t=8:c=0x00ff9d@0.3:enable='{enable}'")
+                # Layered boxes for thick neon glow
+                vf_filters.append(f"drawbox=w=iw:h=ih:t=40:c=0x00ff9d@0.2:enable='{enable}'")
+                vf_filters.append(f"drawbox=w=iw:h=ih:t=20:c=0x00ff9d@0.4:enable='{enable}'")
+                vf_filters.append(f"drawbox=w=iw:h=ih:t=8:c=0x00ff9d@0.9:enable='{enable}'")
+                # Tracing highlight animation (moves around the border)
+                vf_filters.append(f"drawbox=x='iw*mod(t,4)':y=0:w=300:h=12:c=white@0.8:enable='{enable}*between(mod(t,4),0,1)'")
+                vf_filters.append(f"drawbox=x=iw-12:y='ih*mod(t-1,4)':w=12:h=300:c=white@0.8:enable='{enable}*between(mod(t,4),1,2)'")
+                vf_filters.append(f"drawbox=x='iw-300-iw*mod(t-2,4)':y=ih-12:w=300:h=12:c=white@0.8:enable='{enable}*between(mod(t,4),2,3)'")
+                vf_filters.append(f"drawbox=x=0:y='ih-300-ih*mod(t-3,4)':w=12:h=300:c=white@0.8:enable='{enable}*between(mod(t,4),3,4)'")
             elif etype == 'vectorGrid':
-                # Moving grid
-                vf_filters.append(f"drawgrid=w=60:h=60:t=2:c=0x00ff9d@0.4:x='40*t/20':y='40*t/20':enable='{enable}'")
+                # Moving grid (thicker and glowing)
+                vf_filters.append(f"drawgrid=w=60:h=60:t=4:c=0x00ff9d@0.2:x='40*t/20':y='40*t/20':enable='{enable}'")
+                vf_filters.append(f"drawgrid=w=60:h=60:t=2:c=0x00ff9d@0.6:x='40*t/20':y='40*t/20':enable='{enable}'")
 
         # 1.5 Global Animations & Styles
         style = settings.get('style', 'none')
@@ -458,12 +465,21 @@ class VideoProcessor:
         if animations.get('progressBar'):
             vf_filters.append(f"drawbox=y=ih-10:w='iw*t/{self.total_frames/self.fps}':h=10:t=fill:c=0x00ff9d")
         if animations.get('pulse'):
-            vf_filters.append(f"drawbox=x=(iw-iw*0.5)/2:y=(ih-ih*0.3)/2:w=iw*0.5:h=ih*0.3:t='2+8*(1-mod(t,2)/2)':c=0x00ccff@'0.8*(1-mod(t,2)/2)':enable='1'")
+            vf_filters.append(f"drawbox=x=(iw-iw*0.5)/2:y=(ih-ih*0.3)/2:w=iw*0.5:h=ih*0.3:t='10+40*(1-mod(t,2)/2)':c=0x00ccff@'0.8*(1-mod(t,2)/2)':enable='1'")
         if animations.get('neonBorder'):
-            vf_filters.append(f"drawbox=w=iw:h=ih:t=4:c=0x00ff9d@0.8:enable='1'")
-            vf_filters.append(f"drawbox=w=iw-4:h=ih-4:x=2:y=2:t=8:c=0x00ff9d@0.3:enable='1'")
+            # Layered boxes for thick neon glow
+            vf_filters.append(f"drawbox=w=iw:h=ih:t=40:c=0x00ff9d@0.2:enable='1'")
+            vf_filters.append(f"drawbox=w=iw:h=ih:t=20:c=0x00ff9d@0.4:enable='1'")
+            vf_filters.append(f"drawbox=w=iw:h=ih:t=8:c=0x00ff9d@0.9:enable='1'")
+            # Tracing highlight animation (moves around the border)
+            vf_filters.append(f"drawbox=x='iw*mod(t,4)':y=0:w=300:h=12:c=white@0.8:enable='between(mod(t,4),0,1)'")
+            vf_filters.append(f"drawbox=x=iw-12:y='ih*mod(t-1,4)':w=12:h=300:c=white@0.8:enable='between(mod(t,4),1,2)'")
+            vf_filters.append(f"drawbox=x='iw-300-iw*mod(t-2,4)':y=ih-12:w=300:h=12:c=white@0.8:enable='between(mod(t,4),2,3)'")
+            vf_filters.append(f"drawbox=x=0:y='ih-300-ih*mod(t-3,4)':w=12:h=300:c=white@0.8:enable='between(mod(t,4),3,4)'")
         if animations.get('vectorGrid'):
-            vf_filters.append(f"drawgrid=w=60:h=60:t=2:c=0x00ff9d@0.4:x='40*t/20':y='40*t/20':enable='1'")
+            # Moving grid (thicker and glowing)
+            vf_filters.append(f"drawgrid=w=60:h=60:t=4:c=0x00ff9d@0.2:x='40*t/20':y='40*t/20':enable='1'")
+            vf_filters.append(f"drawgrid=w=60:h=60:t=2:c=0x00ff9d@0.6:x='40*t/20':y='40*t/20':enable='1'")
         if animations.get('particles'):
             vf_filters.append(f"drawgrid=w=50:h=50:t=1:c=white@0.2:x='500*t/20':y='1000*t/20':enable='1'")
 
