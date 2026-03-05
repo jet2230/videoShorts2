@@ -3810,6 +3810,11 @@ def run_edit_task(edit_id: str, input_video: str, output_video: str, edit_settin
                 edit_render_settings['theme_meta_start'] = theme_meta_start
                 log_message(f"DEBUG: Final theme_meta_start for renderer={edit_render_settings['theme_meta_start']}")
 
+                # Pass animations and effect markers for frame-by-frame rendering
+                edit_render_settings['animations'] = edit_settings.get('animations', {})
+                edit_render_settings['effect_markers'] = edit_settings.get('effect_markers', [])
+                edit_render_settings['effects'] = edit_settings.get('effects', {})
+
                 # CRITICAL: Merge adjust_settings into edit_render_settings so saved font, colors, etc. are applied
                 # These fields always come from adjust.md (saved settings):
                 always_from_adjust = ['fontName', 'fontSize', 'primaryColor', 'bgColor', 'bgOpacity',

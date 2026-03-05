@@ -146,6 +146,92 @@ class UniversalSubtitleRenderer:
         self.words_by_time = sorted(self.word_timestamps, key=lambda w: w['start'])
         self.is_rtl = self._is_arabic(self.word_timestamps)
         self._title_pre_rendered = False
+        
+        # New: Animation settings for exact match
+        self.animations = settings.get('animations', {})
+        self.active_effects = settings.get('effects', {})
+
+    def _draw_neon_border(self, draw: ImageDraw.Draw, glow_draw: ImageDraw.Draw, t: float):
+        # Exact match for CSS: NO static border, only moving traces.
+        color = (0, 255, 157) # #00ff9d
+        w, h = 1080, 1920
+        
+        # Moving Traces (TWO opposite segments)
+        period = 4.0
+        t_cycle = t % period
+        total_len = 2 * (w + h)
+        trace_len = total_len * 0.25 # 25% length
+        
+        # Draw two segments opposite to each other
+        for start_offset_pct in [0.0, 0.5]:
+            pos = (((t_cycle / period) + start_offset_pct) % 1.0) * total_len
+            
+            def get_pt(dist):
+                dist = dist % total_len
+                if dist < w: return (dist, 0)
+                if dist < w + h: return (w, dist - w)
+                if dist < 2*w + h: return (w - (dist - (w+h)), h)
+                return (0, h - (dist - (2*w + h)))
+
+            # High density points for smooth corners
+            pts = [get_pt(d) for d in np.linspace(pos, pos + trace_len, 40)]
+            
+            # Layered trace for massive bloom (Twice as big)
+            glow_draw.line(pts, fill=color + (120,), width=200, joint="curve")
+            glow_draw.line(pts, fill=color + (200,), width=100, joint="curve")
+            # Bright white core (Twice as big)
+            draw.line(pts, fill=(255, 255, 255, 255), width=30, joint="curve")
+
+    def _draw_pulse_rings(self, draw: ImageDraw.Draw, glow_draw: ImageDraw.Draw, t: float):
+        # Exact match for SVG: 2s cycle, 3 rings, massive expansion
+        color = (0, 204, 255) # #00ccff
+        cx, cy = 540, 960
+        
+        for delay in [0, 0.66, 1.33]:
+            t_pulse = ((t + delay) % 2.0) / 2.0
+            # Scale 0.5 to 4.0 (Huge expansion)
+            scale = 0.5 + 3.5 * t_pulse
+            # Opacity 0.9 to 0
+            alpha = int(255 * 0.9 * (1.0 - t_pulse))
+            # Thickness 20 to 2
+            width = int(20 * (1.0 - t_pulse) + 2)
+            
+            radius = 150 * scale
+            if alpha > 10:
+                # Extra thick glow for rings
+                glow_draw.ellipse([cx-radius, cy-radius, cx+radius, cy+radius], outline=color + (int(alpha*0.6),), width=width*4)
+                draw.ellipse([cx-radius, cy-radius, cx+radius, cy+radius], outline=color + (alpha,), width=width)
+
+    def _draw_vector_grid(self, draw: ImageDraw.Draw, glow_draw: ImageDraw.Draw, t: float):
+        color = (0, 255, 157)
+        spacing = 120 # Doubled size (was 60)
+        # Smooth float offset for drift (40px over 20s)
+        offset = (t * 40.0) / 20.0 
+        
+        start_offset = (offset % spacing) - spacing
+        
+        # Draw vertical lines with float precision for smooth motion
+        x = start_offset
+        while x < 1080 + spacing:
+            glow_draw.line([(x, 0), (x, 1920)], fill=color + (40,), width=6)
+            draw.line([(x, 0), (x, 1920)], fill=color + (80,), width=3)
+            x += spacing
+            
+        # Draw horizontal lines with float precision
+        y = start_offset
+        while y < 1920 + spacing:
+            glow_draw.line([(0, y), (1080, y)], fill=color + (30,), width=6)
+            draw.line([(0, y), (1080, y)], fill=color + (60,), width=3)
+            y += spacing
+
+    def _draw_particles(self, draw: ImageDraw.Draw, t: float):
+        # radial gradient dots drift
+        spacing = 80
+        off_x = (t * 25) % spacing
+        off_y = (t * 50) % spacing
+        for x in range(int(-off_x), 1080 + spacing, spacing):
+            for y in range(int(-off_y), 1920 + spacing, spacing):
+                draw.ellipse([x-2, y-2, x+2, y+2], fill=(255, 255, 255, 40))
 
     def _is_arabic(self, word_timestamps: List[Dict]) -> bool:
         if not word_timestamps: return False
@@ -386,7 +472,9 @@ class UniversalSubtitleRenderer:
             colored_words.append({'text': word_txt, 'color': word_color, 'sizeMultiplier': 1.0})
         return colored_words, highlighted_index, sub_word_ts
 
-    def render_frame(self, frame: np.ndarray, current_time: float, subtitle_text: str, subtitle_start: float = None, subtitle_end: float = None, subtitle_seq: int = None) -> np.ndarray:
+    def render_frame(self, frame: np.ndarray, current_time: float, subtitle_text: str, subtitle_start: float = None, subtitle_end: float = None, subtitle_seq: int = None, animation_time: float = None) -> np.ndarray:
+        if animation_time is None: animation_time = current_time
+        
         if self.show_title and not self._title_pre_rendered:
             self._precalculate_title_properties()
             self._title_pre_rendered = True
@@ -398,18 +486,45 @@ class UniversalSubtitleRenderer:
 
         pil_image = Image.fromarray(cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB))
         overlay = Image.new("RGBA", pil_image.size, (0, 0, 0, 0))
+        glow_overlay = Image.new("RGBA", pil_image.size, (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
+        glow_draw = ImageDraw.Draw(glow_overlay)
         
+        # --- RENDER VECTOR ANIMATIONS (EXACT CANVAS MATCH) ---
+        # 1. Global Animations
+        if self.animations.get('vectorGrid'): self._draw_vector_grid(draw, glow_draw, animation_time)
+        if self.animations.get('particles'): self._draw_particles(draw, animation_time)
+        if self.animations.get('pulse'): self._draw_pulse_rings(draw, glow_draw, animation_time)
+        if self.animations.get('neonBorder'): self._draw_neon_border(draw, glow_draw, animation_time)
+        
+        # 2. Marker-based Animations
+        markers = self.settings.get('effect_markers', [])
+        for m in markers:
+            s, e = m.get('start_time', 0), m.get('end_time', 0)
+            if s <= animation_time <= e:
+                etype = m.get('type')
+                if etype == 'pulse': self._draw_pulse_rings(draw, glow_draw, animation_time)
+                elif etype == 'neonBorder': self._draw_neon_border(draw, glow_draw, animation_time)
+                elif etype == 'vectorGrid': self._draw_vector_grid(draw, glow_draw, animation_time)
+
+        # Apply high-quality blur to glow layer for bloom effect
+        if self.animations.get('neonBorder') or self.animations.get('pulse') or self.animations.get('vectorGrid'):
+            glow_overlay = glow_overlay.filter(ImageFilter.GaussianBlur(radius=25))
+
         if self.show_title and hasattr(self, 'title_surface'):
             overlay.paste(self.title_surface, (0, 0), self.title_surface)
+        
+        # Merge glow and main overlay
+        combined_overlay = Image.alpha_composite(glow_overlay, overlay)
 
         if subtitle_text and subtitle_text.strip():
-            colored_words, highlight_idx, sub_ts = self.get_words_at_time_for_subtitle(current_time, subtitle_text, subtitle_start, subtitle_end)
+            # Render subtitles on a separate layer to keep them sharp (no blur)
+            sub_overlay = Image.new("RGBA", pil_image.size, (0, 0, 0, 0))
+            sub_draw = ImageDraw.Draw(sub_overlay)
             
+            colored_words, highlight_idx, sub_ts = self.get_words_at_time_for_subtitle(current_time, subtitle_text, subtitle_start, subtitle_end)
             lines = self._get_lines(colored_words)
-            # Hard limit lines to max_subtitle_lines
-            if len(lines) > self.max_subtitle_lines:
-                lines = lines[:self.max_subtitle_lines]
+            if len(lines) > self.max_subtitle_lines: lines = lines[:self.max_subtitle_lines]
             
             line_h = self.font_size * self.pixel_to_pt * 1.3
             total_h = len(lines) * line_h
@@ -426,7 +541,7 @@ class UniversalSubtitleRenderer:
                     line_w = sum(w['width'] + w['space'] for w in line) - line[-1]['space']
                     x_c = self.subtitle_left if self.subtitle_position == 'custom' else 540
                     x1 = x_c - line_w if self.subtitle_h_align == 'left' else (x_c if self.subtitle_h_align == 'right' else x_c - (line_w / 2))
-                    draw.rectangle([x1 - 25, y, x1 + line_w + 25, y + line_h], fill=self.bg_color + (bg_alpha,))
+                    sub_draw.rectangle([x1 - 25, y, x1 + line_w + 25, y + line_h], fill=self.bg_color + (bg_alpha,))
                     y += line_h
 
             y = start_y
@@ -447,15 +562,17 @@ class UniversalSubtitleRenderer:
                     anchor = "rm" if self.is_rtl else "lm"
                     
                     if eff.get('opacity', 1.0) > 0.1:
-                        draw.text((draw_x, draw_y), w['text'], fill=w_col + (255,), font=w['font'], anchor=anchor, stroke_width=3, stroke_fill=self.outline_color + (255,))
+                        sub_draw.text((draw_x, draw_y), w['text'], fill=w_col + (255,), font=w['font'], anchor=anchor, stroke_width=3, stroke_fill=self.outline_color + (255,))
                     
                     step = (w['width'] + w['space'])
                     if self.is_rtl: cur_x -= step
                     else: cur_x += step
                     word_counter += 1
                 y += line_h
+            
+            combined_overlay = Image.alpha_composite(combined_overlay, sub_overlay)
 
-        final = Image.alpha_composite(pil_image.convert("RGBA"), overlay)
+        final = Image.alpha_composite(pil_image.convert("RGBA"), combined_overlay)
         return final.convert("RGB").tobytes()
 
     def _precalculate_title_properties(self):
@@ -730,7 +847,8 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
         # CRITICAL: render_frame and get_words_at_time_for_subtitle use current_time 
         # to find the highlight word. Since words_by_time is ALWAYS absolute,
         # we MUST pass adjusted_abs_t (which has the user offset applied).
-        raw = renderer.render_frame(frame, adjusted_abs_t, txt, s_s, s_e)
+        # We pass the raw absolute time (start_time + rel_t) as animation_time.
+        raw = renderer.render_frame(frame, adjusted_abs_t, txt, s_s, s_e, animation_time=(start_time + rel_t))
         try: proc.stdin.write(raw)
         except: break
         
