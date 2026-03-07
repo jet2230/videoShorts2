@@ -4769,7 +4769,37 @@
                         }
 
                         // Get per-cue formatting for unique positioning
-                        const cueSettings = currentCue ? allCueFormatting[String(currentCue.sequence)] : null;
+                        let cueSettings = currentCue ? allCueFormatting[String(currentCue.sequence)] : null;
+                        
+                        // ROBUST FALLBACK: If sequence match fails, try by timestamp or text
+                        if (!cueSettings && currentCue) {
+                            const cueStart = parseTime(currentCue.start);
+                            // Try timestamp match (allow small drift)
+                            for (const key in allCueFormatting) {
+                                const f = allCueFormatting[key];
+                                if (f && f.timestamp) {
+                                    try {
+                                        const fStart = parseTime(f.timestamp);
+                                        if (Math.abs(fStart - cueStart) < 0.1) {
+                                            cueSettings = f;
+                                            break;
+                                        }
+                                    } catch(e) {}
+                                }
+                            }
+                            
+                            // Try text match if still not found
+                            if (!cueSettings) {
+                                const cleanTxt = currentCue.text.trim().toLowerCase();
+                                for (const key in allCueFormatting) {
+                                    const f = allCueFormatting[key];
+                                    if (f && f._text && f._text.trim().toLowerCase() === cleanTxt) {
+                                        cueSettings = f;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
 
                         // Use unified renderer
                         canvasRenderer.renderFrame(previewVideo.currentTime, subtitleText, highlightedWordIndex, cueSettings);
@@ -5458,13 +5488,48 @@
                                 const cueEnd = parseTime(cue.end);
                                 return currentTime >= cueStart && currentTime <= cueEnd;
                             });
-                            if (currentCue) {
-                                subtitleText = currentCue.text;
+                        let cueSettings = null;
+                        if (currentCue) {
+                            subtitleText = currentCue.text;
+                            cueSettings = allCueFormatting[String(currentCue.sequence)];
+                            
+                            // ROBUST FALLBACK: If sequence match fails, try by timestamp or text
+                            if (!cueSettings) {
+                                const cueStart = parseTime(currentCue.start);
+                                // Try timestamp match (allow small drift)
+                                for (const key in allCueFormatting) {
+                                    const f = allCueFormatting[key];
+                                    if (f && f.timestamp) {
+                                        try {
+                                            const fStart = parseTime(f.timestamp);
+                                            if (Math.abs(fStart - cueStart) < 0.1) {
+                                                cueSettings = f;
+                                                break;
+                                            }
+                                        } catch(e) {}
+                                    }
+                                }
+                                
+                                // Try text match if still not found
+                                if (!cueSettings) {
+                                    const cleanTxt = currentCue.text.trim().toLowerCase();
+                                    for (const key in allCueFormatting) {
+                                        const f = allCueFormatting[key];
+                                        if (f && f._text && f._text.trim().toLowerCase() === cleanTxt) {
+                                            cueSettings = f;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (cueSettings && cueSettings.html) {
+                                subtitleText = cueSettings.html;
                             }
                         }
                         
                         // We don't do real-time editor preview on original side, just show stable cues
-                        originalCanvasRenderer.renderFrame(originalVideo.currentTime, subtitleText);
+                        originalCanvasRenderer.renderFrame(originalVideo.currentTime, subtitleText, -1, cueSettings);
                     } catch (error) {
                     }
                 } else if (originalCanvas) {

@@ -4458,13 +4458,35 @@
                 return result.filter(item => item.text.trim().length > 0);
             }
 
-            renderFrame(currentTime, subtitleData, highlightedWordIndex = -1) {
+            renderFrame(currentTime, subtitleData, highlightedWordIndex = -1, cueSettings = null) {
                 const ctx = this.ctx;
                 const canvas = this.canvas;
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 if (!subtitleData) return;
 
                 const scale = canvas.height / 1920;
+                
+                // Determine positioning for this frame
+                let currentPos = this.settings.subtitle_position;
+                let currentTop = this.settings.subtitle_top;
+                let currentLeft = this.settings.subtitle_left;
+                let currentHAlign = this.settings.subtitle_h_align;
+                let currentVAlign = this.settings.subtitle_v_align;
+
+                if (cueSettings) {
+                    if (cueSettings.position) currentPos = cueSettings.position;
+                    if (cueSettings.horizontalAlign) currentHAlign = cueSettings.horizontalAlign;
+                    if (cueSettings.verticalAlign) currentVAlign = cueSettings.verticalAlign;
+                    if (cueSettings.customPosition) {
+                        currentTop = cueSettings.customPosition.top !== undefined ? cueSettings.customPosition.top : currentTop;
+                        currentLeft = cueSettings.customPosition.centerX !== undefined ? cueSettings.customPosition.centerX : (cueSettings.customPosition.left !== undefined ? cueSettings.customPosition.left : currentLeft);
+                    }
+                }
+
+                // SANITY CHECK: If coordinates are out of bounds (due to bug), reset them
+                if (currentTop > 2000 || currentTop < -100) currentTop = 960;
+                if (currentLeft > 1200 || currentLeft < -100) currentLeft = 540;
+
                 const baseFontSize = (this.settings.fontSize || 80) * scale;
                 let fontFamily = this.settings.fontName || this.settings.font_name || 'Avenir Black';
                 
@@ -4529,25 +4551,18 @@
                 // Position calculation matching backend (subtitle_renderer.py)
                 if (effectType === 'flash') {
                     startY = (canvas.height - lineHeight) / 2;
-                } else if (this.settings.subtitle_position === 'top') {
+                } else if (currentPos === 'top') {
                     startY = 300 * scale;
-                } else if (this.settings.subtitle_position === 'middle') {
+                } else if (currentPos === 'middle') {
                     startY = (canvas.height - totalHeight) / 2;
-                } else if (this.settings.subtitle_position === 'custom' && this.settings.subtitle_top !== null) {
-                    // In custom mode, subtitle_top is the CENTER of the subtitle block
-                    startY = ((this.settings.subtitle_top / 1920) * canvas.height) - (totalHeight / 2);
+                } else if (currentPos === 'custom' && currentTop !== null) {
+                    // In custom mode, currentTop is the CENTER of the subtitle block
+                    startY = ((currentTop / 1920) * canvas.height) - (totalHeight / 2);
                 } else {
-                    // Default to bottom with 300px margin (matching backend)
-                    startY = canvas.height - (300 * scale) - totalHeight;
-                }
-
-                // Apply vertical alignment refinement (v_align from adjust.md)
-                if (this.settings.subtitle_v_align === 'top' && this.settings.subtitle_position !== 'top') {
-                    // If v_align is top but position is bottom/middle, shift it up slightly within its area
-                    // (Matches fine-tuning behavior)
-                } else if (this.settings.subtitle_v_align === 'middle' && this.settings.subtitle_position === 'bottom') {
-                    // If bottom position but middle align, shift up more
-                    startY -= (50 * scale);
+                    // Snap based on vertical align
+                    if (currentVAlign === 'top') startY = 300 * scale;
+                    else if (currentVAlign === 'middle') startY = (canvas.height - totalHeight) / 2;
+                    else startY = canvas.height - (300 * scale) - totalHeight;
                 }
 
                 ctx.textBaseline = 'middle';
@@ -4563,16 +4578,16 @@
                     }
 
                     let xCenter = canvas.width / 2;
-                    if (this.settings.subtitle_position === 'custom' && this.settings.subtitle_left !== null) {
-                        xCenter = (this.settings.subtitle_left / 1080) * canvas.width;
+                    if (currentPos === 'custom' && currentLeft !== null) {
+                        xCenter = (currentLeft / 1080) * canvas.width;
                     }
 
                     let xPosStart;
                     if (effectType === 'flash' || effectType === 'dynamic_box') {
                         xPosStart = (canvas.width / 2) - (lineTextWidth / 2);
                     } else {
-                        if (this.settings.subtitle_h_align === 'left') xPosStart = xCenter - lineTextWidth;
-                        else if (this.settings.subtitle_h_align === 'right') xPosStart = xCenter;
+                        if (currentHAlign === 'left') xPosStart = xCenter - lineTextWidth;
+                        else if (currentHAlign === 'right') xPosStart = xCenter;
                         else xPosStart = xCenter - (lineTextWidth / 2);
                     }
 
@@ -4752,7 +4767,38 @@
             }
 
             let subtitleText = currentCue.text;
-            const formatting = allCueFormatting[currentCue.sequence];
+            let formatting = allCueFormatting[currentCue.sequence];
+            
+            // ROBUST FALLBACK: If sequence match fails, try by timestamp or text
+            if (!formatting) {
+                const cueStart = parseTime(currentCue.start);
+                // Try timestamp match (allow small drift)
+                for (const key in allCueFormatting) {
+                    const f = allCueFormatting[key];
+                    if (f && f.timestamp) {
+                        try {
+                            const fStart = parseTime(f.timestamp);
+                            if (Math.abs(fStart - cueStart) < 0.1) {
+                                formatting = f;
+                                break;
+                            }
+                        } catch(e) {}
+                    }
+                }
+                
+                // Try text match if still not found
+                if (!formatting) {
+                    const cleanTxt = currentCue.text.trim().toLowerCase();
+                    for (const key in allCueFormatting) {
+                        const f = allCueFormatting[key];
+                        if (f && f._text && f._text.trim().toLowerCase() === cleanTxt) {
+                            formatting = f;
+                            break;
+                        }
+                    }
+                }
+            }
+
             if (formatting && formatting.html) {
                 subtitleText = formatting.html;
             }
@@ -4777,7 +4823,7 @@
                 }
             }
 
-            subtitleRenderer.renderFrame(adjustedTime, subtitleText, highlightedWordIndex);
+            subtitleRenderer.renderFrame(adjustedTime, subtitleText, highlightedWordIndex, formatting);
 
             // Draw selection outline for subtitle if it's the selected item
             if (selectedItem && selectedItem.type === 'subtitle' && selectedItem.data === currentCue) {

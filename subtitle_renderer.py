@@ -873,8 +873,32 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
         # Get per-cue formatting if available
         formatting = settings.get('formatting', {})
         cue_settings = None
-        if matched and 'sequence' in matched:
-            cue_settings = formatting.get(str(matched['sequence']))
+        
+        if matched:
+            seq_key = str(matched.get('sequence', ''))
+            cue_settings = formatting.get(seq_key)
+            
+            # ROBUST FALLBACK: If sequence match fails, try to find by timestamp or text
+            if not cue_settings:
+                # Try matching by timestamp (start time) - allow small floating point drift
+                for k, v in formatting.items():
+                    if isinstance(v, dict) and 'timestamp' in v:
+                        try:
+                            # Convert JSON timestamp to seconds for comparison
+                            # Handle both "00:00:00.000" and "00:00:00,000"
+                            k_ts = parse_srt_time(v['timestamp'].replace(',', '.'))
+                            if abs(k_ts - s_s) < 0.1: # 100ms tolerance
+                                cue_settings = v
+                                break
+                        except: continue
+                
+                # Try matching by text if still not found
+                if not cue_settings:
+                    clean_txt = txt.strip().lower()
+                    for k, v in formatting.items():
+                        if isinstance(v, dict) and v.get('_text', '').strip().lower() == clean_txt:
+                            cue_settings = v
+                            break
 
         # CRITICAL: render_frame and get_words_at_time_for_subtitle use current_time 
         # to find the highlight word. Since words_by_time is ALWAYS absolute,

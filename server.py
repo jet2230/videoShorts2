@@ -4514,6 +4514,16 @@ def get_theme_adjust_settings(folder_path, theme_number):
         st_match = re.search(r'\*\*show_title:\*\*\s*(true|false)', content)
         if st_match: settings_dict['show_title'] = st_match.group(1) == 'true'
             
+    # Load per-cue formatting if it exists
+    formatting_file = folder_path / 'shorts' / f'theme_{int(theme_number):03d}_formatting.json'
+    if formatting_file.exists():
+        try:
+            with open(formatting_file, 'r', encoding='utf-8') as f:
+                settings_dict['formatting'] = json.load(f)
+                app_logger.info(f"Loaded {len(settings_dict['formatting'])} per-cue formatting entries for theme {theme_number}")
+        except Exception as e:
+            app_logger.warning(f"Failed to load formatting file {formatting_file}: {e}")
+
     # Load global highlight style if it exists
     highlight_file = folder_path / 'highlight_style.json'
     if highlight_file.exists():
