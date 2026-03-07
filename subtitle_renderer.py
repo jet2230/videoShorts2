@@ -472,8 +472,31 @@ class UniversalSubtitleRenderer:
             colored_words.append({'text': word_txt, 'color': word_color, 'sizeMultiplier': 1.0})
         return colored_words, highlighted_index, sub_word_ts
 
-    def render_frame(self, frame: np.ndarray, current_time: float, subtitle_text: str, subtitle_start: float = None, subtitle_end: float = None, subtitle_seq: int = None, animation_time: float = None) -> np.ndarray:
+    def render_frame(self, frame: np.ndarray, current_time: float, subtitle_text: str, subtitle_start: float = None, subtitle_end: float = None, subtitle_seq: int = None, animation_time: float = None, cue_settings: Dict = None) -> np.ndarray:
         if animation_time is None: animation_time = current_time
+        
+        # Determine positioning for this frame
+        current_pos = self.subtitle_position
+        current_top = self.subtitle_top
+        current_left = self.subtitle_left
+        current_h_align = self.subtitle_h_align
+        current_v_align = self.subtitle_v_align
+
+        if cue_settings:
+            if 'position' in cue_settings and cue_settings['position']:
+                current_pos = cue_settings['position']
+            if 'horizontalAlign' in cue_settings and cue_settings['horizontalAlign']:
+                current_h_align = cue_settings['horizontalAlign']
+            if 'verticalAlign' in cue_settings and cue_settings['verticalAlign']:
+                current_v_align = cue_settings['verticalAlign']
+            if 'customPosition' in cue_settings and cue_settings['customPosition']:
+                current_top = cue_settings['customPosition'].get('top', current_top)
+                current_left = cue_settings['customPosition'].get('centerX', cue_settings['customPosition'].get('left', current_left))
+
+        # SANITY CHECK: If coordinates are out of bounds (due to bug), 
+        # reset them to center to keep subtitle visible
+        if current_top > 2000 or current_top < -100: current_top = 960
+        if current_left > 1200 or current_left < -100: current_left = 540
         
         if self.show_title and not self._title_pre_rendered:
             self._precalculate_title_properties()
@@ -529,18 +552,21 @@ class UniversalSubtitleRenderer:
             line_h = self.font_size * self.pixel_to_pt * 1.3
             total_h = len(lines) * line_h
             
-            if self.subtitle_position == 'top': start_y = 300
-            elif self.subtitle_position == 'middle': start_y = (1920 - total_h) / 2
-            elif self.subtitle_position == 'custom': start_y = self.subtitle_top - (total_h / 2)
-            else: start_y = 1920 - 300 - total_h
+            if current_pos == 'top': start_y = 300
+            elif current_pos == 'middle': start_y = (1920 - total_h) / 2
+            elif current_pos == 'custom': start_y = current_top - (total_h / 2)
+            else: 
+                if current_v_align == 'top': start_y = 300
+                elif current_v_align == 'middle': start_y = (1920 - total_h) / 2
+                else: start_y = 1920 - 300 - total_h
             
             bg_alpha = int(self.bg_opacity * 255)
             if bg_alpha > 0:
                 y = start_y
                 for line in lines:
                     line_w = sum(w['width'] + w['space'] for w in line) - line[-1]['space']
-                    x_c = self.subtitle_left if self.subtitle_position == 'custom' else 540
-                    x1 = x_c - line_w if self.subtitle_h_align == 'left' else (x_c if self.subtitle_h_align == 'right' else x_c - (line_w / 2))
+                    x_c = current_left if current_pos == 'custom' else 540
+                    x1 = x_c - line_w if current_h_align == 'left' else (x_c if current_h_align == 'right' else x_c - (line_w / 2))
                     sub_draw.rectangle([x1 - 25, y, x1 + line_w + 25, y + line_h], fill=self.bg_color + (bg_alpha,))
                     y += line_h
 
@@ -548,8 +574,8 @@ class UniversalSubtitleRenderer:
             word_counter = 0
             for line in lines:
                 line_w = sum(w['width'] + w['space'] for w in line) - line[-1]['space']
-                x_c = self.subtitle_left if self.subtitle_position == 'custom' else 540
-                cur_x = x_c - line_w if self.subtitle_h_align == 'left' else (x_c if self.subtitle_h_align == 'right' else x_c - (line_w / 2))
+                x_c = current_left if current_pos == 'custom' else 540
+                cur_x = x_c - line_w if current_h_align == 'left' else (x_c if current_h_align == 'right' else x_c - (line_w / 2))
                 if self.is_rtl: cur_x += line_w
 
                 for w in line:
@@ -844,11 +870,17 @@ def render_canvas_karaoke_video(video_path, word_timestamps_path, subtitle_srt_p
                 s_s = matched['start']
                 s_e = matched['end']
 
+        # Get per-cue formatting if available
+        formatting = settings.get('formatting', {})
+        cue_settings = None
+        if matched and 'sequence' in matched:
+            cue_settings = formatting.get(str(matched['sequence']))
+
         # CRITICAL: render_frame and get_words_at_time_for_subtitle use current_time 
         # to find the highlight word. Since words_by_time is ALWAYS absolute,
         # we MUST pass adjusted_abs_t (which has the user offset applied).
         # We pass the raw absolute time (start_time + rel_t) as animation_time.
-        raw = renderer.render_frame(frame, adjusted_abs_t, txt, s_s, s_e, animation_time=(start_time + rel_t))
+        raw = renderer.render_frame(frame, adjusted_abs_t, txt, s_s, s_e, animation_time=(start_time + rel_t), cue_settings=cue_settings)
         try: proc.stdin.write(raw)
         except: break
         
@@ -888,28 +920,31 @@ def _parse_srt(path):
     for block in blocks:
         lines = block.strip().split('\n')
         if not lines: continue
-        
+
         # Look for the timing line (e.g., 00:00:01,000 --> 00:00:02,000)
         for i, line in enumerate(lines):
             time_match = re.search(r'(\d{2}:\d{2}:\d{2}[.,]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[.,]\d{3})', line)
             if time_match:
+                # Sequence number is usually the line before the timing line
+                sequence = lines[i-1].strip() if i > 0 else str(len(subs) + 1)
+
                 def p(t):
                     h, m, s = map(float, t.replace(',', '.').split(':'))
                     return h * 3600 + m * 60 + s
-                
+
                 start = p(time_match.group(1))
                 end = p(time_match.group(2))
-                
+
                 # Everything after the timing line is the subtitle text
                 text = '\n'.join(lines[i+1:]).strip()
-                
+
                 subs.append({
+                    'sequence': sequence,
                     'start': start,
                     'end': end,
                     'text': text
                 })
                 break # Move to next block
-                
     return subs
 
 def parse_srt_time(ts):

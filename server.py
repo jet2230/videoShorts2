@@ -978,6 +978,23 @@ def reset_theme():
     if not folder:
         return jsonify({'error': 'Folder not found'}), 404
 
+    # Get original theme data from themes.md
+    themes_file = folder / 'themes.md'
+    if not themes_file.exists():
+        return jsonify({'error': 'themes.md not found'}), 404
+    
+    themes = creator.parse_themes_file(themes_file)
+    theme_data = next((t for t in themes if t['number'] == theme_number), None)
+    if not theme_data:
+        return jsonify({'error': f'Theme {theme_number} not found in themes.md'}), 404
+
+    theme_start = theme_data['start']
+    theme_end = theme_data['end']
+    theme_title = theme_data['title']
+
+    # Path to adjust.md file
+    adjust_file = folder / 'shorts' / f'theme_{theme_number:03d}_adjust.md'
+
     # Preserve existing styling if it exists
     existing_settings = get_theme_adjust_settings(folder, theme_number)
 
@@ -990,6 +1007,46 @@ def reset_theme():
     duration_str = f"{minutes}m {seconds}s"
 
     write_theme_adjust_settings(adjust_file, theme_number, theme_title, f"{theme_start} - {theme_end} ({duration_str})", folder.name, existing_settings)
+
+    # CRITICAL: Immediately refresh the theme-specific SRT and JSON files to match new boundaries
+    try:
+        shorts_dir = folder / 'shorts'
+        # Find master SRT
+        srt_files = [f for f in folder.glob('*.srt') if 'theme_' not in f.name and 'adjust' not in f.name]
+        if not srt_files: srt_files = list(folder.glob('*.srt'))
+        main_srt = srt_files[0] if srt_files else None
+        
+        if main_srt:
+            theme_srt_path = shorts_dir / f"theme_{theme_number:03d}.srt"
+            theme_json_path = shorts_dir / f"theme_{theme_number:03d}.json"
+            
+            # Refresh SRT
+            creator.create_trimmed_srt(main_srt, start_secs, end_secs, theme_srt_path)
+            
+            # Refresh JSON (word timestamps)
+            word_timestamps_file = next(folder.glob('[!theme]*_word_timestamps.json'), None)
+            if word_timestamps_file:
+                with open(word_timestamps_file, 'r', encoding='utf-8') as f:
+                    all_words = json.load(f).get('words', [])
+                
+                theme_words = []
+                for w in all_words:
+                    if w['end'] > start_secs - 0.1 and w['start'] < end_secs + 0.1:
+                        rw = w.copy()
+                        rw['start'] = max(0, rw['start'] - start_secs)
+                        rw['end'] = min(end_secs - start_secs, rw['end'] - start_secs)
+                        if rw['end'] > rw['start']:
+                            theme_words.append(rw)
+                    
+                with open(theme_json_path, 'w', encoding='utf-8') as f:
+                    json.dump({
+                        'theme': str(theme_number),
+                        'start_time': start_secs,
+                        'end_time': end_secs,
+                        'words': theme_words
+                    }, f, indent=2)
+    except Exception as e:
+        app_logger.error(f"Error refreshing files during reset: {e}")
 
     return jsonify({'success': True, 'message': 'Theme reset successfully'})
 
@@ -1124,85 +1181,62 @@ def get_theme_subtitles(folder_number: str, theme_number: str):
     # Parse SRT into JSON format, filtering by theme time range if it's the main SRT
     cues = []
     filtered_cues = []
-    lines = srt_content.strip().split('\n')
-    i = 0
+    
+    # Robust splitting by empty lines
+    blocks = re.split(r'\n\s*\n', srt_content.strip())
+    
+    for block in blocks:
+        block_lines = block.strip().split('\n')
+        if not block_lines: continue
+        
+        # Look for the timing line
+        for idx, line in enumerate(block_lines):
+            time_match = re.search(r'(-?\d{2}:\d{2}:\d{2})[.,](\d{3})\s*-->\s*(-?\d{2}:\d{2}:\d{2})[.,](\d{3})', line)
+            if time_match:
+                # Sequence is either the line before or a fallback
+                seq_str = block_lines[idx-1].strip() if idx > 0 else str(len(filtered_cues) + 1)
+                
+                # Convert to seconds
+                cue_start_sec = creator.parse_timestamp_to_seconds(f"{time_match.group(1)}.{time_match.group(2)}")
+                cue_end_sec = creator.parse_timestamp_to_seconds(f"{time_match.group(3)}.{time_match.group(4)}")
 
-    while i < len(lines):
-        line = lines[i].strip()
+                # Filter by theme range
+                buffer_sec = 120.0
+                if is_theme_srt or (cue_end_sec > (theme_start_sec - buffer_sec) and cue_start_sec < (theme_end_sec + buffer_sec)):
+                    # Text is everything after timing line
+                    text = '\n'.join(block_lines[idx+1:]).strip()
 
-        # Skip empty lines
-        if not line:
-            i += 1
-            continue
+                    # Convert back to absolute if theme-relative
+                    start_str, end_str = "", ""
+                    if is_theme_srt:
+                        abs_s = cue_start_sec + theme_start_sec
+                        abs_e = cue_end_sec + theme_start_sec
+                        
+                        def format_offset_ts(s):
+                            is_neg = s < 0
+                            a = abs(s)
+                            h, m = int(a // 3600), int((a % 3600) // 60)
+                            sec = int(a % 60)
+                            ms = int(round((a % 1) * 1000))
+                            if ms == 1000: ms = 0; sec += 1
+                            if sec == 60: sec = 0; m += 1
+                            if m == 60: m = 0; h += 1
+                            res = f"{h:02d}:{m:02d}:{sec:02d}.{ms:03d}"
+                            return f"-{res}" if is_neg else res
+                        
+                        start_str = format_offset_ts(abs_s)
+                        end_str = format_offset_ts(abs_e)
+                    else:
+                        start_str = f"{time_match.group(1)}.{time_match.group(2)}"
+                        end_str = f"{time_match.group(3)}.{time_match.group(4)}"
 
-        # Sequence number
-        if line.isdigit():
-            seq_num = int(line)
-            i += 1
-
-            # Timestamp line
-            if i < len(lines) and '-->' in lines[i]:
-                timestamp_line = lines[i].strip()
-                match = re.match(r'(-?\d{2}:\d{2}:\d{2})[.,](\d{3})\s*-->\s*(-?\d{2}:\d{2}:\d{2})[.,](\d{3})', timestamp_line)
-                if match:
-                    # Use creator's parser to correctly handle potential negative timestamps
-                    cue_start_sec = creator.parse_timestamp_to_seconds(f"{match.group(1)}.{match.group(2)}")
-                    cue_end_sec = creator.parse_timestamp_to_seconds(f"{match.group(3)}.{match.group(4)}")
-
-                    # Filter: if it's the main SRT, include theme range PLUS a 120s buffer for non-destructive editing
-                    # If it's the theme SRT, it's already trimmed (including its own buffer), so include everything.
-                    buffer_sec = 120.0
-                    if is_theme_srt or (cue_end_sec > (theme_start_sec - buffer_sec) and cue_start_sec < (theme_end_sec + buffer_sec)):
-                        # Get subtitle text (may be multiple lines)
-                        i += 1
-                        text_lines = []
-                        while i < len(lines) and lines[i].strip() and not lines[i].strip().isdigit():
-                            text_lines.append(lines[i].strip())
-                            i += 1
-
-                        # If this is a theme SRT, timestamps are 0-based.
-                        # We must convert them back to absolute for the UI to align with master video.
-                        if is_theme_srt:
-                            cue_start_sec += theme_start_sec
-                            cue_end_sec += theme_start_sec
-                            
-                            # Format back to HH:MM:SS.mmm (supports negative offsets)
-                            def format_offset_ts(s):
-                                is_neg = s < 0
-                                abs_s = abs(s)
-                                h = int(abs_s // 3600)
-                                m = int((abs_s % 3600) // 60)
-                                sec = int(abs_s % 60)
-                                ms = int(round((abs_s % 1) * 1000))
-                                if ms == 1000:
-                                    ms = 0
-                                    sec += 1
-                                if sec == 60:
-                                    sec = 0
-                                    m += 1
-                                if m == 60:
-                                    m = 0
-                                    h += 1
-                                res = f"{h:02d}:{m:02d}:{sec:02d}.{ms:03d}"
-                                return f"-{res}" if is_neg else res
-                            
-                            start_str = format_offset_ts(cue_start_sec)
-                            end_str = format_offset_ts(cue_end_sec)
-                        else:
-                            start_str = f"{match.group(1)}.{match.group(2)}"
-                            end_str = f"{match.group(3)}.{match.group(4)}"
-
-                        filtered_cues.append({
-                            'sequence': seq_num,
-                            'start': start_str,
-                            'end': end_str,
-                            'text': '\n'.join(text_lines)
-                        })
-                        continue
-            else:
-                i += 1
-        else:
-            i += 1
+                    filtered_cues.append({
+                        'sequence': seq_str, # Preserve as string (could be "1.2")
+                        'start': start_str,
+                        'end': end_str,
+                        'text': text
+                    })
+                break # Processed this block
 
     # Load persistent edits if they exist
     edits = {}
@@ -1473,58 +1507,40 @@ def get_all_subtitles(folder_number: str):
 
     # Parse SRT into JSON format (no time filtering)
     all_cues = []
-    lines = srt_content.strip().split('\n')
-    i = 0
+    
+    # Robust splitting by empty lines
+    blocks = re.split(r'\n\s*\n', srt_content.strip())
+    
+    for block in blocks:
+        block_lines = block.strip().split('\n')
+        if not block_lines: continue
+        
+        # Look for the timing line
+        for idx, line in enumerate(block_lines):
+            time_match = re.search(r'(-?\d{2}:\d{2}:\d{2})[.,](\d{3})\s*-->\s*(-?\d{2}:\d{2}:\d{2})[.,](\d{3})', line)
+            if time_match:
+                # Sequence is either the line before or a fallback
+                seq_str = block_lines[idx-1].strip() if idx > 0 else str(len(all_cues) + 1)
+                
+                # Re-format timestamps consistently
+                def fmt(s_str, ms_str):
+                    s = creator.parse_timestamp_to_seconds(f"{s_str}.{ms_str}")
+                    h, m, sec = int(s//3600), int((s%3600)//60), s%60
+                    return f"{h:02d}:{m:02d}:{sec:06.3f}"
+                
+                start_ts = fmt(time_match.group(1), time_match.group(2))
+                end_ts = fmt(time_match.group(3), time_match.group(4))
 
-    while i < len(lines):
-        line = lines[i].strip()
+                # Text is everything after timing line
+                text = '\n'.join(block_lines[idx+1:]).strip()
 
-        # Skip empty lines
-        if not line:
-            i += 1
-            continue
-
-        # Sequence number
-        if line.isdigit():
-            seq_num = int(line)
-            i += 1
-
-            # Timestamp line
-            if i < len(lines) and '-->' in lines[i]:
-                timestamp_line = lines[i].strip()
-                # Parse timestamps: supports optional negative sign
-                match = re.match(r'(-?\d{2}:\d{2}:\d{2})[.,](\d{3})\s*-->\s*(-?\d{2}:\d{2}:\d{2})[.,](\d{3})', timestamp_line)
-                if match:
-                    # Use creator's parser to correctly handle potential negative timestamps
-                    start_ts_sec = creator.parse_timestamp_to_seconds(f"{match.group(1)}.{match.group(2)}")
-                    end_ts_sec = creator.parse_timestamp_to_seconds(f"{match.group(3)}.{match.group(4)}")
-                    
-                    # Re-format consistently
-                    def fmt(s):
-                        h, m, sec = int(s//3600), int((s%3600)//60), s%60
-                        return f"{h:02d}:{m:02d}:{sec:06.3f}"
-                    
-                    start_ts = fmt(start_ts_sec)
-                    end_ts = fmt(end_ts_sec)
-
-                    # Get subtitle text (may be multiple lines)
-                    i += 1
-                    text_lines = []
-                    while i < len(lines) and lines[i].strip() and not lines[i].strip().isdigit():
-                        text_lines.append(lines[i].strip())
-                        i += 1
-
-                    all_cues.append({
-                        'sequence': seq_num,
-                        'start': start_ts,
-                        'end': end_ts,
-                        'text': '\n'.join(text_lines)
-                    })
-                    continue
-            else:
-                i += 1
-        else:
-            i += 1
+                all_cues.append({
+                    'sequence': seq_str,
+                    'start': start_ts,
+                    'end': end_ts,
+                    'text': text
+                })
+                break # Processed this block
 
     # Load persistent edits if they exist
     edits = {}
@@ -3814,6 +3830,19 @@ def run_edit_task(edit_id: str, input_video: str, output_video: str, edit_settin
                 edit_render_settings['animations'] = edit_settings.get('animations', {})
                 edit_render_settings['effect_markers'] = edit_settings.get('effect_markers', [])
                 edit_render_settings['effects'] = edit_settings.get('effects', {})
+
+                # Load per-cue formatting from JSON if exists
+                formatting_file = folder_path / 'shorts' / f'theme_{int(t_num):03d}_formatting.json'
+                if formatting_file.exists():
+                    try:
+                        with open(formatting_file, 'r', encoding='utf-8') as f:
+                            edit_render_settings['formatting'] = json.load(f)
+                            log_message(f"DEBUG: Loaded per-cue formatting for {len(edit_render_settings['formatting'])} cues")
+                    except Exception as e:
+                        log_message(f"Warning: Failed to load formatting file: {e}")
+                else:
+                    # Fallback to formatting passed in request if not found on disk
+                    edit_render_settings['formatting'] = edit_settings.get('settings', {}).get('formatting', {})
 
                 # CRITICAL: Merge adjust_settings into edit_render_settings so saved font, colors, etc. are applied
                 # These fields always come from adjust.md (saved settings):
