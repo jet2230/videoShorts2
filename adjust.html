@@ -1989,6 +1989,9 @@
                                             <button id="lock-video-btn" class="action-btn" title="Lock video controls to enable dragging">
                                                 <span id="lock-icon">🔓</span> Lock
                                             </button>
+                                            <button id="reset-position-btn" class="action-btn" title="Reset current subtitle segment to global position">
+                                                <span>🔄</span> Reset Position
+                                            </button>
                                         </div>
                                         <div class="actions-group">
                                             <button class="toolbar-btn" onmousedown="event.preventDefault(); removeFormatting()" title="Clear all formatting">🗑 Clear</button>
@@ -6926,6 +6929,47 @@
                 // Update button text
                 lockBtn.innerHTML = '<span id="lock-icon">🔓</span> Lock';
                 lockBtn.title = 'Lock video controls to enable dragging';
+            }
+        });
+
+        // Reset subtitle position button
+        document.getElementById('reset-position-btn')?.addEventListener('click', async () => {
+            if (!currentCueInfo || !currentCueInfo.sequence) {
+                showToast('No subtitle segment selected to reset', 'info');
+                return;
+            }
+
+            const seqKey = String(currentCueInfo.sequence);
+            
+            if (allCueFormatting[seqKey]) {
+                // Remove per-cue position and custom position
+                delete allCueFormatting[seqKey].position;
+                delete allCueFormatting[seqKey].customPosition;
+                delete allCueFormatting[seqKey].horizontalAlign;
+                delete allCueFormatting[seqKey].verticalAlign;
+                
+                // If it was in 'current' mode, we might want to switch the UI back to 'global'
+                // but the user's intent is usually to just clear the override.
+                
+                // Update position mode to Global
+                if (typeof setPositionMode === 'function') {
+                    setPositionMode('global');
+                } else {
+                    // Fallback if setPositionMode is not available for some reason
+                    positionMode = 'global';
+                    const positionSelect = document.getElementById('subtitle-position');
+                    if (positionSelect) {
+                        positionSelect.value = globalPosition;
+                    }
+                    updateSubtitlePreview();
+                }
+                
+                // Save to server
+                await saveCurrentCueFormatting();
+                
+                showToast('✅ Subtitle position reset to global', 'success');
+            } else {
+                showToast('Subtitle already using global position', 'info');
             }
         });
 
