@@ -947,29 +947,29 @@
 
         .theme-box-handle {
             position: absolute;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 12px;
-            height: 12px;
-            background: #f44336;
-            border: 2px solid #fff;
-            border-radius: 50%;
+            top: 0;
+            bottom: 0;
+            width: 10px;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.3);
             cursor: ew-resize;
             z-index: 10;
-            transition: background 0.2s, border-color 0.2s;
+            transition: background 0.2s;
+            border-radius: 2px;
         }
 
         .theme-box-handle:hover {
-            background: #ff9800 !important;
-            border-color: #fff !important;
+            background: rgba(255, 255, 255, 0.6) !important;
         }
 
         .theme-box-handle.left {
-            left: -8px; /* Position outside left edge */
+            left: 0;
+            border-right: 1px solid rgba(255, 255, 255, 0.2);
         }
 
         .theme-box-handle.right {
-            right: -8px; /* Position outside right edge */
+            right: 0;
+            border-left: 1px solid rgba(255, 255, 255, 0.2);
         }
 
         .midpoint-marker {
@@ -1055,6 +1055,22 @@
         .info-value {
             font-weight: 600;
             font-size: 14px;
+        }
+
+        .custom-badge {
+            background: #ff5722;
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            box-shadow: 0 0 10px rgba(255, 87, 34, 0.3);
+            white-space: nowrap;
+        }
+
+        .hidden {
+            display: none !important;
         }
 
         #folder-location {
@@ -1919,7 +1935,10 @@
             <div style="margin-top: 20px;">
                 <div class="info-row">
                     <span class="info-label">Theme</span>
-                    <span class="info-value" id="theme-number">-</span>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span class="info-value" id="theme-number">-</span>
+                        <span id="custom-theme-badge" class="custom-badge hidden">CUSTOM THEME</span>
+                    </div>
                 </div>
                 <div class="info-row">
                     <span class="info-label">Theme Name</span>
@@ -4326,6 +4345,17 @@
 
                 // Update info display
                 document.getElementById('theme-number').textContent = `Theme ${themeData.number}`;
+                
+                // Show/hide custom theme badge
+                const customBadge = document.getElementById('custom-theme-badge');
+                if (customBadge) {
+                    if (themeData.is_custom) {
+                        customBadge.classList.remove('hidden');
+                    } else {
+                        customBadge.classList.add('hidden');
+                    }
+                }
+                
                 document.getElementById('theme-name').textContent = displayTitle;
                 const fullPath = `videos/${data.folder}`;
                 const folderLocationEl = document.getElementById('folder-location');
@@ -5104,29 +5134,62 @@
                 e.stopPropagation();
             });
 
+            // Whole theme box - move entire range (custom themes only)
+            themeBox.addEventListener('mousedown', (e) => {
+                if (!themeData.is_custom) return;
+                // Only if clicking the box itself or content, not handles
+                if (e.target !== themeBox && e.target !== themeBoxContent) return;
+
+                isDraggingTimeline = 'move';
+                themeBox.style.cursor = 'grabbing';
+                dragStartX = e.clientX;
+                dragStartValue = startSeconds;
+                dragStartEndValue = endSeconds;
+                themeStartBeforeDrag = startSeconds;
+                themeEndBeforeDrag = endSeconds;
+                e.preventDefault();
+                e.stopPropagation();
+            });
+
             // Hover effects
             handleLeft.addEventListener('mouseenter', () => themeBox.classList.add('highlight-left'));
             handleLeft.addEventListener('mouseleave', () => themeBox.classList.remove('highlight-left'));
             handleRight.addEventListener('mouseenter', () => themeBox.classList.add('highlight-right'));
             handleRight.addEventListener('mouseleave', () => themeBox.classList.remove('highlight-right'));
+            themeBox.addEventListener('mouseenter', () => {
+                if (themeData.is_custom) {
+                    themeBox.style.boxShadow = '0 0 15px rgba(255, 87, 34, 0.5)';
+                    themeBox.style.cursor = 'grab';
+                }
+            });
+            themeBox.addEventListener('mouseleave', () => {
+                themeBox.style.boxShadow = '';
+                themeBox.style.cursor = '';
+            });
 
             // Helper for unified timeline seeking logic
             function seekFromMouseEvent(e, trackElement) {
                 const rect = trackElement.getBoundingClientRect();
                 let x = e.clientX - rect.left;
                 let percent = Math.max(0, Math.min(1, x / rect.width));
-                
+
                 let totalDuration, startTimeOffset;
                 if (timelineZoomed) {
-                    const bufferStart = Math.max(0, originalStartSeconds - bufferLeftSeconds);
-                    const bufferEnd = Math.min(fullVideoDuration, originalEndSeconds + bufferRightSeconds);
+                    let bufferStart, bufferEnd;
+                    if (themeData.is_custom) {
+                        bufferStart = 0;
+                        bufferEnd = fullVideoDuration;
+                    } else {
+                        bufferStart = Math.max(0, originalStartSeconds - bufferLeftSeconds);
+                        bufferEnd = Math.min(fullVideoDuration, originalEndSeconds + bufferRightSeconds);
+                    }
                     totalDuration = bufferEnd - bufferStart;
                     startTimeOffset = bufferStart;
                 } else {
                     totalDuration = fullVideoDuration;
                     startTimeOffset = 0;
                 }
-                
+
                 let seekTimeRelative = percent * totalDuration;
                 let seekTimeAbsolute = startTimeOffset + seekTimeRelative;
 
@@ -5170,10 +5233,17 @@
                 const deltaX = e.clientX - dragStartX;
                 const timeScale = timelineZoomed ? bufferedDuration : fullVideoDuration;
                 let deltaTime = (deltaX / timelineTrack.offsetWidth) * timeScale;
-                
+
                 const midPoint = (originalStartSeconds + originalEndSeconds) / 2;
-                const bufferStart = Math.max(0, originalStartSeconds - bufferLeftSeconds);
-                const bufferEnd = Math.min(fullVideoDuration, originalEndSeconds + bufferRightSeconds);
+
+                let bufferStart, bufferEnd;
+                if (themeData.is_custom) {
+                    bufferStart = 0;
+                    bufferEnd = fullVideoDuration;
+                } else {
+                    bufferStart = Math.max(0, originalStartSeconds - bufferLeftSeconds);
+                    bufferEnd = Math.min(fullVideoDuration, originalEndSeconds + bufferRightSeconds);
+                }
 
                 if (isDraggingTimeline === 'left') {
                     let newStart = dragStartValue + deltaTime;
@@ -5197,19 +5267,45 @@
                     const minEnd = themeData.is_custom ? (startSeconds + 1.0) : (midPoint + 1.0);
                     newEnd = Math.max(minEnd, Math.min(newEnd, bufferEnd));
                     endSeconds = newEnd;
+                } else if (isDraggingTimeline === 'move') {
+                    let delta = dragStartValue + deltaTime;
+                    if (snappingEnabled) {
+                        const pixelsPerSecond = timelineTrack.offsetWidth / timeScale;
+                        let secondsPerTick = pixelsPerSecond > 50 ? 1 : (pixelsPerSecond > 20 ? 2 : 5);
+                        const snapInterval = secondsPerTick / (secondsPerTick >= 5 ? 5 : 2);
+                        delta = Math.round(delta / snapInterval) * snapInterval;
+                    }
+                    
+                    const actualDelta = delta - dragStartValue;
+                    const duration = dragStartEndValue - dragStartValue;
+                    
+                    let newStart = dragStartValue + actualDelta;
+                    let newEnd = newStart + duration;
+                    
+                    // Constrain within full video boundaries
+                    if (newStart < 0) {
+                        newStart = 0;
+                        newEnd = newStart + duration;
+                    } else if (newEnd > fullVideoDuration) {
+                        newEnd = fullVideoDuration;
+                        newStart = newEnd - duration;
+                    }
+                    
+                    startSeconds = newStart;
+                    endSeconds = newEnd;
                 }
                 updateUI();
             });
-
             document.addEventListener('mouseup', async () => {
                 if (!isDraggingTimeline) return;
                 
                 const dragMode = isDraggingTimeline;
                 isDraggingTimeline = null; // Sync reset immediately
+                themeBox.style.cursor = themeData.is_custom ? 'grab' : '';
 
                 try {
                     const timeOffset = startSeconds - themeStartBeforeDrag;
-                    if (dragMode === 'left' && timeOffset !== 0) {
+                    if ((dragMode === 'left' || dragMode === 'move') && timeOffset !== 0) {
                         for (const [seqKey, formatting] of Object.entries(allCueFormatting)) {
                             const oldSeconds = parseTime(formatting.timestamp);
                             const newSeconds = oldSeconds - timeOffset;
@@ -5222,7 +5318,7 @@
                         });
                     }
 
-                    if (dragMode === 'right' && endSeconds !== themeEndBeforeDrag) {
+                    if ((dragMode === 'right' || dragMode === 'move') && endSeconds !== themeEndBeforeDrag) {
                         await fetch('/api/save-subtitle-formatting', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
