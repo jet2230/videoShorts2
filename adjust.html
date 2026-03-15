@@ -4389,8 +4389,14 @@
                 await loadVideo(originalVideo, videoPath);
 
                 // Calculate buffer range
-                const bufferStart = Math.max(0, startSeconds - bufferLeftSeconds);
-                const bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferRightSeconds);
+                let bufferStart, bufferEnd;
+                if (themeData.is_custom) {
+                    bufferStart = 0;
+                    bufferEnd = fullVideoDuration;
+                } else {
+                    bufferStart = Math.max(0, startSeconds - bufferLeftSeconds);
+                    bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferRightSeconds);
+                }
                 bufferedDuration = bufferEnd - bufferStart;
 
                 // Load preview with theme clip range
@@ -4400,7 +4406,7 @@
                 await loadVideo(previewVideo, previewVideo.src);
 
                 // Load original video with buffered range - this makes seekbar show buffer duration
-                originalVideo.src = `${videoPath}#t=${bufferStart},${bufferEnd}`;
+                originalVideo.src = themeData.is_custom ? videoPath : `${videoPath}#t=${bufferStart},${bufferEnd}`;
 
                 // Wait for original video to reload with range
                 await new Promise(resolve => {
@@ -4444,13 +4450,43 @@
         function updateOriginalVideoRange() {
             if (!videoPath || !fullVideoDuration || startSeconds === null || startSeconds === undefined || endSeconds === null || endSeconds === undefined) return;
 
-            const bufferStart = Math.max(0, startSeconds - bufferLeftSeconds);
-            const bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferRightSeconds);
+            let bufferStart, bufferEnd;
+            if (themeData.is_custom) {
+                // For custom themes, no buffer - use full video
+                bufferStart = 0;
+                bufferEnd = fullVideoDuration;
+            } else {
+                // Use original theme boundaries for standard themes
+                const baseStart = originalStartSeconds;
+                const baseEnd = originalEndSeconds;
+                bufferStart = Math.max(0, baseStart - bufferLeftSeconds);
+                bufferEnd = Math.min(fullVideoDuration, baseEnd + bufferRightSeconds);
+            }
             bufferedDuration = bufferEnd - bufferStart;
 
-            // Set video to buffer start position if outside range
-            if (originalVideo.currentTime < bufferStart || originalVideo.currentTime > bufferEnd) {
+            // Update video source with new range
+            const newSrc = themeData.is_custom ? videoPath : `${videoPath}#t=${bufferStart},${bufferEnd}`;
+            if (originalVideo.src !== newSrc) {
+                const currentPos = originalVideo.currentTime;
+                originalVideo.src = newSrc;
+                originalVideo.currentTime = currentPos;
+                
+                // Update buffer info display
+                const bufferInfo = document.getElementById('buffer-info');
+                if (bufferInfo) {
+                    if (themeData.is_custom) {
+                        bufferInfo.textContent = `Full video range: 00:00:00 - ${formatTime(fullVideoDuration)}`;
+                    } else {
+                        bufferInfo.textContent = `Buffer range: ${formatTime(bufferStart)} - ${formatTime(bufferEnd)} (${formatTime(bufferedDuration)})`;
+                    }
+                }
+            }
+
+            // Set video to buffer range position if outside
+            if (originalVideo.currentTime < bufferStart) {
                 originalVideo.currentTime = bufferStart;
+            } else if (originalVideo.currentTime > bufferEnd) {
+                originalVideo.currentTime = bufferEnd;
             }
         }
 
@@ -4947,9 +4983,16 @@
             if (!fullVideoDuration) return;
 
             const clipDuration = endSeconds - startSeconds;
-            // Buffer range is relative to ORIGINAL theme boundaries
-            const bufferStart = Math.max(0, originalStartSeconds - bufferLeftSeconds);
-            const bufferEnd = Math.min(fullVideoDuration, originalEndSeconds + bufferRightSeconds);
+            
+            let bufferStart, bufferEnd;
+            if (themeData.is_custom) {
+                bufferStart = 0;
+                bufferEnd = fullVideoDuration;
+            } else {
+                // Use original theme boundaries for standard themes
+                bufferStart = Math.max(0, originalStartSeconds - bufferLeftSeconds);
+                bufferEnd = Math.min(fullVideoDuration, originalEndSeconds + bufferRightSeconds);
+            }
             bufferedDuration = bufferEnd - bufferStart;
 
             if (timelineZoomed) {
@@ -5456,9 +5499,17 @@
 
             // Update seekbar as video plays
             originalVideo.addEventListener('timeupdate', () => {
+                let bufferStart, bufferEnd;
+                if (themeData.is_custom) {
+                    bufferStart = 0;
+                    bufferEnd = fullVideoDuration;
+                } else {
+                    // Use original theme boundaries for standard themes
+                    bufferStart = Math.max(0, originalStartSeconds - bufferLeftSeconds);
+                    bufferEnd = Math.min(fullVideoDuration, originalEndSeconds + bufferRightSeconds);
+                }
+
                 // Calculate position within buffer range
-                const bufferStart = Math.max(0, startSeconds - bufferLeftSeconds);
-                const bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferRightSeconds);
 
                 // Keep video within buffer range
                 if (originalVideo.currentTime < bufferStart) {
@@ -5488,48 +5539,49 @@
                                 const cueEnd = parseTime(cue.end);
                                 return currentTime >= cueStart && currentTime <= cueEnd;
                             });
-                        let cueSettings = null;
-                        if (currentCue) {
-                            subtitleText = currentCue.text;
-                            cueSettings = allCueFormatting[String(currentCue.sequence)];
-                            
-                            // ROBUST FALLBACK: If sequence match fails, try by timestamp or text
-                            if (!cueSettings) {
-                                const cueStart = parseTime(currentCue.start);
-                                // Try timestamp match (allow small drift)
-                                for (const key in allCueFormatting) {
-                                    const f = allCueFormatting[key];
-                                    if (f && f.timestamp) {
-                                        try {
-                                            const fStart = parseTime(f.timestamp);
-                                            if (Math.abs(fStart - cueStart) < 0.1) {
+                            let cueSettings = null;
+                            if (currentCue) {
+                                subtitleText = currentCue.text;
+                                cueSettings = allCueFormatting[String(currentCue.sequence)];
+                                
+                                // ROBUST FALLBACK: If sequence match fails, try by timestamp or text
+                                if (!cueSettings) {
+                                    const cueStart = parseTime(currentCue.start);
+                                    // Try timestamp match (allow small drift)
+                                    for (const key in allCueFormatting) {
+                                        const f = allCueFormatting[key];
+                                        if (f && f.timestamp) {
+                                            try {
+                                                const fStart = parseTime(f.timestamp);
+                                                if (Math.abs(fStart - cueStart) < 0.1) {
+                                                    cueSettings = f;
+                                                    break;
+                                                }
+                                            } catch(e) {}
+                                        }
+                                    }
+                                    
+                                    // Try text match if still not found
+                                    if (!cueSettings) {
+                                        const cleanTxt = currentCue.text.trim().toLowerCase();
+                                        for (const key in allCueFormatting) {
+                                            const f = allCueFormatting[key];
+                                            if (f && f._text && f._text.trim().toLowerCase() === cleanTxt) {
                                                 cueSettings = f;
                                                 break;
                                             }
-                                        } catch(e) {}
-                                    }
-                                }
-                                
-                                // Try text match if still not found
-                                if (!cueSettings) {
-                                    const cleanTxt = currentCue.text.trim().toLowerCase();
-                                    for (const key in allCueFormatting) {
-                                        const f = allCueFormatting[key];
-                                        if (f && f._text && f._text.trim().toLowerCase() === cleanTxt) {
-                                            cueSettings = f;
-                                            break;
                                         }
                                     }
                                 }
-                            }
 
-                            if (cueSettings && cueSettings.html) {
-                                subtitleText = cueSettings.html;
+                                if (cueSettings && cueSettings.html) {
+                                    subtitleText = cueSettings.html;
+                                }
                             }
+                            
+                            // We don't do real-time editor preview on original side, just show stable cues
+                            originalCanvasRenderer.renderFrame(originalVideo.currentTime, subtitleText, -1, cueSettings);
                         }
-                        
-                        // We don't do real-time editor preview on original side, just show stable cues
-                        originalCanvasRenderer.renderFrame(originalVideo.currentTime, subtitleText, -1, cueSettings);
                     } catch (error) {
                     }
                 } else if (originalCanvas) {
@@ -5541,7 +5593,13 @@
 
             // Seek when user drags seekbar
             seekbar.addEventListener('input', () => {
-                const bufferStart = Math.max(0, startSeconds - bufferLeftSeconds);
+                let bufferStart;
+                if (themeData.is_custom) {
+                    bufferStart = 0;
+                } else {
+                    bufferStart = Math.max(0, originalStartSeconds - bufferLeftSeconds);
+                }
+                
                 const percent = seekbar.value;
                 const positionInBuffer = (percent / 100) * bufferedDuration;
                 originalVideo.currentTime = bufferStart + positionInBuffer;
@@ -5603,8 +5661,8 @@
                 }                
                 startSeconds = currentTime;
                 updateUI();
-                updatePreviewVideo();
-                reloadSubtitleTrack();
+                updateOriginalVideoRange();
+                updatePreviewVideo();                reloadSubtitleTrack();
                 autoSaveTheme();
                 updateTimeExtensionInputs();
                 showNotification('Theme start set to current position', 'success');
@@ -5626,8 +5684,8 @@
                 }                
                 endSeconds = currentTime;
                 updateUI();
-                updatePreviewVideo();
-                reloadSubtitleTrack();
+                updateOriginalVideoRange();
+                updatePreviewVideo();                reloadSubtitleTrack();
                 autoSaveTheme();
                 updateTimeExtensionInputs();
                 showNotification('Theme end set to current position', 'success');
@@ -5649,12 +5707,20 @@
 
             // Update seekbar theme markers
             const updateSeekbarTheme = () => {
-                const bufferStart = Math.max(0, startSeconds - bufferLeftSeconds);
-                const bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferRightSeconds);
+                let bufferStart, bufferEnd;
+                if (themeData.is_custom) {
+                    bufferStart = 0;
+                    bufferEnd = fullVideoDuration;
+                } else {
+                    // Use original theme boundaries for standard themes
+                    bufferStart = Math.max(0, originalStartSeconds - bufferLeftSeconds);
+                    bufferEnd = Math.min(fullVideoDuration, originalEndSeconds + bufferRightSeconds);
+                }
+                const currentBufferedDuration = bufferEnd - bufferStart;
 
                 // Calculate theme position within buffer (as percentage)
-                const themeStartPercent = ((startSeconds - bufferStart) / bufferedDuration) * 100;
-                const themeEndPercent = ((endSeconds - bufferStart) / bufferedDuration) * 100;
+                const themeStartPercent = ((startSeconds - bufferStart) / currentBufferedDuration) * 100;
+                const themeEndPercent = ((endSeconds - bufferStart) / currentBufferedDuration) * 100;
 
                 // Set CSS custom properties for gradient
                 seekbar.style.setProperty('--theme-start', `${themeStartPercent}%`);
@@ -5674,8 +5740,12 @@
             seekbar.max = 100;
 
             // Calculate initial position in buffer (theme start position)
-            const bufferStart = Math.max(0, startSeconds - bufferLeftSeconds);
-            const bufferEnd = Math.min(fullVideoDuration, endSeconds + bufferRightSeconds);
+            let bufferStart;
+            if (themeData.is_custom) {
+                bufferStart = 0;
+            } else {
+                bufferStart = Math.max(0, originalStartSeconds - bufferLeftSeconds);
+            }
             const positionInBuffer = originalVideo.currentTime - bufferStart;
             const seekbarPercent = (positionInBuffer / bufferedDuration) * 100;
 
