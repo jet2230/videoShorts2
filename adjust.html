@@ -3884,12 +3884,22 @@
 
                 if (!response.ok) {
                     globalPosition = 'bottom';
+                    verticalAlign = 'bottom';
+                    horizontalAlign = 'center';
                     customPosition = null;
+                    updateAlignButtons(horizontalAlign, verticalAlign);
                     return 'bottom';
                 }
 
                                  const data = await response.json();
                                  globalPosition = data.position || 'bottom';
+
+                                 // Sync verticalAlign with the loaded position for non-custom positions
+                                 if (data.position && data.position !== 'custom') {
+                                     verticalAlign = data.position;
+                                     horizontalAlign = data.h_align || 'center';
+                                     updateAlignButtons(horizontalAlign, verticalAlign);
+                                 }
                  
                                                   // Populate font dropdown if available
                                                   if (data.available_fonts && data.available_fonts.length > 0) {
